@@ -18,7 +18,6 @@ import {
 
 import { Card, CardContent } from "@/components/ui/card";
 
-// --- Mock Data ---
 const tvlData = [
   { date: "Day 1", tvl: 5_000_000 },
   { date: "Day 2", tvl: 5_200_000 },

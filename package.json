@@ -12,6 +12,7 @@
     "@coinbase/onchainkit": "^1.1.1",
     "@farcaster/miniapp-sdk": "^0.1.5",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@tanstack/react-table": "^8.21.3",
     "@tremor/react": "4.0.0-beta-tremor-v4.4",
     "@vercel/og": "^0.8.5",
     "axios": "^1.7.7",

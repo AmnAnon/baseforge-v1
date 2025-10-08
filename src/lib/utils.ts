@@ -25,3 +25,8 @@ export const formatPercentage = (value: number | undefined | null, precision: nu
   }
   return `${value >= 0 ? '+' : ''}${value.toFixed(precision)}%`;
 };
+export const formatAnnualized = (dailyValue: number | undefined | null, label: string = "Annualized") => {
+  if (dailyValue === undefined || dailyValue === null || isNaN(dailyValue)) return 'N/A';
+  const annualized = dailyValue * 365;
+  return `${formatCurrency(annualized)} (${label})`;
+};

@@ -1,7 +1,7 @@
 // src/app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google"; // Optional: (npm i next/font)
+import { Inter } from "next/font/google"; 
 import * as Tooltip from "@radix-ui/react-tooltip";
 
 const inter = Inter({ subsets: ["latin"] });
