@@ -49,8 +49,7 @@ export async function GET(req: NextRequest) {
             gap: '16px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            {/* FIX #1: Using a PNG version of the logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
             <img src="https://i.imgur.com/83T2I4i.png" width="60" height="60" alt="logo" />
             <div style={{ fontSize: 48, fontWeight: 700 }}>Seamless Protocol Stats</div>
           </div>
@@ -58,14 +57,12 @@ export async function GET(req: NextRequest) {
             fontSize: 72,
             fontWeight: 800,
             background: 'linear-gradient(to right, #a855f7, #6366f1)',
-            // The following two lines are needed for gradient text
             backgroundClip: 'text',
             color: 'transparent',
           }}>
             {formattedTvl}
           </div>
           <div style={{ fontSize: 36, color: '#a1a1aa' }}>
-            {/* FIX #2: Combining the text into a single string */}
             {`Total Value Locked in ${topMarket.inputToken.symbol} Market`}
           </div>
         </div>
