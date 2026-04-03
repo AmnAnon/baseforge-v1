@@ -12,7 +12,7 @@ interface MetricCardProps {
   change?: number;
   chartData?: any[];
   tooltip?: string;
-  icon?: JSX.Element;
+  icon?: React.ReactElement;
   isLoading: boolean;
 }
 

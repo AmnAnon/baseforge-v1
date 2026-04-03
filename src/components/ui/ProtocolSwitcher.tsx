@@ -7,7 +7,7 @@ import { ChevronDown, Check } from "lucide-react";
 export interface Protocol {
   id: string;
   name: string;
-  logo: string;
+  logo?: string;
   tvl: number;
 }
 

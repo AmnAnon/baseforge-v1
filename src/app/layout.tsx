@@ -1,33 +1,56 @@
 // src/app/layout.tsx
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google"; 
-import * as Tooltip from "@radix-ui/react-tooltip";
+import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"] });
 
+// Local testing via frames.js debugger
+// Change to ngrok or Vercel URL on deploy
+const BASE_URL = "http://localhost:3000";
+
 export const metadata: Metadata = {
-  title: "Hello Farcaster Mini App",
-  description: "A simple demo frame + webpage",
+  title: "BaseForge Analytics — Real-time Base DeFi Dashboard",
+  description: "Comprehensive analytics for the Base blockchain ecosystem. Track TVL, protocol health, whale movements, market data and risk scores.",
   openGraph: {
-    images: ["https://domain.vercel.app/preview.png"],
+    title: "BaseForge Analytics",
+    description: "Real-time DeFi analytics on Base chain",
+    images: [
+      {
+        url: `${BASE_URL}/api/og`,
+        width: 1200,
+        height: 800,
+        alt: "BaseForge Analytics — Base DeFi Dashboard",
+      },
+    ],
+    type: "website",
+    url: BASE_URL,
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "BaseForge Analytics",
+    description: "Real-time DeFi analytics on Base chain",
+    images: [`${BASE_URL}/api/og`],
+  },
+  // Farcaster Frame V1 metadata — flattened OpenGraph properties
   other: {
     "fc:frame": "vNext",
-    "fc:frame:image": "https://domain.vercel.app/preview.png",
-    "fc:frame:button:1": "Say Hello",
-    "fc:frame:button:2": "Visit Site",
-    "fc:frame:post_url": "https://domain.vercel.app/api/frame",
+    "fc:frame:image": `${BASE_URL}/api/og`,
+    "fc:frame:image:aspect_ratio": "1.91:1",
+    "fc:frame:button:1": "Launch Dashboard",
+    "fc:frame:post_url": `${BASE_URL}/api/frame`,
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-gradient-to-r from-purple-800 via-indigo-900 to-black text-white min-h-screen flex items-center justify-center`}>
-        <Tooltip.Provider delayDuration={700} skipDelayDuration={300}>
-          <main aria-label="Seamless Protocol Dashboard">{children}</main>
-        </Tooltip.Provider>
+      <body className={`${inter.className} bg-black text-white min-h-screen`}>
+        {children}
       </body>
     </html>
   );

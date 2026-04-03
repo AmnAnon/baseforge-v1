@@ -1,247 +1,346 @@
 // src/components/sections/MarketSection.tsx
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { Card } from "@tremor/react";
 import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  SortingState,
-  flexRender,
-  createColumnHelper,
-} from "@tanstack/react-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { ArrowUpDown, ArrowUp, ArrowDown, TrendingUp } from "lucide-react";
+  ArrowUpRight,
+  ArrowDownRight,
+  RefreshCw,
+  AlertCircle,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  BarChart3,
+} from "lucide-react";
 
-type Market = {
+interface TokenData {
+  id: string;
+  symbol: string;
   name: string;
-  supplyApy: number;
-  borrowApy: number;
-};
-
-interface MarketSectionProps {
-  data: {
-    markets?: Market[];
-  } | null;
-  isLoading: boolean;
+  price: number;
+  change24h: number;
+  volume24h: number;
+  marketCap: number;
+  tvl?: number;
 }
 
-const TOKEN_ADDRESSES: { [key: string]: string } = {
-  "SEAM (Governance Token)": "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
-  "EscrowSEAM (esSEAM)": "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
-  "wstETH/ETH 3x Loop Strategy": "0xc1CBa3fCea344f92d9239c08C0568f6F2F0ee452",
-  "WETH/USDC 1.5x Loop Strategy": "0x4200000000000000000000000000000000000006",
-  "WETH/USDC 3x Loop Strategy": "0x4200000000000000000000000000000000000006",
-  "USDC/WETH 1.5x Loop Strategy": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  "Seamless USDC Vault (smUSDC)": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  "Seamless WETH Vault (smWETH)": "0x4200000000000000000000000000000000000006",
-  "Seamless cbBTC Vault (smcbBTC)": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
-};
+interface MarketSummary {
+  totalTokens: number;
+  avgChange24h: number;
+  totalVolume24h: number;
+}
 
-const getTokenIcon = (name: string) => {
-  if (name.includes("SEAM")) {
-    return "https://coin-images.coingecko.com/coins/images/33480/large/Seamless_Logo_Black_Transparent.png";
-  }
-  const address = TOKEN_ADDRESSES[name];
-  if (!address) return "/default-token.svg";
-  return `https://icons.llama.fi/icons/tokens/base/${address}?w=48&h=48`;
-};
+interface ApiResponse {
+  tokens: TokenData[];
+  topGainers: TokenData[];
+  topLosers: TokenData[];
+  topByVolume: TokenData[];
+  summary: MarketSummary;
+  timestamp: number;
+}
 
-const columnHelper = createColumnHelper<Market>();
+function formatUSD(value: number): string {
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
+  if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
+  return `${value.toFixed(value < 0.01 ? 6 : 2)}`;
+}
 
-export default function MarketSection({ data, isLoading }: MarketSectionProps) {
-  const [markets, setMarkets] = useState<Market[]>([]);
-  const [sorting, setSorting] = useState<SortingState>([]);
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
-  useEffect(() => {
-    if (data?.markets) {
-      setMarkets(data.markets);
-    }
-  }, [data]);
+function TokenRow({ token, rank }: { token: TokenData; rank: number }) {
+  return (
+    <div className="flex items-center gap-4 p-3 hover:bg-gray-800/30 transition-colors rounded-lg group">
+      <span className="text-sm text-gray-500 w-6 text-right tabular-nums">
+        {rank}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-white truncate">{token.name}</p>
+          <span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+            {token.symbol}
+          </span>
+        </div>
+      </div>
 
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor("name", {
-        header: "Asset",
-        cell: (info) => (
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            <div className="relative flex-shrink-0">
-              <img
-                src={getTokenIcon(info.getValue())}
-                alt={info.getValue()}
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                onError={(e) => (e.currentTarget.src = "/default-token.svg")}
-              />
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-full blur opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            </div>
-            <span className="font-semibold text-white group-hover:text-emerald-100 transition-colors text-sm sm:text-base truncate">
-              {info.getValue()}
-            </span>
-          </div>
-        ),
-      }),
-      columnHelper.accessor("supplyApy", {
-        header: ({ column }) => (
-          <button
-            onClick={() => column.toggleSorting()}
-            className="flex items-center gap-1 sm:gap-2 justify-end w-full hover:text-emerald-400 transition-colors group"
-          >
-            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-400" />
-            <span className="text-xs sm:text-sm">APY</span>
-            {column.getIsSorted() === "asc" ? (
-              <ArrowUp className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-400" />
-            ) : column.getIsSorted() === "desc" ? (
-              <ArrowDown className="h-3 w-3 sm:h-4 sm:w-4 text-emerald-400" />
-            ) : (
-              <ArrowUpDown className="h-3 w-3 sm:h-4 sm:w-4 opacity-50 group-hover:opacity-100" />
-            )}
-          </button>
-        ),
-        cell: (info) => (
-          <div className="text-right">
-            <div className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-gradient-to-r from-emerald-900/40 to-emerald-800/30 border border-emerald-500/30 rounded-lg shadow-[0_0_15px_rgba(16,185,129,0.15)]">
-              <span className="font-bold text-emerald-400 text-sm sm:text-base">
-                {info.getValue() ? `${info.getValue().toFixed(2)}%` : "N/A"}
-              </span>
-            </div>
-          </div>
-        ),
-      }),
-    ],
-    []
+      {/* Price */}
+      <div className="text-right w-24">
+        <p className="text-sm font-bold text-white tabular-nums">
+          {formatUSD(token.price)}
+        </p>
+      </div>
+
+      {/* Change */}
+      <div
+        className={`flex items-center gap-1 text-sm w-20 ${
+          token.change24h >= 0 ? "text-emerald-400" : "text-red-400"
+        }`}
+      >
+        {token.change24h >= 0 ? (
+          <ArrowUpRight className="h-4 w-4" />
+        ) : (
+          <ArrowDownRight className="h-4 w-4" />
+        )}
+        <span className="tabular-nums">{token.change24h.toFixed(1)}%</span>
+      </div>
+
+      {/* Volume */}
+      <div className="text-right w-24">
+        <p className="text-sm text-gray-400 tabular-nums">
+          {formatUSD(token.volume24h)}
+        </p>
+        <p className="text-xs text-gray-500">24h vol</p>
+      </div>
+
+      {/* Market Cap */}
+      <div className="text-right w-24">
+        <p className="text-sm text-gray-300 tabular-nums">
+          {formatUSD(token.marketCap)}
+        </p>
+        <p className="text-xs text-gray-500">mcap</p>
+      </div>
+    </div>
+  );
+}
+
+export default function MarketSection({
+  data,
+  isLoading: parentLoading,
+}: {
+  data?: ApiResponse | null;
+  isLoading?: boolean;
+}) {
+  const [marketData, setMarketData] = useState<ApiResponse | null>(
+    data ?? null
+  );
+  const [isLoading, setIsLoading] = useState(!data);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"tokens" | "gainers" | "losers" | "volume">(
+    "tokens"
   );
 
-  const table = useReactTable({
-    data: markets,
-    columns,
-    state: {
-      sorting,
-    },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-  });
+  useEffect(() => {
+    const fetchMarket = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/market");
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const json = await res.json();
+        setMarketData(json);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchMarket();
+  }, []);
+
+  if (error) {
+    return (
+      <Card className="p-6 bg-red-900/20 border-red-500/30">
+        <AlertCircle className="h-6 w-6 text-red-400 mb-2" />
+        <p className="text-red-400 font-medium">Market data unavailable</p>
+        <p className="text-sm text-gray-500 mt-1">{error}</p>
+        <button
+          onClick={() => {
+            setError(null);
+            setIsLoading(true);
+            fetch("/api/market")
+              .then((r) => r.json())
+              .then((d) => setMarketData(d))
+              .catch((e) => setError(e.message))
+              .finally(() => setIsLoading(false));
+          }}
+          className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm"
+        >
+          Retry
+        </button>
+      </Card>
+    );
+  }
+
+  const loading = isLoading || parentLoading;
+
+  const getDisplayTokens = () => {
+    if (!marketData) return [];
+    switch (tab) {
+      case "gainers":
+        if (marketData.topGainers.length > 0) return marketData.topGainers;
+        return marketData.tokens
+          .filter((t) => t.change24h > 0)
+          .sort((a, b) => b.change24h - a.change24h)
+          .slice(0, 5);
+      case "losers":
+        if (marketData.topLosers.length > 0) return marketData.topLosers;
+        return marketData.tokens
+          .filter((t) => t.change24h < 0)
+          .sort((a, b) => a.change24h - b.change24h)
+          .slice(0, 5);
+      case "volume":
+        return marketData.topByVolume;
+      default:
+        return marketData.tokens.sort((a, b) => b.marketCap - a.marketCap);
+    }
+  };
 
   return (
     <section className="space-y-6" aria-labelledby="market-heading">
-      {/* Header */}
-      <div className="space-y-2">
-        <h2 id="market-heading" className="text-2xl sm:text-3xl font-bold text-white">
-          Market Overview
-        </h2>
-        <p className="text-sm sm:text-base text-gray-400">
-          Live supply rates across all markets
-        </p>
-      </div>
-
-      {/* Table Container with neon border */}
-      <div className="relative bg-gradient-to-br from-gray-900/95 via-gray-800/90 to-black/95 rounded-2xl shadow-2xl overflow-hidden before:absolute before:inset-0 before:rounded-2xl before:p-[2px] before:bg-gradient-to-br before:from-emerald-500/40 before:via-transparent before:to-emerald-500/20 before:-z-10">
-        <div className="relative z-10">
-          {isLoading && markets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.5)]"></div>
-              <p className="mt-4 text-gray-400 text-sm">Loading market data...</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <TableRow
-                      key={headerGroup.id}
-                      className="border-b border-emerald-500/20 hover:bg-transparent"
-                    >
-                      {headerGroup.headers.map((header) => (
-                        <TableHead
-                          key={header.id}
-                          className="text-gray-300 font-semibold text-sm uppercase tracking-wider py-4 px-6"
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableHeader>
-                <TableBody>
-                  {table.getRowModel().rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={columns.length}
-                        className="h-32 text-center"
-                      >
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center">
-                            <TrendingUp className="h-8 w-8 text-gray-600" />
-                          </div>
-                          <p className="text-gray-400">No market data available</p>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    table.getRowModel().rows.map((row, index) => (
-                      <TableRow
-                        key={row.id}
-                        className="border-b border-gray-800/50 hover:bg-gradient-to-r hover:from-emerald-900/20 hover:to-transparent transition-all duration-300 group"
-                        style={{
-                          animationDelay: `${index * 50}ms`,
-                        }}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id} className="py-3 sm:py-5 px-3 sm:px-6">
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 id="market-heading" className="text-2xl font-bold text-white">
+            Market Overview
+          </h2>
+          <p className="text-sm text-gray-400">
+            {marketData?.tokens.length ?? "—"} tracked tokens
+          </p>
         </div>
 
-        {/* Bottom stats bar */}
-        {markets.length > 0 && (
-          <div className="border-t border-emerald-500/20 bg-black/40 px-3 sm:px-6 py-3 sm:py-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 text-xs sm:text-sm">
-              <span className="text-gray-400">
-                Total Markets: <span className="text-emerald-400 font-semibold">{markets.length}</span>
-              </span>
-              <span className="text-gray-400">
-                Avg Supply APY:{" "}
-                <span className="text-emerald-400 font-semibold">
-                  {(
-                    markets.reduce((acc, m) => acc + (m.supplyApy || 0), 0) /
-                    markets.length
-                  ).toFixed(2)}
-                  %
-                </span>
-              </span>
-            </div>
-          </div>
-        )}
+        <button
+          onClick={() => {
+            setIsLoading(true);
+            fetch("/api/market")
+              .then((r) => r.json())
+              .then((d) => setMarketData(d))
+              .catch((e) => setError(e.message))
+              .finally(() => setIsLoading(false));
+          }}
+          disabled={isLoading}
+          className="p-2 bg-emerald-900/30 border border-emerald-500/20 rounded-lg hover:bg-emerald-800/50 transition-colors disabled:opacity-50"
+          aria-label="Refresh market data"
+        >
+          <RefreshCw
+            className={`h-5 w-5 text-emerald-400 ${
+              isLoading ? "animate-spin" : ""
+            }`}
+          />
+        </button>
       </div>
 
-      {/* Info card */}
-      <div className="bg-gradient-to-r from-emerald-900/20 to-blue-900/20 border border-emerald-500/30 rounded-xl p-3 sm:p-4 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-        <p className="text-xs sm:text-sm text-gray-300">
-          <span className="text-emerald-400 font-semibold">💡 Tip:</span> Click on the APY column
-          header to sort markets by rate
-        </p>
+      {/* Summary Cards */}
+      {marketData?.summary && !loading && (
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <BarChart3 className="h-4 w-4 text-gray-500" />
+              <p className="text-xs text-gray-400 uppercase tracking-wide">
+                Tokens
+              </p>
+            </div>
+            <p className="text-2xl font-bold text-white">
+              {marketData.summary.totalTokens}
+            </p>
+          </Card>
+          <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              {marketData.summary.avgChange24h >= 0 ? (
+                <TrendingUp className="h-4 w-4 text-emerald-400" />
+              ) : (
+                <TrendingDown className="h-4 w-4 text-red-400" />
+              )}
+              <p className="text-xs text-gray-400 uppercase tracking-wide">
+                Avg 24h Change
+              </p>
+            </div>
+            <p
+              className={`text-2xl font-bold ${
+                marketData.summary.avgChange24h >= 0
+                  ? "text-emerald-400"
+                  : "text-red-400"
+              }`}
+            >
+              {marketData.summary.avgChange24h >= 0 ? "+" : ""}
+              {marketData.summary.avgChange24h.toFixed(2)}%
+            </p>
+          </Card>
+          <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <DollarSign className="h-4 w-4 text-gray-500" />
+              <p className="text-xs text-gray-400 uppercase tracking-wide">
+                24h Volume
+              </p>
+            </div>
+            <p className="text-2xl font-bold text-white tabular-nums">
+              {formatUSD(marketData.summary.totalVolume24h)}
+            </p>
+          </Card>
+        </div>
+      )}
+
+      {/* Tab Switcher */}
+      <div className="flex items-center gap-2 border-b border-gray-800 pb-2">
+        {(
+          [
+            { id: "tokens", label: "All Tokens", icon: BarChart3 },
+            { id: "gainers", label: "Top Gainers", icon: TrendingUp },
+            { id: "losers", label: "Top Losers", icon: TrendingDown },
+            { id: "volume", label: "By Volume", icon: DollarSign },
+          ] as const
+        ).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              tab === id
+                ? "bg-emerald-900/40 text-emerald-400 border border-emerald-500/30"
+                : "text-gray-400 hover:text-emerald-300 hover:bg-gray-800/30"
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
       </div>
+
+      {/* Token List */}
+      {loading ? (
+        <Card className="bg-gray-900/60 p-6">
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-4 animate-pulse">
+                <div className="h-4 bg-gray-800 rounded w-6" />
+                <div className="flex-1 h-4 bg-gray-800 rounded w-32" />
+                <div className="h-4 bg-gray-800 rounded w-20" />
+                <div className="h-4 bg-gray-800 rounded w-16" />
+                <div className="h-4 bg-gray-800 rounded w-24" />
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
+          {/* Table Header */}
+          <div className="flex items-center gap-4 p-3 border-b border-gray-800 text-xs text-gray-500">
+            <span className="w-6 text-right">#</span>
+            <span className="flex-1">Token</span>
+            <span className="w-24 text-right">Price</span>
+            <span className="w-20 text-right">24h %</span>
+            <span className="w-24 text-right">Volume</span>
+            <span className="w-24 text-right">Mcap</span>
+          </div>
+
+          <div className="divide-y divide-gray-800/50">
+            {getDisplayTokens().length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                No market data available
+              </div>
+            ) : (
+              getDisplayTokens().map((token, i) => (
+                <TokenRow token={token} rank={i + 1} key={token.id} />
+              ))
+            )}
+          </div>
+        </Card>
+      )}
     </section>
   );
 }

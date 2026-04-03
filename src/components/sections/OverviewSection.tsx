@@ -41,7 +41,7 @@ interface OverviewSectionProps {
       change24h: number;
     };
     tvlHistory?: { date: string; tvl: number }[];
-    protocols?: Protocol[];
+    protocols?: { id: string; name: string; tvl: number; logo?: string; change24h?: number }[];
     protocolData?: {
       [key: string]: {
         tvl?: number;
@@ -101,7 +101,7 @@ const MetricCard = ({
                     aria-label={`More information about ${title}`}
                     title={tooltipText}
                   >
-                    <InfoIcon className="h-3.5 w-3.5 text-gray-500 hover:text-emerald-400 transition-colors" aria-hidden="true" />
+                    <InfoIcon className="h-3.5 w-3.5 text-gray-500 hover:text-emerald-400 transition-colors" aria-hidden={true} />
                   </button>
                   <div className="absolute left-0 top-6 w-48 p-2 bg-gray-950 border border-emerald-500/30 rounded-lg text-xs text-gray-300 opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 z-10 pointer-events-none shadow-[0_0_20px_rgba(16,185,129,0.2)]">
                     {tooltipText}
@@ -128,9 +128,9 @@ const MetricCard = ({
                   {hasChange && (
                     <div className={`flex items-center text-xs sm:text-sm font-medium ${changeColor}`}>
                       {isPositive ? (
-                        <ArrowUpIcon className="h-3.5 w-3.5 mr-1 flex-shrink-0" aria-hidden="true" />
+                        <ArrowUpIcon className="h-3.5 w-3.5 mr-1 flex-shrink-0" aria-hidden={true} />
                       ) : (
-                        <ArrowDownIcon className="h-3.5 w-3.5 mr-1 flex-shrink-0" aria-hidden="true" />
+                        <ArrowDownIcon className="h-3.5 w-3.5 mr-1 flex-shrink-0" aria-hidden={true} />
                       )}
                       <span>
                         {formatPercentage(Math.abs(change!))} 
@@ -151,7 +151,7 @@ const MetricCard = ({
 
           {Icon && (
             <div className="p-2.5 sm:p-3 bg-gradient-to-br from-emerald-900/40 to-gray-800/40 rounded-xl group-hover:from-emerald-800/60 group-hover:to-emerald-900/60 transition-all duration-300 flex-shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.1)] group-hover:shadow-[0_0_25px_rgba(16,185,129,0.3)]">
-              <Icon className="h-5 w-5 text-emerald-400 group-hover:text-emerald-300 transition-colors drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" aria-hidden="true" />
+              <Icon className="h-5 w-5 text-emerald-400 group-hover:text-emerald-300 transition-colors drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" aria-hidden={true} />
             </div>
           )}
         </div>
@@ -188,7 +188,7 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
       <BaseNetworkMetrics data={data?.baseMetrics || null} isLoading={isLoading} />
 
       {/* Base TVL Chart */}
-      <BaseTVLChart data={data?.tvlHistory || []} isLoading={isLoading} />
+        <BaseTVLChart />
 
       {/* Protocol Selector */}
       <div className="space-y-3">

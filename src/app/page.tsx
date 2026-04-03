@@ -2,31 +2,34 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion"; // For animations (npm i framer-motion)
+import { motion } from "framer-motion";
 import {
-  LayoutDashboard, CandlestickChart, Fish, ShieldAlert, BarChart3, RefreshCw, AlertCircle, ChevronDown
-} from 'lucide-react';
+  LayoutDashboard,
+  CandlestickChart,
+  Fish,
+  ShieldAlert,
+  BarChart3,
+  RefreshCw,
+  AlertCircle,
+  Signal,
+} from "lucide-react";
 import OverviewSection from "@/components/sections/OverviewSection";
 import MarketSection from "@/components/sections/MarketSection";
 import WhalesSection from "@/components/sections/WhalesSection";
 import RiskSection from "@/components/sections/RiskSection";
 import ChartsSection from "@/components/sections/ChartsSection";
-import BaseTVLChart from "@/components/charts/BaseTVLChart";
-import { AreaChart, Card } from "@tremor/react";
+import { useRealTimeData } from "@/hooks/useRealTimeData";
 
 interface AnalyticsData {
-  tvl: number;
-  totalSupply: number;
-  totalBorrow: number;
-  utilization: number;
-  markets: any[];
-  feesAnnualized: number;
-  revenueAnnualized: number;
-  seamPrice: number;
-  seamFdv: number;
-  tvlChange?: number;
-  volume24h?: number;
-  historicalData?: any[];
+  baseMetrics?: {
+    totalTvl: number;
+    totalProtocols: number;
+    avgApy: number;
+    change24h: number;
+  };
+  tvlHistory?: { date: string; tvl: number }[];
+  protocols?: Array<{ id: string; name: string; tvl: number; logo?: string }>;
+  protocolData?: Record<string, any>;
 }
 
 type TabType = "overview" | "market" | "whales" | "risk" | "charts";
@@ -39,61 +42,72 @@ interface TabConfig {
 }
 
 const TABS: TabConfig[] = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard, ariaLabel: "Protocol overview" },
-  { id: "market", label: "Market", icon: CandlestickChart, ariaLabel: "Market data" },
-  { id: "whales", label: "Whales", icon: Fish, ariaLabel: "Whale tracker" },
-  { id: "risk", label: "Risk", icon: ShieldAlert, ariaLabel: "Risk metrics" },
-  { id: "charts", label: "Charts", icon: BarChart3, ariaLabel: "Analytics charts" },
-];
-
-const PROTOCOLS = [ // Top 10 on Base by TVL
-  { name: "Seamless", slug: "seamless-protocol" },
-  { name: "Aerodrome", slug: "aerodrome" },
-  { name: "Aave V3", slug: "aave-v3" },
-  { name: "Morpho", slug: "morpho" },
-  { name: "Extra Finance", slug: "extra-finance" },
-  { name: "Moonwell", slug: "moonwell" },
-  { name: "SushiSwap V3", slug: "sushiswap-v3" },
-  { name: "Compound V3", slug: "compound-v3" },
-  { name: "Balancer V2", slug: "balancer-v2" },
-  { name: "Uniswap V3", slug: "uniswap-v3" },
+  {
+    id: "overview",
+    label: "Overview",
+    icon: LayoutDashboard,
+    ariaLabel: "Protocol overview",
+  },
+  {
+    id: "market",
+    label: "Market",
+    icon: CandlestickChart,
+    ariaLabel: "Market data",
+  },
+  {
+    id: "whales",
+    label: "Whales",
+    icon: Fish,
+    ariaLabel: "Whale tracker",
+  },
+  {
+    id: "risk",
+    label: "Risk",
+    icon: ShieldAlert,
+    ariaLabel: "Risk metrics",
+  },
+  {
+    id: "charts",
+    label: "Charts",
+    icon: BarChart3,
+    ariaLabel: "Analytics charts",
+  },
 ];
 
 export default function Home() {
   const [tab, setTab] = useState<TabType>("overview");
-  const [currentProtocol, setCurrentProtocol] = useState(PROTOCOLS[0].slug);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const { data: streamData, connectionState: streamState, isConnected } = useRealTimeData();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const loadData = async (isManualRefresh = false) => {
-    if (isManualRefresh) setIsRefreshing(true);
-    try {
-      const response = await fetch(`/api/analytics?protocol=${currentProtocol}`);
-      if (!response.ok) throw new Error('Failed to fetch analytics data');
-      const data = await response.json();
-      setAnalytics(data);
-      setError(null);
-      setLastUpdated(new Date());
-    } catch (err: any) {
-      setError(err.message || 'Failed to load analytics');
-      console.error('Analytics fetch error:', err);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  };
-
+  // SSE auto-updates analytics from stream
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => loadData(), 60000);
-    return () => clearInterval(interval);
-  }, [currentProtocol]); 
+    if (streamData?.analytics) {
+      setAnalytics({
+        baseMetrics: streamData.analytics.baseMetrics,
+        tvlHistory: streamData.analytics.tvlHistory,
+        protocols: streamData.analytics.protocols,
+        protocolData: streamData.analytics.protocolData || {},
+      });
+    }
+  }, [streamData?.analytics]);
+
+  // Fetch analytics on mount (SSE is bonus, initial load is fetch)
+  useEffect(() => {
+    fetch("/api/analytics")
+      .then(r => r.json())
+      .then(setAnalytics)
+      .catch(console.error);
+  }, []);
+
+  const isLoading = !isConnected && !analytics;
 
   const handleManualRefresh = () => {
-    if (!isRefreshing) loadData(true);
+    setIsRefreshing(true);
+    fetch("/api/analytics")
+      .then(r => r.json())
+      .then(d => setAnalytics(d))
+      .finally(() => setIsRefreshing(false));
   };
 
   const handleTabChange = (newTab: TabType) => {
@@ -101,47 +115,39 @@ export default function Home() {
   };
 
   const renderSection = () => {
-    if (error && !analytics) {
-      return (
-        <div className="flex flex-col items-center justify-center py-16 px-4">
-          <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-6 max-w-md w-full shadow-[0_0_30px_rgba(239,68,68,0.15)]">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-6 w-6 text-red-400 flex-shrink-0 mt-0.5 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-red-400 mb-2">
-                  Failed to Load Data
-                </h3>
-                <p className="text-sm text-gray-300 mb-4">{error}</p>
-                <button
-                  onClick={() => loadData(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg text-sm font-medium transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-900 shadow-[0_0_15px_rgba(239,68,68,0.3)] hover:shadow-[0_0_25px_rgba(239,68,68,0.4)]"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     switch (tab) {
       case "market":
-        return <MarketSection data={analytics} isLoading={isLoading} />;
+        return <MarketSection />;
       case "whales":
         return <WhalesSection />;
       case "risk":
-        return <RiskSection data={analytics} isLoading={isLoading} />;
+        return <RiskSection />;
       case "charts":
-        return <ChartsSection data={analytics} isLoading={isLoading} />;
+        return (
+          <ChartsSection
+            data={
+              analytics?.tvlHistory
+                ? {
+                    tvlData: analytics.tvlHistory.map(d => ({
+                      date: d.date,
+                      tvl: d.tvl,
+                    })),
+                    feesData: [],
+                    revenueData: [],
+                    supplyBorrowData: [],
+                  }
+                : null
+            }
+          />
+        );
       default:
-        return <OverviewSection data={analytics} isLoading={isLoading} currentProtocol={currentProtocol} onProtocolChange={setCurrentProtocol} />;
+        return <OverviewSection data={analytics} isLoading={isLoading} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-black text-white pb-24">
-      {/* Header with neon accents */}
+      {/* Header */}
       <header className="sticky top-0 z-20 bg-black/90 backdrop-blur-md border-b border-emerald-500/20 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
         <div className="p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
@@ -150,7 +156,8 @@ export default function Home() {
                 BaseForge Analytics
               </h1>
               <p className="text-sm sm:text-base text-gray-400">
-                Real-time DeFi analytics on <span className="text-emerald-400 font-semibold">Base</span>
+                Real-time DeFi analytics on{" "}
+                <span className="text-emerald-400 font-semibold">Base</span>
               </p>
             </div>
 
@@ -162,26 +169,33 @@ export default function Home() {
               title="Refresh data"
             >
               <RefreshCw
-                className={`h-5 w-5 text-emerald-400 group-hover:text-emerald-300 transition-colors drop-shadow-[0_0_8px_rgba(16,185,129,0.5)] ${isRefreshing ? 'animate-spin' : ''}`}
+                className={`h-5 w-5 text-emerald-400 group-hover:text-emerald-300 transition-colors drop-shadow-[0_0_8px_rgba(16,185,129,0.5)] ${
+                  isRefreshing ? "animate-spin" : ""
+                }`}
               />
             </button>
           </div>
 
-          {/* Last updated timestamp */}
-          {lastUpdated && !isLoading && (
-            <p className="text-xs text-gray-500 mt-3">
-              Last updated: <span className="text-emerald-400/70">{lastUpdated.toLocaleTimeString()}</span>
-            </p>
-          )}
+            {streamData && !isLoading && (
+              <div className="flex items-center gap-2 text-xs text-gray-500 mt-3">
+                <Signal className={`h-3 w-3 ${isConnected ? "text-emerald-400" : "text-yellow-400"}`} />
+                <span>
+                  SSE {isConnected ? "Live" : streamState} —
+                  <span className="text-emerald-400/70 ml-1">
+                    {streamData?.timestamp ? new Date(streamData.timestamp).toLocaleTimeString() : "connecting..."}
+                  </span>
+                </span>
+              </div>
+            )}
         </div>
       </header>
 
       {/* Main content */}
       <main className="p-4 sm:p-6" role="main">
-      {renderSection()}
+        {renderSection()}
       </main>
 
-      {/* Bottom navigation with neon effects */}
+      {/* Bottom navigation */}
       <nav
         className="fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-md border-t border-emerald-500/20 shadow-[0_-5px_30px_rgba(16,185,129,0.1)] z-30"
         role="navigation"
@@ -196,9 +210,10 @@ export default function Home() {
                 flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-xl
                 transition-all duration-300 min-w-[60px] sm:min-w-[70px]
                 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-black
-                ${tab === id
-                  ? "text-emerald-400 bg-emerald-900/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-                  : "text-gray-400 hover:text-emerald-300 hover:bg-gray-800/30"
+                ${
+                  tab === id
+                    ? "text-emerald-400 bg-emerald-900/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                    : "text-gray-400 hover:text-emerald-300 hover:bg-gray-800/30"
                 }
               `}
               aria-label={ariaLabel}
@@ -206,9 +221,19 @@ export default function Home() {
             >
               <Icon
                 size={20}
-                className={`transition-all duration-300 ${tab === id ? 'scale-110 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]' : ''}`}
+                className={`transition-all duration-300 ${
+                  tab === id
+                    ? "scale-110 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                    : ""
+                }`}
               />
-              <span className={`text-[10px] sm:text-xs font-medium ${tab === id ? 'drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]' : ''}`}>
+              <span
+                className={`text-[10px] sm:text-xs font-medium ${
+                  tab === id
+                    ? "drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                    : ""
+                }`}
+              >
                 {label}
               </span>
             </button>

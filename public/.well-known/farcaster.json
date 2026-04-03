@@ -1,0 +1,39 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "BaseForge Analytics",
+    "iconUrl": "https://your-domain.vercel.app/icon.png",
+    "homeUrl": "https://your-domain.vercel.app",
+    "imageUrl": "https://your-domain.vercel.app/api/og",
+    "buttonTitle": "Launch Dashboard",
+    "splashImageUrl": "https://your-domain.vercel.app/splash.png",
+    "splashBackgroundColor": "#0a0a0a",
+    "webhookUrl": "https://your-domain.vercel.app/api/webhook",
+    "subtitle": "Base DeFi Analytics",
+    "description": "Real-time DeFi analytics for the Base blockchain. Track TVL, protocol health, whale movements, market data and risk scores.",
+    "primaryCategory": "finance",
+    "tags": ["defi", "base", "analytics", "tvl", "protocols"],
+    "heroImageUrl": "https://your-domain.vercel.app/api/og",
+    "tagline": "Real-time Base DeFi analytics",
+    "ogTitle": "BaseForge Analytics",
+    "ogDescription": "Comprehensive Base chain DeFi dashboard",
+    "ogImageUrl": "https://your-domain.vercel.app/api/og",
+    "noindex": false,
+    "requiredChains": ["eip155:8453"]
+  },
+  "frame": {
+    "version": "1",
+    "name": "BaseForge Analytics",
+    "iconUrl": "https://your-domain.vercel.app/icon.png",
+    "homeUrl": "https://your-domain.vercel.app",
+    "imageUrl": "https://your-domain.vercel.app/api/og",
+    "buttonTitle": "Launch Dashboard",
+    "splashImageUrl": "https://your-domain.vercel.app/splash.png",
+    "splashBackgroundColor": "#0a0a0a"
+  }
+}

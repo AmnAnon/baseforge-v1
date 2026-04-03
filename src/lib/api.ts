@@ -47,7 +47,7 @@ export async function fetchHistoricalData(protocolSlug: string, days = 7) {
     }
 
     return {
-      historicalData: recentData.map(entry => ({
+      historicalData: recentData.map((entry: { date: number; totalLiquidityUSD: number; fees?: number; totalSupplyUsd?: number; borrowed?: number }) => ({
         date: new Date(entry.date * 1000).toLocaleDateString(),
         tvl: entry.totalLiquidityUSD,
         fees: entry.fees || 0,
