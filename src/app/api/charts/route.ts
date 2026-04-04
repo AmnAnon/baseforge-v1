@@ -49,7 +49,7 @@ export async function GET(req: Request) {
       }
 
       // Supply/Borrow estimate (40% utilization)
-      const supplyBorrowData = tvlData.map(d => ({
+      const supplyBorrowData = tvlData.map((d: { date: string; tvl: number }) => ({
         date: d.date,
         supply: Math.round(d.tvl),
         borrow: Math.round(d.tvl * 0.4),

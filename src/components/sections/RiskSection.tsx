@@ -12,6 +12,7 @@ import {
   RefreshCw,
   ArrowUpRight,
   ArrowDownRight,
+  ExternalLink,
 } from "lucide-react";
 import { formatCurrency, timeAgo, freshnessColor } from "@/lib/utils";
 

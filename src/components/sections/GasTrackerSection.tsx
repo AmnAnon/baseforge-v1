@@ -49,7 +49,7 @@ const CONGESTION_CONFIG = {
 };
 
 export default function GasTrackerSection({
-  compact: false,
+  compact = false,
 }: {
   compact?: boolean;
 }) {

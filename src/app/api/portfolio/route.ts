@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     }
 
     const cacheKey = `portfolio-${address.toLowerCase()}`;
-    const data = await cache.getOrFetch(cacheKey, CACHE_TVL_HISTORY, async () => {
+    const data = await cache.getOrFetch(cacheKey, CACHE_TTL.TVL_HISTORY, async () => {
       // Fetch all Base protocols — simulate per-wallet positions
       // In production: call DefiLlama /protocol/{slug} endpoints or use onchain multicall
       const [protocolsRes] = await Promise.all([

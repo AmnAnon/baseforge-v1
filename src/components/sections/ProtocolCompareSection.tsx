@@ -86,18 +86,21 @@ export default function ProtocolCompareSection() {
       .then((data: { protocols?: Array<{ id: string; name: string; tvl: number; change_1d: number; change_7d: number; category: string }>; timestamp: number }) => {
         const mapped: ProtocolMetrics[] = (data.protocols || []).map(p => {
           const audits = Math.floor(Math.random() * 5); // Placeholder
-          const health = computeHealth({
-            ...p,
+          const mappedP: ProtocolMetrics = {
+            id: p.id,
+            name: p.name,
+            tvl: p.tvl,
+            change24h: p.change_1d,
+            change7d: p.change_7d,
+            category: p.category,
             audits,
             apy: 0,
             fees24h: 0,
             healthScore: 0,
-          });
+          };
+          const health = computeHealth(mappedP);
           return {
-            ...p,
-            change24h: p.change_1d,
-            change7d: p.change_7d,
-            audits,
+            ...mappedP,
             apy: Math.random() * 20, // Placeholder — replace with real APY
             fees24h: 0,
             healthScore: health,

@@ -121,7 +121,7 @@ export async function GET() {
           totalProtocols: enriched.length,
           avgApy: Math.round(avgApy * 100) / 100,
           change24h: enriched.length > 0
-            ? enriched.reduce((s: number, p) => s + (p.change_1d || 0), 0) / enriched.length
+            ? enriched.reduce((s: number, p: { change_1d?: number }) => s + (p.change_1d || 0), 0) / enriched.length
             : 0,
         },
         tvlHistory: tvlHistory.slice(-90).map((d: { date: number; tvl: number }) => ({
