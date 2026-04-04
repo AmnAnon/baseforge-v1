@@ -2,67 +2,115 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 
+// Same exclusion as analytics — CEX/Chain/Bridge are not DeFi protocols
+const EXCLUDED = new Set(["CEX", "Chain", "Bridge", "Liquidity Manager", "RWA"]);
+
 export async function GET() {
   try {
     const data = await cache.getOrFetch("market", CACHE_TTL.PRICES, async () => {
-      const tokenIds = ["ethereum", "aave", "uniswap", "compound-governance-token", "lido-dao"];
-
-      const [cgRes, protocolsRes] = await Promise.all([
+      const [priceRes, protocolsRes, yieldsRes] = await Promise.all([
+        // /simple/price — cheaper endpoint, less rate-limiting
         fetch(
-          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${tokenIds.join(",")}&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`,
+          "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin,aave,uniswap,lido-dao,compound-governance-token,pendle,morpho,maker,aerodrome-finance,ondo,synthetix-network-token&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=true",
           { cache: "no-store" }
         ),
         fetch("https://api.llama.fi/protocols", { cache: "no-store" }),
+        fetch("https://yields.llama.fi/pools", { cache: "no-store" }),
       ]);
 
-      let tokens: Array<{ id: string; symbol: string; name: string; price: number; change24h: number; volume24h: number; marketCap: number; tvl?: number; chain?: string }> = [];
-      if (cgRes.ok) {
-        const cgData = await cgRes.json();
-        tokens = (cgData as Array<{
-          id: string; symbol: string; name: string; current_price: number;
-          price_change_percentage_24h: number; total_volume: number; market_cap: number;
-        }>).map(c => ({
-          id: c.id, symbol: c.symbol.toUpperCase(), name: c.name,
-          price: c.current_price, change24h: c.price_change_percentage_24h || 0,
-          volume24h: c.total_volume || 0, marketCap: c.market_cap || 0, tvl: 0, chain: ""
-        }));
+      let tokens: Array<{
+        id: string; symbol: string; name: string; price: number;
+        change24h: number; volume24h: number; marketCap: number;
+        tvl?: number; chain?: string; apy?: number;
+      }> = [];
+
+      // CoinGecko prices
+      if (priceRes.ok) {
+        const cg = await priceRes.json();
+        const info: Record<string, { name: string; sym: string }> = {
+          ethereum: { name: "Ethereum", sym: "ETH" },
+          bitcoin: { name: "Bitcoin", sym: "BTC" },
+          aave: { name: "Aave", sym: "AAVE" },
+          uniswap: { name: "Uniswap", sym: "UNI" },
+          "lido-dao": { name: "Lido DAO", sym: "LDO" },
+          "compound-governance-token": { name: "Compound", sym: "COMP" },
+          pendle: { name: "Pendle", sym: "PENDLE" },
+          morpho: { name: "Morpho", sym: "MORPHO" },
+          maker: { name: "Maker", sym: "MKR" },
+          "aerodrome-finance": { name: "Aerodrome", sym: "AERO" },
+          ondo: { name: "Ondo", sym: "ONDO" },
+          "synthetix-network-token": { name: "Synthetix", sym: "SNX" },
+        };
+        for (const [id, p] of Object.entries(cg)) {
+          if (typeof p !== "object" || !p || Array.isArray(p)) continue;
+          const obj = p as Record<string, number>;
+          tokens.push({
+            id, name: info[id]?.name || id, symbol: info[id]?.sym || id.slice(0, 6).toUpperCase(),
+            price: obj.usd || 0,
+            change24h: obj.usd_24h_change || 0,
+            volume24h: obj.usd_24h_vol || 0,
+            marketCap: obj.usd_market_cap || 0, tvl: 0, chain: "", apy: 0,
+          });
+        }
       }
 
+      // Yields for APY
+      const yieldMap: Record<string, number> = {};
+      if (yieldsRes.ok) {
+        const yd = await yieldsRes.json();
+        for (const p of yd.data || []) {
+          if (!yieldMap[p.project] && p.apy > 0) yieldMap[p.project] = p.apy;
+        }
+      }
+
+      // Top 20 Base-native DeFi protocols (CEX excluded, by TVL)
       if (protocolsRes.ok) {
-        const allProtocols = await protocolsRes.json();
-        const baseProtos = allProtocols
-          .filter((p: { chainTvls: Record<string, number>; category: string }) =>
-            (p.chainTvls?.Base || 0) > 0 && !["CEX", "Chain", "Bridge"].includes(p.category)
-          )
+        const all = await protocolsRes.json();
+        const baseProtos = all
+          .filter((p: { chainTvls?: Record<string, number>; category?: string }) => {
+            const baseTvl = p.chainTvls?.Base || 0;
+            if (baseTvl < 100_000) return false;
+            const cat = (p.category || "").trim();
+            if (EXCLUDED.has(cat)) return false;
+            return true;
+          })
           .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
             (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0)
-          );
+          )
+          .slice(0, 20);
 
-        tokens.push(...baseProtos.slice(0, 8).map((p: { name: string; chainTvls: Record<string, number>; change_1d?: number }) => ({
-          id: p.name.toLowerCase().replace(/ /g, "-"), symbol: p.name.slice(0, 6).toUpperCase(),
-          name: p.name, price: 0, change24h: p.change_1d || 0, volume24h: 0,
-          marketCap: p.chainTvls.Base || 0, tvl: p.chainTvls.Base || 0, chain: "Base"
-        })));
+        for (const p of baseProtos) {
+          const slug = (p.name || "").toLowerCase().replace(/ /g, "-");
+          tokens.push({
+            id: slug, symbol: (p.name || "").slice(0, 6).toUpperCase(),
+            name: p.name, price: 0,
+            change24h: p.change_1d || 0, volume24h: 0,
+            marketCap: p.chainTvls.Base || 0,
+            tvl: p.chainTvls.Base || 0, chain: "Base",
+            apy: yieldMap[slug] || yieldMap[(p.name || "").toLowerCase()] || 0,
+          });
+        }
       }
 
-      const result = {
+      return {
         tokens,
         summary: {
           totalTokens: tokens.length,
-          avgChange24h: tokens.length > 0 ? tokens.reduce((s: number, t: { change24h: number }) => s + t.change24h, 0) / tokens.length : 0,
+          avgChange24h: tokens.reduce((s: number, t: { change24h: number }) => s + t.change24h, 0) / (tokens.length || 1),
           totalVolume24h: tokens.reduce((s: number, t: { volume24h: number }) => s + t.volume24h, 0),
         },
-        topGainers: [...tokens].sort((a: { change24h: number }, b: { change24h: number }) => b.change24h - a.change24h).slice(0, 5),
-        topLosers: [...tokens].sort((a: { change24h: number }, b: { change24h: number }) => a.change24h - b.change24h).slice(0, 5),
-        topByVolume: [...tokens].sort((a: { volume24h: number }, b: { volume24h: number }) => b.volume24h - a.volume24h).slice(0, 10),
+        topGainers: [...tokens].sort((a, b) => b.change24h - a.change24h).slice(0, 5),
+        topLosers: [...tokens].sort((a, b) => a.change24h - b.change24h).slice(0, 5),
+        topByVolume: [...tokens].sort((a, b) => b.volume24h - a.volume24h).slice(0, 10),
         timestamp: Date.now(),
       };
-
-      return result;
     });
-
     return NextResponse.json(data);
-  } catch {
-    return NextResponse.json({ error: "Market fetch failed" }, { status: 500 });
+  } catch (err) {
+    console.error("Market error:", err);
+    return NextResponse.json({
+      tokens: [], summary: { totalTokens: 0, avgChange24h: 0, totalVolume24h: 0 },
+      topGainers: [], topLosers: [], topByVolume: [],
+    }, { status: 500 });
   }
 }

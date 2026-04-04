@@ -114,6 +114,8 @@ export async function GET() {
       fetch("https://api.llama.fi/v2/historicalChainTvl/Base", { cache: "no-store" }),
     ]);
 
+    if (!protocolsRes.ok || !tvlRes.ok) throw new Error("DefiLlama request failed");
+
     const rawProtocols: RawProtocol[] = await protocolsRes.json();
     const tvlHistory = await tvlRes.json();
     const totalBaseTvl = tvlHistory.length > 0 ? tvlHistory[tvlHistory.length - 1].tvl : 0;
@@ -121,6 +123,7 @@ export async function GET() {
     // Filter + rank base protocols
     const baseProtos = rawProtocols
       .filter(p => p.chainTvlsBase > 500_000)
+      .sort((a, b) => b.chainTvlsBase - a.chainTvlsBase)
       .slice(0, 10);
 
     const aggregated: AggregatedProtocol[] = baseProtos.map(p => {
@@ -151,7 +154,8 @@ export async function GET() {
     await cache.set("aggregator-protocols", aggregated, CACHE_TTL.TVL_HISTORY);
 
     return NextResponse.json(aggregated);
-  } catch {
+  } catch (err) {
+    console.error("Protocol aggregator error:", err);
     return NextResponse.json({ error: "Aggregation failed" }, { status: 500 });
   }
 }

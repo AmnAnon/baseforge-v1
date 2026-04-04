@@ -10,11 +10,10 @@ import {
   ShieldCheck,
   ShieldAlert,
   RefreshCw,
-  Activity,
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, timeAgo, freshnessColor } from "@/lib/utils";
 
 interface ProtocolRisk {
   id: string;
@@ -51,30 +50,93 @@ interface ApiResponse {
   timestamp: number;
 }
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+// Deep link map — protocol slug → DApp URL
+const PROTOCOL_LINKS: Record<string, string> = {
+  "aerodrome-finance": "https://aerodrome.finance",
+  "moonwell": "https://moonwell.fi",
+  "sonne-finance": "https://sonne.finance",
+  "seamless-protocol": "https://app.seamlessprotocol.com",
+  "compound-v3": "https://compound.finance",
+  "aave-v3": "https://app.aave.com",
+  "uniswap-v3": "https://app.uniswap.org",
+  "baseswap": "https://baseswap.fi",
+  "stargate-finance": "https://stargate.finance",
+  "extra-finance": "https://app.extrafi.io",
+};
+
+function getProtocolLink(protocol: ProtocolRisk): string | null {
+  // Try slug-based match
+  const slugKey = protocol.id.toLowerCase().replace(/ /g, "-");
+  if (PROTOCOL_LINKS[slugKey]) return PROTOCOL_LINKS[slugKey];
+
+  // Try partial name match
+  for (const [key, url] of Object.entries(PROTOCOL_LINKS)) {
+    if (protocol.name.toLowerCase().includes(key.split("-")[0])) return url;
+  }
+  return null;
 }
 
-function HealthBadge({ score }: { score: number }) {
+function HealthScoreBreakdown({ protocol }: { protocol: ProtocolRisk }) {
+  const items = [
+    {
+      label: "Audit status",
+      value: protocol.auditStatus === "audited" ? `+${protocol.auditCount * 5}` : protocol.auditStatus === "partial" ? "+2" : "0",
+      color: protocol.auditStatus === "audited" ? "text-emerald-400" : protocol.auditStatus === "partial" ? "text-yellow-400" : "text-red-400",
+    },
+    {
+      label: "TVL size",
+      value: protocol.tvl > 100_000_000 ? "+15" : protocol.tvl > 10_000_000 ? "+10" : protocol.tvl > 1_000_000 ? "+5" : "0",
+      color: protocol.tvl > 100_000_000 ? "text-emerald-400" : "text-gray-400",
+    },
+    {
+      label: "TVL 7d change",
+      value: protocol.tvlChange7d < -10 ? "-15" : protocol.tvlChange7d < -5 ? "-10" : "+0",
+      color: protocol.tvlChange7d < -5 ? "text-red-400" : "text-gray-400",
+    },
+    {
+      label: "Category trust",
+      value: protocol.category === "Dexes" ? "+5" : protocol.category === "Lending" ? "+3" : "+0",
+      color: "text-gray-400",
+    },
+  ];
+
+  return (
+    <div className="mb-2">
+      <p className="text-[10px] text-gray-500 mb-1 font-medium uppercase tracking-wide">Health breakdown</p>
+      <div className="space-y-0.5">
+        {items.map(item => (
+          <div key={item.label} className="flex justify-between text-[11px]">
+            <span className="text-gray-400">{item.label}</span>
+            <span className={item.color}>{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HealthBadge({ score, protocol }: { score: number; protocol?: ProtocolRisk }) {
   const isHigh = score >= 70;
   const isMedium = score >= 50;
 
   return (
-    <div
-      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
-        isHigh
-          ? "bg-emerald-900/50 text-emerald-400 border border-emerald-500/30"
-          : isMedium
-          ? "bg-yellow-900/50 text-yellow-400 border border-yellow-500/30"
-          : "bg-red-900/50 text-red-400 border border-red-500/30"
-      }`}
-    >
-      <span className="tabular-nums">{score}</span>
+    <div role="img" aria-label={`Health score: ${score} out of 100`}>
+      <div
+        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg cursor-help transition-transform hover:scale-105 ${
+          isHigh
+            ? "bg-emerald-900/50 text-emerald-400 border border-emerald-500/30"
+            : isMedium
+            ? "bg-yellow-900/50 text-yellow-400 border border-yellow-500/30"
+            : "bg-red-900/50 text-red-400 border border-red-500/30"
+        }`}
+      >
+        <span className="tabular-nums">{score}</span>
+      </div>
+      {protocol && (
+        <div className="opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 mt-1 bg-gray-950 border border-gray-700 rounded-lg p-2 text-[10px] text-gray-300 w-44">
+          <HealthScoreBreakdown protocol={protocol} />
+        </div>
+      )}
     </div>
   );
 }
@@ -100,7 +162,7 @@ function AuditBadge({ status }: { status: string }) {
       }`}
     >
       {icon}
-      <span className="uppercase font-medium">{status}</span>
+      <span className="capitalize" aria-label={`Audit status: ${status}`}>{status}</span>
     </div>
   );
 }
@@ -178,9 +240,14 @@ export default function RiskSection({
           <h2 id="risk-heading" className="text-2xl font-bold text-white">
             Protocol Risks
           </h2>
-          <p className="text-sm text-gray-400">
-            Health scores & risk assessment
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-gray-400">Health scores & risk assessment</p>
+            {data?.timestamp && (
+              <span className={`text-[10px] ${freshnessColor(data.timestamp)}`}>
+                {timeAgo(data.timestamp)}
+              </span>
+            )}
+          </div>
         </div>
         <button
           onClick={() => fetchRisk()}
@@ -281,50 +348,64 @@ export default function RiskSection({
       ) : (
         <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
           <div className="divide-y divide-gray-800">
-            {data?.protocols.map((protocol) => (
-              <div
-                key={protocol.id}
-                className="flex items-center gap-4 p-4 hover:bg-gray-800/30 transition-colors"
-              >
-                {/* Health Score */}
-                <HealthBadge score={protocol.healthScore} />
+            {data?.protocols.map((protocol) => {
+              const dAppUrl = getProtocolLink(protocol);
+              return (
+                <div
+                  key={protocol.id}
+                  className="flex items-center gap-4 p-4 hover:bg-gray-800/30 transition-colors group"
+                >
+                  {/* Health Score */}
+                  <HealthBadge score={protocol.healthScore} protocol={protocol} />
 
-                {/* Protocol Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-medium text-white truncate">
-                      {protocol.name}
-                    </h3>
-                    <span className="text-xs text-gray-500 px-2 py-0.5 bg-gray-800 rounded">
-                      {protocol.category}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
-                    <span className="flex items-center gap-1">
-                      {protocol.tvlChange7d > 0 ? (
-                        <ArrowUpRight className="h-3 w-3 text-emerald-400" />
-                      ) : (
-                        <ArrowDownRight className="h-3 w-3 text-red-400" />
+                  {/* Protocol Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-white">
+                        {protocol.name}
+                      </h3>
+                      <span className="text-xs text-gray-500 px-2 py-0.5 bg-gray-800 rounded">
+                        {protocol.category}
+                      </span>
+                      {dAppUrl && (
+                        <a
+                          href={dAppUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 text-gray-500 hover:text-emerald-400 transition-colors"
+                          aria-label={`Open ${protocol.name}`}
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
                       )}
-                      {protocol.tvlChange7d > 0 ? "+" : ""}
-                      {protocol.tvlChange7d.toFixed(1)}%
-                    </span>
-                    <span>TVL: {formatCurrency(protocol.tvl)}</span>
-                    <span>Volume: {protocol.dominanceScore.toFixed(1)}%</span>
-                  </div>
-                  <AuditBadge status={protocol.auditStatus} />
-                  {protocol.riskFactors.length > 0 && (
-                    <RiskFactorList factors={protocol.riskFactors} />
-                  )}
-                  {protocol.warning && (
-                    <div className="flex items-center gap-1 mt-2 text-xs text-red-400">
-                      <AlertTriangle className="h-3 w-3" />
-                      <span>{protocol.warning}</span>
                     </div>
-                  )}
+                    <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
+                      <span className="flex items-center gap-1">
+                        {protocol.tvlChange7d > 0 ? (
+                          <ArrowUpRight className="h-3 w-3 text-emerald-400" />
+                        ) : (
+                          <ArrowDownRight className="h-3 w-3 text-red-400" />
+                        )}
+                        {protocol.tvlChange7d > 0 ? "+" : ""}
+                        {protocol.tvlChange7d.toFixed(1)}%
+                      </span>
+                      <span>TVL: {formatCurrency(protocol.tvl)}</span>
+                      <span>Volume: {protocol.dominanceScore.toFixed(1)}%</span>
+                    </div>
+                    <AuditBadge status={protocol.auditStatus} />
+                    {protocol.riskFactors.length > 0 && (
+                      <RiskFactorList factors={protocol.riskFactors} />
+                    )}
+                    {protocol.warning && (
+                      <div className="flex items-center gap-1 mt-2 text-xs text-red-400">
+                        <AlertTriangle className="h-3 w-3" />
+                        <span>{protocol.warning}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

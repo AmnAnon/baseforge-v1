@@ -2,9 +2,9 @@
 "use client";
 
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card } from "@tremor/react";
-import { formatCurrency, formatPercentage } from "@/lib/utils";
+import { formatCurrency, formatPercentage, freshnessColor, timeAgo } from "@/lib/utils";
 import {
   ArrowUpIcon,
   ArrowDownIcon,
@@ -15,6 +15,7 @@ import {
   DollarSign,
   Coins,
   LineChart,
+  ExternalLink,
 } from "lucide-react";
 import BaseNetworkMetrics from "./BaseNetworkMetrics";
 import BaseTVLChart from "@/components/charts/BaseTVLChart";
@@ -30,6 +31,32 @@ interface MetricCardProps {
   format?: "currency" | "percentage";
   valuePrefix?: string;
   valueSuffix?: string;
+  actionLabel?: string;
+  actionUrl?: string;
+}
+
+// Deep link map for protocols
+const PROTOCOL_LINKS: Record<string, { label: string; url: string }> = {
+  "aerodrome-finance": { label: "Swap on Aerodrome", url: "https://aerodrome.finance/swap" },
+  "aerodrome": { label: "Swap on Aerodrome", url: "https://aerodrome.finance/swap" },
+  "moonwell": { label: "Lend on Moonwell", url: "https://moonwell.fi/markets/Base" },
+  "sonne-finance": { label: "Lend on Sonne", url: "https://sonne.finance" },
+  "seamless-protocol": { label: "Deposit on Seamless", url: "https://app.seamlessprotocol.com" },
+  "seamless": { label: "Deposit on Seamless", url: "https://app.seamlessprotocol.com" },
+  "compound-v3": { label: "Supply on Compound", url: "https://app.compound.finance" },
+  "aave-v3": { label: "Supply on Aave", url: "https://app.aave.com" },
+  "uniswap-v3": { label: "Swap on Uniswap", url: "https://app.uniswap.org" },
+  "baseswap": { label: "Swap on BaseSwap", url: "https://baseswap.fi" },
+};
+
+function getProtocolAction(protocolName: string): { label: string; url: string } | null {
+  const key = protocolName.toLowerCase().replace(/ /g, "-");
+  if (PROTOCOL_LINKS[key]) return PROTOCOL_LINKS[key];
+  // Try partial match
+  for (const [name, action] of Object.entries(PROTOCOL_LINKS)) {
+    if (protocolName.toLowerCase().includes(name.split("-")[0])) return action;
+  }
+  return null;
 }
 
 interface OverviewSectionProps {
@@ -53,6 +80,7 @@ interface OverviewSectionProps {
         utilization?: number;
       };
     };
+    timestamp?: number;
   } | null;
   isLoading: boolean;
 }
@@ -67,10 +95,12 @@ const MetricCard = ({
   format = "currency",
   valuePrefix = "",
   valueSuffix = "",
+  actionLabel,
+  actionUrl,
 }: MetricCardProps) => {
   const isPositive = change !== null && change > 0;
   const hasChange = change !== null && change !== 0;
-  
+
   const changeColor =
     change === null || change === 0
       ? "text-gray-400"
@@ -124,7 +154,7 @@ const MetricCard = ({
                     {formatValue(value)}
                     {valueSuffix}
                   </p>
-                  
+
                   {hasChange && (
                     <div className={`flex items-center text-xs sm:text-sm font-medium ${changeColor}`}>
                       {isPositive ? (
@@ -133,12 +163,12 @@ const MetricCard = ({
                         <ArrowDownIcon className="h-3.5 w-3.5 mr-1 flex-shrink-0" aria-hidden={true} />
                       )}
                       <span>
-                        {formatPercentage(Math.abs(change!))} 
+                        {formatPercentage(Math.abs(change!))}
                         <span className="text-gray-500 ml-1">24h</span>
                       </span>
                     </div>
                   )}
-                  
+
                   {change === null && !isLoading && (
                     <div className="text-xs text-gray-500 mt-1">
                       No change data
@@ -155,6 +185,19 @@ const MetricCard = ({
             </div>
           )}
         </div>
+
+        {/* Action link */}
+        {actionUrl && actionLabel && (
+          <a
+            href={actionUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex items-center gap-1 text-xs text-emerald-400/70 hover:text-emerald-300 transition-colors font-medium"
+          >
+            {actionLabel}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
     </Card>
   );
@@ -172,6 +215,11 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
 
   const protocolData = data?.protocolData?.[selectedProtocol.id] || {};
 
+  const protocolAction = useMemo(
+    () => getProtocolAction(selectedProtocol.name),
+    [selectedProtocol.name]
+  );
+
   return (
     <section className="space-y-6" aria-labelledby="overview-heading">
       {/* Header */}
@@ -182,6 +230,11 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         <p className="text-sm sm:text-base text-gray-400">
           Real-time DeFi metrics across Base blockchain
         </p>
+        {data?.timestamp && (
+          <div className={`text-xs ${freshnessColor(data.timestamp)}`}>
+            Updated {timeAgo(data.timestamp)}
+          </div>
+        )}
       </div>
 
       {/* Base Network Metrics */}
@@ -202,7 +255,7 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
       </div>
 
       {/* Protocol Metrics Grid */}
-      <div 
+      <div
         className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 auto-rows-fr"
         role="list"
         aria-label="Protocol metrics"
@@ -215,9 +268,11 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
             isLoading={isLoading}
             icon={BarChart3}
             tooltipText="Total capital deposited in the protocol"
+            actionLabel={protocolAction?.label}
+            actionUrl={protocolAction?.url}
           />
         </div>
-        
+
         <div role="listitem">
           <MetricCard
             title="Total Borrowed"
@@ -226,9 +281,11 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
             isLoading={isLoading}
             icon={Wallet}
             tooltipText="Total amount borrowed from the protocol"
+            actionLabel={protocolAction?.label}
+            actionUrl={protocolAction?.url}
           />
         </div>
-        
+
         <div role="listitem">
           <MetricCard
             title="Fees (Annualized)"
@@ -239,7 +296,7 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
             tooltipText="Estimated yearly fees generated"
           />
         </div>
-        
+
         <div role="listitem">
           <MetricCard
             title="Revenue (Annualized)"
@@ -250,7 +307,7 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
             tooltipText="Estimated yearly revenue"
           />
         </div>
-        
+
         <div role="listitem">
           <MetricCard
             title="Token Price"
@@ -261,7 +318,7 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
             tooltipText="Live token price"
           />
         </div>
-        
+
         <div role="listitem">
           <MetricCard
             title="Utilization Rate"

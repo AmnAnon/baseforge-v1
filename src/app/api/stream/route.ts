@@ -22,10 +22,10 @@ async function getAnalytics() {
     const tvlData = await tvlRes.json();
     const baseProtos = protocols
       .filter((p: { chainTvls?: Record<string, number> }) => (p.chainTvls?.Base || 0) > 0)
-      .slice(0, 10)
       .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
         (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0)
-      );
+      )
+      .slice(0, 10);
     const totalTvl = baseProtos.reduce(
       (sum: number, p: { chainTvls: Record<string, number> }) => sum + (p.chainTvls.Base || 0), 0
     );
@@ -80,9 +80,11 @@ async function getWhales() {
   });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   let alive = true;
   let intervalId: ReturnType<typeof setInterval> | null = null;
+  let cleanupTimeout: ReturnType<typeof setTimeout> | null = null;
+  const MAX_DURATION = 5 * 60 * 1000; // 5 minutes max
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -92,6 +94,9 @@ export async function GET() {
       } catch (err) {
         console.error("Stream snapshot failed:", err);
         controller.enqueue(encoder.encode(sse({ msg: "Failed to initialize" })));
+        alive = false;
+        controller.close();
+        return;
       }
 
       intervalId = setInterval(async () => {
@@ -99,16 +104,41 @@ export async function GET() {
         try {
           const [analytics, prices, whales] = await Promise.all([getAnalytics(), getPrices(), getWhales()]);
           controller.enqueue(encoder.encode(sse({ analytics, prices, whales: whales.slice(0, 3), timestamp: Date.now(), type: "update" })));
-        } catch { /* skip failed updates silently */ }
+        } catch (err) {
+          console.error("Stream update failed:", err);
+        }
       }, 30000);
+
+      // Auto-cleanup after max duration to prevent resource exhaustion on serverless
+      cleanupTimeout = setTimeout(() => {
+        console.log("SSE connection timed out (max duration reached)");
+        alive = false;
+        try { controller.close(); } catch {}
+      }, MAX_DURATION);
+
+      // Also respect client disconnect (AbortSignal)
+      const signal = (request as any).signal;
+      if (signal) {
+        signal.addEventListener("abort", () => {
+          alive = false;
+          if (intervalId) clearInterval(intervalId);
+          if (cleanupTimeout) clearTimeout(cleanupTimeout);
+        }, { once: true });
+      }
     },
     cancel() {
       alive = false;
       if (intervalId) clearInterval(intervalId);
+      if (cleanupTimeout) clearTimeout(cleanupTimeout);
     },
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no", Connection: "keep-alive" },
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+      Connection: "keep-alive",
+    },
   });
 }

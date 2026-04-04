@@ -4,6 +4,21 @@ import { NextResponse } from "next/server";
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const BASE_CHAIN_ID = 8453;
+const ETH_PRICE_FALLBACK = 1800;
+
+async function getEthPrice(): Promise<number> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+      { next: { revalidate: 300 } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return data?.ethereum?.usd || ETH_PRICE_FALLBACK;
+    }
+  } catch {}
+  return ETH_PRICE_FALLBACK;
+}
 
 interface WhaleTransaction {
   hash: string;
@@ -31,7 +46,8 @@ function getLabel(address: string): string {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const minUSD = parseInt(url.searchParams.get("min") || "40000");
+    const minUSDParam = parseInt(url.searchParams.get("min") || "40000");
+    const minUSD = Number.isFinite(minUSDParam) && minUSDParam >= 0 ? minUSDParam : 40000;
 
     const monitoredAddresses = [
       { addr: "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", label: "Uniswap V3" },
@@ -42,7 +58,8 @@ export async function GET(req: Request) {
     const whaleTransactions: WhaleTransaction[] = [];
 
     if (ETHERSCAN_API_KEY) {
-      const fetchPromises = monitoredAddresses.map(async ({ addr, label }) => {
+      const ethPrice = await getEthPrice();
+      const fetchPromises = monitoredAddresses.map(async ({ addr }) => {
         try {
           const etherscanUrl = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=txlist&address=${addr}&startblock=0&endblock=99999999&page=1&offset=20&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
           const res = await fetch(etherscanUrl, { cache: "no-store" });
@@ -52,7 +69,7 @@ export async function GET(req: Request) {
             return data.result
               .filter((tx: any) => {
                 const ethValue = parseFloat(tx.value) / 1e18;
-                return ethValue * 1800 >= minUSD;
+                return ethValue * ethPrice >= minUSD;
               })
               .map((tx: any) => {
                 const ethValue = parseFloat(tx.value) / 1e18;
@@ -61,7 +78,7 @@ export async function GET(req: Request) {
                   from: getLabel(tx.from),
                   to: getLabel(tx.to),
                   value: `${ethValue.toFixed(2)} ETH`,
-                  valueUSD: Math.round(ethValue * 1800),
+                  valueUSD: Math.round(ethValue * ethPrice),
                   timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
                   type: ethValue > 50 ? "swap" : "transfer",
                   tokenSymbol: "ETH",
@@ -82,8 +99,7 @@ export async function GET(req: Request) {
 
     const uniqueTx = Array.from(
       new Map(whaleTransactions.map(tx => [tx.hash, tx])).values()
-    ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
+    ).sort((a, b) => b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0);
     return NextResponse.json({
       whales: uniqueTx.slice(0, 50),
       summary: {

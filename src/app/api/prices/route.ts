@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
-import axios from "axios";
+import { cache, CACHE_TTL } from "@/lib/cache";
 
 export async function GET() {
   try {
-    const { data } = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,usd-coin&vs_currencies=usd&include_24hr_change=true"
-    );
+    const data = await cache.getOrFetch("prices", CACHE_TTL.PRICES, async () => {
+      const res = await fetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,usd-coin&vs_currencies=usd&include_24hr_change=true",
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`CoinGecko returned ${res.status}`);
+      return await res.json();
+    });
     return NextResponse.json(data);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Price API error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch prices" }, { status: 502 });
   }
 }
