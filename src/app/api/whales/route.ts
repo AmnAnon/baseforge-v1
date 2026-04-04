@@ -1,6 +1,7 @@
 // src/app/api/whales/route.ts
 // Whale tracker — large Base chain transactions via Etherscan V2
 import { NextResponse } from "next/server";
+import { cache, CACHE_TTL } from "@/lib/cache";
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const BASE_CHAIN_ID = 8453;
@@ -45,6 +46,7 @@ function getLabel(address: string): string {
 
 export async function GET(req: Request) {
   try {
+    const data = await cache.getOrFetch("whales-data", CACHE_TTL.WHALE_TX, async () => {
     const url = new URL(req.url);
     const minUSDParam = parseInt(url.searchParams.get("min") || "40000");
     const minUSD = Number.isFinite(minUSDParam) && minUSDParam >= 0 ? minUSDParam : 40000;
@@ -100,26 +102,31 @@ export async function GET(req: Request) {
     const uniqueTx = Array.from(
       new Map(whaleTransactions.map(tx => [tx.hash, tx])).values()
     ).sort((a, b) => b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0);
-    return NextResponse.json({
-      whales: uniqueTx.slice(0, 50),
-      summary: {
-        total: uniqueTx.length,
-        largest: uniqueTx.length > 0 ? uniqueTx[0].valueUSD : 0,
-        avgSize: uniqueTx.length > 0
-          ? Math.round(uniqueTx.reduce((sum, tx) => sum + tx.valueUSD, 0) / uniqueTx.length)
-          : 0,
-        types: uniqueTx.reduce((acc: Record<string, number>, tx) => {
-          acc[tx.type] = (acc[tx.type] || 0) + 1;
-          return acc;
-        }, {}),
-      },
-      timestamp: Date.now(),
+      return {
+        whales: uniqueTx.slice(0, 50),
+        summary: {
+          total: uniqueTx.length,
+          largest: uniqueTx.length > 0 ? uniqueTx[0].valueUSD : 0,
+          avgSize: uniqueTx.length > 0
+            ? Math.round(uniqueTx.reduce((sum, tx) => sum + tx.valueUSD, 0) / uniqueTx.length)
+            : 0,
+          types: uniqueTx.reduce((acc: Record<string, number>, tx) => {
+            acc[tx.type] = (acc[tx.type] || 0) + 1;
+            return acc;
+          }, {}),
+        },
+        timestamp: Date.now(),
+      };
+    });
+
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=120" },
     });
   } catch (error) {
     console.error("Whale API error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch whale data" },
-      { status: 500 }
+      { whales: [], summary: { total: 0, largest: 0, avgSize: 0, types: {} }, timestamp: Date.now() },
+      { status: 200, headers: { "Cache-Control": "public, max-age=60" } }
     );
   }
 }

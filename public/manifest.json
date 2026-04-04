@@ -1,0 +1,17 @@
+{
+  "name": "BaseForge Analytics",
+  "short_name": "BaseForge",
+  "description": "Real-time DeFi analytics on Base blockchain",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}
