@@ -137,7 +137,7 @@ export function calculateHealthScore(proto: {
   return { score, riskFactors };
 }
 
-export async function aggregateProtocols(): Promise<{
+type AggregateResult = {
   protocols: ProtocolData[];
   summary: {
     totalProtocols: number;
@@ -147,8 +147,10 @@ export async function aggregateProtocols(): Promise<{
     unauditedCount: number;
     dominantProtocol?: string;
   };
-}> {
-  const cached = cache.get<{ protocols: ProtocolData[]; summary: { totalProtocols: number; totalTvl: number; avgHealth: number; highRiskCount: number; unauditedCount: number; dominantProtocol?: string } }>("protocol-aggregator");
+};
+
+export async function aggregateProtocols(): Promise<AggregateResult> {
+  const cached = await cache.get<AggregateResult>("protocol-aggregator");
   if (cached) return cached;
 
   // Fetch raw protocol data

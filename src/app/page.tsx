@@ -40,8 +40,8 @@ interface AnalyticsData {
     change24h: number;
   };
   tvlHistory?: { date: string; tvl: number }[];
-  protocols?: Array<{ id: string; name: string; tvl: number; logo?: string }>;
-  protocolData?: Record<string, any>;
+  protocols?: Array<{ id: string; name: string; tvl: number; change24h?: number; category?: string; logo?: string }>;
+  protocolData?: Record<string, { tvl: number; tvlChange: number; totalBorrow: number; utilization: number; feesAnnualized: number; revenueAnnualized: number; tokenPrice: number | null }>;
   timestamp?: number;
 }
 

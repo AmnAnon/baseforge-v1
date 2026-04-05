@@ -14,6 +14,7 @@ interface StreamData {
     baseMetrics?: { totalTvl: number; totalProtocols: number; avgApy: number; change24h: number };
     tvlHistory?: { date: string; tvl: number }[];
     protocols?: Array<{ id: string; name: string; tvl: number; change24h: number; category: string }>;
+    protocolData?: Record<string, { tvl: number; tvlChange: number; totalBorrow: number; utilization: number; feesAnnualized: number; revenueAnnualized: number; tokenPrice: number | null }>;
   };
   prices?: Record<string, { usd: number }>;
   whales?: Array<Record<string, unknown>>;

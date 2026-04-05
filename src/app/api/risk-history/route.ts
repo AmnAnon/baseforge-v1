@@ -56,7 +56,7 @@ export async function GET(req: Request) {
         // Calculate 7d volatility from nearby points
         const window = baseHistory.slice(Math.max(0, i - windowSize), i + 1);
         const volatility = window.length > 1
-          ? (Math.max(...window.map(p => p.tvl)) - Math.min(...window.map(p => p.tvl))) / (Math.max(...window.map(p => p.tvl)) || 1)
+          ? (Math.max(...window.map((p: { tvl: number }) => p.tvl)) - Math.min(...window.map((p: { tvl: number }) => p.tvl))) / (Math.max(...window.map((p: { tvl: number }) => p.tvl)) || 1)
           : 0;
 
         // Simulate health score over time

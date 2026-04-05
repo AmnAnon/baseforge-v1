@@ -76,7 +76,7 @@ interface OverviewSectionProps {
         totalBorrow?: number;
         feesAnnualized?: number;
         revenueAnnualized?: number;
-        tokenPrice?: number;
+        tokenPrice?: number | null;
         utilization?: number;
       };
     };

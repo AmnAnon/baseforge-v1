@@ -131,10 +131,10 @@ export default function MEVSection() {
       )}
 
       {/* MEV Events List */}
-      {data?.events?.length > 0 ? (
+      {data && data.events.length > 0 ? (
         <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
           <div className="divide-y divide-gray-800">
-            {data!.events.map((event, i) => {
+            {data.events.map((event, i) => {
               const typeIcon = event.type === "sandwich" ? <Shield className="h-4 w-4 text-yellow-400" /> :
                                event.type === "arbitrage" ? <Zap className="h-4 w-4 text-emerald-400" /> :
                                <Coins className="h-4 w-4 text-red-400" />;
