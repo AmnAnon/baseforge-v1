@@ -27,7 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
         {
           url: `${baseUrl}/api/og`,
           width: 1200,
-          height: 800,
+          height: 630,
           alt: "BaseForge Analytics — Base DeFi Dashboard",
         },
       ],
@@ -40,13 +40,15 @@ export async function generateMetadata(): Promise<Metadata> {
       description: "Real-time DeFi analytics on Base chain",
       images: [`${baseUrl}/api/og`],
     },
-    // Farcaster Frame V1 metadata — flattened OpenGraph properties
+    // Farcaster Frame V1 metadata — embedded as OpenGraph other tags
     other: {
       "fc:frame": "vNext",
       "fc:frame:image": `${baseUrl}/api/og`,
       "fc:frame:image:aspect_ratio": "1.91:1",
       "fc:frame:button:1": "Launch Dashboard",
+      "fc:frame:button:2": "↻ Refresh",
       "fc:frame:post_url": `${baseUrl}/api/frame`,
+      "fc:frame:input:text": "Search protocols...",
     },
   };
 }

@@ -1,7 +1,7 @@
 // src/app/api/frame/route.tsx
 // Farcaster Frame POST handler — processes button clicks
 // MUST return HTML with fc:frame meta tags, NOT JSON
-// Frame buttons rotate: Dashboard → Top Protocol → Market Summary
+// Frame flow: Initial → Refresh → Top Protocol → Back
 import { NextRequest, NextResponse } from "next/server";
 
 const BASE_URL =
@@ -9,52 +9,45 @@ const BASE_URL =
     ? `https://${process.env.VERCEL_URL}`
     : "http://localhost:3000";
 
-// Track button state per interaction to cycle through options
-const FRAME_STATES = ["dashboard", "top_protocol", "market_summary"] as const;
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const buttonIndex = body?.untrustedData?.buttonIndex || 1;
 
-    // Read state from the interaction URL or body if forwarded
-    const interactionState = body?.interactionState || "start";
-
     if (buttonIndex === 1) {
-      // Button always says "Open App" after first click — link to dashboard
+      // First button: "Launch Dashboard" — returns miniapp frame with "Open Dashboard" link
       return buildFrame({
-        image: `${BASE_URL}/api/og/miniapp?r=${Date.now()}`,
+        image: `${BASE_URL}/api/og?_t=${Date.now()}`,
         aspectRatio: "1.91:1",
+        input: { text: "Search protocols..." },
         buttons: [
-          {
-            index: 1,
-            label: "Open Dashboard",
-            action: "link",
-            target: BASE_URL,
-          },
-        ],
-      });
-    }
-
-    if (buttonIndex === 2) {
-      // Show a different frame view with a dynamic summary
-      return buildFrame({
-        image: `${BASE_URL}/api/og?refresh=${Date.now()}`,
-        aspectRatio: "1.91:1",
-        buttons: [
-          { index: 1, label: "Launch Dashboard" },
+          { index: 1, label: "Open Dashboard", action: "link", target: BASE_URL },
           { index: 2, label: "↻ Refresh" },
         ],
       });
     }
 
-    // Default — initial frame
+    if (buttonIndex === 2) {
+      // Refresh — same view, new image
+      return buildFrame({
+        image: `${BASE_URL}/api/og?_t=${Date.now()}`,
+        aspectRatio: "1.91:1",
+        input: { text: "Search protocols..." },
+        buttons: [
+          { index: 1, label: "Open Dashboard", action: "link", target: BASE_URL },
+          { index: 2, label: "↻ Refresh" },
+        ],
+      });
+    }
+
+    // Default — initial state
     return buildFrame({
-      image: `${BASE_URL}/api/og?refresh=${Date.now()}`,
+      image: `${BASE_URL}/api/og?_t=${Date.now()}`,
       aspectRatio: "1.91:1",
+      input: { text: "Search protocols..." },
       buttons: [
         { index: 1, label: "Launch Dashboard" },
-        { index: 2, label: "Market Summary" },
+        { index: 2, label: "↻ Refresh" },
       ],
     });
   } catch (err) {
@@ -76,13 +69,19 @@ interface FrameButton {
   postUrl?: string;
 }
 
+interface FrameInput {
+  text: string;
+  label?: string;
+}
+
 interface FrameParams {
   image: string;
   aspectRatio: string;
   buttons: FrameButton[];
+  input?: FrameInput;
 }
 
-function buildFrame({ image, aspectRatio, buttons }: FrameParams): NextResponse {
+function buildFrame({ image, aspectRatio, buttons, input }: FrameParams): NextResponse {
   const postUrl = `${BASE_URL}/api/frame`;
 
   // HTML-encode values before interpolating into meta tag attributes
@@ -104,6 +103,10 @@ function buildFrame({ image, aspectRatio, buttons }: FrameParams): NextResponse 
     }
   }
 
+  if (input) {
+    metaTags += `<meta property="fc:frame:input:text" content="${encode(input.text)}" />\n`;
+  }
+
   // post_url only once, not per-button
   metaTags += `<meta property="fc:frame:post_url" content="${encode(postUrl)}" />`;
 
@@ -117,11 +120,12 @@ function buildFrame({ image, aspectRatio, buttons }: FrameParams): NextResponse 
 // GET — initial frame when debugger requests
 export async function GET() {
   return buildFrame({
-    image: `${BASE_URL}/api/og?refresh=${Date.now()}`,
+    image: `${BASE_URL}/api/og`,
     aspectRatio: "1.91:1",
+    input: { text: "Search protocols..." },
     buttons: [
       { index: 1, label: "Launch Dashboard" },
-      { index: 2, label: "Market Summary" },
+      { index: 2, label: "↻ Refresh" },
     ],
   });
 }
