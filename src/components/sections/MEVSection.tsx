@@ -50,6 +50,7 @@ export default function MEVSection() {
       const res = await fetch("/api/mev");
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       setData(await res.json());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -90,7 +91,7 @@ export default function MEVSection() {
             <div>
               <p className="text-yellow-400 font-medium">MEV Tracking Coming Soon</p>
               <p className="text-sm text-gray-400 mt-1">
-                Real MEV detection requires block-level transaction analysis. We're integrating
+                Real MEV detection requires block-level transaction analysis. We&apos;re integrating
                 with specialized MEV APIs (EigenPhi, Flashbots) for accurate data.
               </p>
               <p className="text-xs text-gray-500 mt-2">

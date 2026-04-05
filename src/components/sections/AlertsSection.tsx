@@ -68,8 +68,8 @@ export default function AlertsSection() {
       const res = await fetch("/api/alerts");
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       setData(await res.json());
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setIsLoading(false);
     }

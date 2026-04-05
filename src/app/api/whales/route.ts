@@ -69,10 +69,12 @@ export async function GET(req: Request) {
 
           if (data.status === "1" && data.result) {
             return data.result
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .filter((tx: any) => {
                 const ethValue = parseFloat(tx.value) / 1e18;
                 return ethValue * ethPrice >= minUSD;
               })
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .map((tx: any) => {
                 const ethValue = parseFloat(tx.value) / 1e18;
                 return {

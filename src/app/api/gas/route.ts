@@ -22,8 +22,8 @@ export async function GET() {
       const apiKey = process.env.ETHERSCAN_API_KEY;
 
       let l2BaseFee = 1_000_000; // 0.001 Gwei default (Base typical base fee)
-      let l2PriorityFee = 100_000; // 0.0001 Gwei
-      let l1BlobFeeWei = 50_000_000_000_000; // ~50k gwei blob fee estimate
+      const l2PriorityFee = 100_000; // 0.0001 Gwei
+      const l1BlobFeeWei = 50_000_000_000_000; // ~50k gwei blob fee estimate
 
       if (apiKey) {
         try {

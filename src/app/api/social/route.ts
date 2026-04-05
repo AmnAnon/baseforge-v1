@@ -94,7 +94,7 @@ export async function GET() {
           if (res.ok) {
             const json = await res.json();
             const casts = json.result?.casts || [];
-            const uniqueUsers = new Set(casts.map((c: any) => c.author?.fid)).size;
+            const uniqueUsers = new Set(casts.map((c: { author?: { fid?: string } }) => c.author?.fid)).size;
 
             const sentimentCounts: Record<string, number> = { positive: 0, negative: 0, neutral: 0 };
             for (const cast of casts) {

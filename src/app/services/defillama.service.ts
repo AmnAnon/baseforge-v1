@@ -8,6 +8,7 @@ class DefiLlamaService {
     try {
       const response = await fetch(`${DEFILLAMA_BASE_URL}/protocols`);
       if (!response.ok) throw new Error("Failed to fetch protocols");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allProtocols: any[] = await response.json();
       
       return allProtocols.filter(p => 
@@ -25,6 +26,7 @@ class DefiLlamaService {
       if (!response.ok) throw new Error("Failed to fetch TVL history");
       const data = await response.json();
       
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
        return data.map((item: any) => ({
         date: new Date(item.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         "Total Value Locked": item.tvl,

@@ -62,6 +62,7 @@ export class CoinGeckoService {
   /**
    * Get detailed coin data
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getCoinData(coinId: string): Promise<any> {
     try {
       const response = await fetch(
@@ -123,6 +124,7 @@ export class CoinGeckoService {
   /**
    * Search for coins
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async searchCoins(query: string): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/search?query=${encodeURIComponent(query)}`);

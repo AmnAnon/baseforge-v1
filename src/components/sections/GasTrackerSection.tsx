@@ -64,6 +64,7 @@ export default function GasTrackerSection({
       const res = await fetch("/api/gas");
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       setGas(await res.json());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message);
     } finally {

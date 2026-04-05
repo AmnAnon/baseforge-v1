@@ -71,6 +71,7 @@ async function getWhales() {
       );
       const data = await res.json();
       if (data.status !== "1") return [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return data.result.slice(0, 5).map((tx: any) => ({
         hash: tx.hash, from: tx.from.slice(0, 6) + "..." + tx.from.slice(-4),
         to: tx.to.slice(0, 6) + "..." + tx.to.slice(-4), value: tx.value,
@@ -117,6 +118,7 @@ export async function GET(request: Request) {
       }, MAX_DURATION);
 
       // Also respect client disconnect (AbortSignal)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const signal = (request as any).signal;
       if (signal) {
         signal.addEventListener("abort", () => {

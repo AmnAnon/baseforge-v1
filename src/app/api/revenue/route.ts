@@ -43,7 +43,7 @@ export async function GET() {
       }
 
       const protocols = await protocolsRes.json();
-      const protocolMap: Record<string, any> = {};
+      const protocolMap: Record<string, { name: string; chainTvls?: Record<string, number>; change_1d?: number; audits?: number; category?: string; slug?: string; forkedFrom?: string[] }> = {};
       for (const p of protocols) {
         const slug = (p.name || "").toLowerCase().replace(/ /g, "-");
         protocolMap[slug] = p;
@@ -64,8 +64,8 @@ export async function GET() {
       // Generate per-protocol revenue from protocols data
       // Estimate: protocol's share of total TVL = share of fees
       const baseProtos = protocols
-        .filter((p: any) => (p.chainTvls?.Base || 0) > 1_000_000)
-        .sort((a: any, b: any) => (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0));
+        .filter((p: { chainTvls?: Record<string, number>; change_1d?: number; audits?: number; category?: string; slug?: string; name: string; forkedFrom?: string[] }) => (p.chainTvls?.Base || 0) > 1_000_000)
+        .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) => (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0));
 
       for (const proto of baseProtos) {
         const slug = proto.slug || proto.name.toLowerCase().replace(/ /g, "-");

@@ -10,6 +10,7 @@ interface MetricCardProps {
   title: string;
   value: string;
   change?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   chartData?: any[];
   tooltip?: string;
   icon?: React.ReactElement;

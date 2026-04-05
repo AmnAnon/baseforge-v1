@@ -36,6 +36,7 @@ export default function ChartsSection({
         if (!res.ok) throw new Error(`API error: ${res.status}`);
         const json = await res.json();
         setChartsData(json);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         setError(err.message);
       } finally {

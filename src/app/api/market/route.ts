@@ -18,7 +18,7 @@ export async function GET() {
         fetch("https://yields.llama.fi/pools", { cache: "no-store" }),
       ]);
 
-      let tokens: Array<{
+      const tokens: Array<{
         id: string; symbol: string; name: string; price: number;
         change24h: number; volume24h: number; marketCap: number;
         tvl?: number; chain?: string; apy?: number;

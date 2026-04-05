@@ -36,10 +36,13 @@ export async function GET() {
     const tvlHistory = await baseTVLRes.json();
 
     const baseProtocols = allProtocols
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((p: any) => p.chainTvls?.Base > 0)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .sort((a: any, b: any) => (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0));
 
     const totalBaseTVL = baseProtocols.reduce(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (sum: number, p: any) => sum + (p.chainTvls.Base || 0),
       0
     );
@@ -57,6 +60,7 @@ export async function GET() {
           const data = await histRes.json();
           const baseTvlSeries = data.chainTvls?.Base?.tvl || [];
           if (baseTvlSeries.length > 7) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             tvlChanges[protocol.name] = baseTvlSeries.slice(-7).map((d: any) => d.tvl);
           }
         }

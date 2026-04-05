@@ -51,6 +51,7 @@ export default function RevenueDashboard() {
       const res = await fetch("/api/revenue");
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       setData(await res.json());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message);
     } finally {

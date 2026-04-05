@@ -46,7 +46,9 @@ export default function BaseTVLChart() {
         }
 
         const formatted = json
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .filter((d: any) => d.tvl > 0)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((d: any) => ({
             date: d.date * 1000,
             formattedDate: new Date(d.date * 1000).toLocaleDateString('en-US', {
@@ -175,6 +177,7 @@ export default function BaseTVLChart() {
                     width={70}
                   />
                   <Tooltip
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     formatter={(value: any) => `$${formatNumber(value as number)}`}
                     labelStyle={{ color: '#22d3ee' }}
                     contentStyle={{
