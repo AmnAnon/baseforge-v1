@@ -3,6 +3,7 @@
 // Uses public Farcaster data via Neynar API (free tier)
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface SocialSignal {
   protocol: string;
@@ -49,7 +50,10 @@ function simpleSentiment(text: string): "positive" | "negative" | "neutral" {
   return "neutral";
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("social-signals", CACHE_TTL.WHALE_TX, async () => {
       // Neynar API requires API key — check for it

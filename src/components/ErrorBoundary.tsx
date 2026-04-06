@@ -28,8 +28,19 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     this.props.onError?.(error, info);
-    // Log to console in dev; Sentry handler in prod
-    if (process.env.NODE_ENV === "development") {
+
+    // Report to Sentry in production
+    if (process.env.NODE_ENV === "production") {
+      try {
+        import("@sentry/nextjs").then((Sentry) => {
+          Sentry.captureException(error, {
+            extra: { componentStack: info.componentStack },
+          });
+        });
+      } catch {
+        // Sentry not configured
+      }
+    } else {
       console.error("[ErrorBoundary]", error, info.componentStack);
     }
   }

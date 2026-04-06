@@ -3,6 +3,7 @@
 // Uses DefiLlama protocol-level data (no direct onchain RPC needed)
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface PortfolioPosition {
   protocol: string;
@@ -32,6 +33,9 @@ interface PortfolioResponse {
 const isAddressValid = (addr: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(addr);
 
 export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const url = new URL(req.url);
     const address = url.searchParams.get("address");

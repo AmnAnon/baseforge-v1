@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("prices", CACHE_TTL.PRICES, async () => {
       const res = await fetch(

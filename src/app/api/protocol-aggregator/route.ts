@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 // Category trust scores (audit standards vary by protocol type)
 const CATEGORY_TRUST: Record<string, number> = {
@@ -104,7 +105,10 @@ function calculateProtocolScore(p: RawProtocol, totalTvl: number): {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const cached = await cache.get<AggregatedProtocol[]>("aggregator-protocols");
     if (cached) return NextResponse.json(cached);

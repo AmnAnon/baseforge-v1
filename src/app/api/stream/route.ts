@@ -3,6 +3,7 @@
 // Replaces 60s polling with live stream (30s intervals)
 
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 const encoder = new TextEncoder();
 const BASE = "https://api.llama.fi";
@@ -82,6 +83,9 @@ async function getWhales() {
 }
 
 export async function GET(request: Request) {
+  const rateResponse = await rateLimiterMiddleware()(request);
+  if (rateResponse) return rateResponse;
+
   let alive = true;
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let cleanupTimeout: ReturnType<typeof setTimeout> | null = null;

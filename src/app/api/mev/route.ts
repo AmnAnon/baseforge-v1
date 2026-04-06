@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface MEVEvent {
   blockNumber: number;
@@ -60,7 +61,10 @@ function detectAnomalousTx(tx: { value: string; timestamp: number; type: string 
   return null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("mev-stats", CACHE_TTL.WHALE_TX, async () => {
       // Fetch recent whale/swap transactions as proxy

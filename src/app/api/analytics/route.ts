@@ -1,6 +1,7 @@
 // src/app/api/analytics/route.ts
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 // Categories to exclude — not native DeFi protocols
 const EXCLUDED = new Set([
@@ -34,7 +35,10 @@ async function fetchYields() {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("analytics", CACHE_TTL.TVL_HISTORY, async () => {
       const [protocolsRes, tvlRes] = await Promise.all([

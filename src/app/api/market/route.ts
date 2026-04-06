@@ -1,11 +1,15 @@
 // src/app/api/market/route.ts
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 // Same exclusion as analytics — CEX/Chain/Bridge are not DeFi protocols
 const EXCLUDED = new Set(["CEX", "Chain", "Bridge", "Liquidity Manager", "RWA"]);
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("market", CACHE_TTL.PRICES, async () => {
       const [priceRes, protocolsRes, yieldsRes] = await Promise.all([

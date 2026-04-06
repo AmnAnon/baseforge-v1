@@ -1,8 +1,12 @@
 // src/app/api/charts/route.ts
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("charts", CACHE_TTL.TVL_HISTORY, async () => {
       // TVL history — the reliable DefiLlama endpoint

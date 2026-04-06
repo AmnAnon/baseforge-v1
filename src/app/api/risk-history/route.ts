@@ -3,6 +3,7 @@
 // Provides time-series: health score, audit changes, TVL-based risk over time
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface RiskHistoryPoint {
   date: string;
@@ -15,6 +16,9 @@ interface RiskHistoryPoint {
 }
 
 export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const url = new URL(req.url);
     const protocol = url.searchParams.get("protocol");

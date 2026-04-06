@@ -2,6 +2,8 @@
 // Whale tracker — large Base chain transactions via Etherscan V2
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
+
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const BASE_CHAIN_ID = 8453;
@@ -45,6 +47,9 @@ function getLabel(address: string): string {
 }
 
 export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const url = new URL(req.url);
     const minUSDParam = parseInt(url.searchParams.get("min") || "40000");

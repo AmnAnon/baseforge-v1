@@ -3,6 +3,7 @@
 // Traders use this to time entries
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface GasData {
   l2BaseFee: number; // wei
@@ -14,7 +15,10 @@ interface GasData {
   timestamp: number;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch<GasData>("gas-data", CACHE_TTL.PRICES, async () => {
       // Try Etherscan for Base gas info

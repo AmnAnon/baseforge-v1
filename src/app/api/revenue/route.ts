@@ -3,6 +3,7 @@
 // Uses DefiLlama's fee data (real data, no subgraph needed)
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface ProtocolRevenue {
   name: string;
@@ -30,7 +31,10 @@ const TOKEN_EMISSIONS: Record<string, number> = {
   "baseswap": 200_000,
 };
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const data = await cache.getOrFetch("revenue-data", CACHE_TTL.PROTOCOL_LIST, async () => {
       const [feesRes, protocolsRes] = await Promise.all([

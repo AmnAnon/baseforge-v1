@@ -4,6 +4,7 @@
 // Labels are user-generated — "smart money" is just a label, not verified truth.
 import { NextResponse } from "next/server";
 import { cache } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface WalletLabel {
   address: string;
@@ -53,6 +54,9 @@ const COMMUNITY_LABELS: WalletLabel[] = [
 ];
 
 export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const url = new URL(req.url);
     const address = url.searchParams.get("address");

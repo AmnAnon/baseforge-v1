@@ -3,6 +3,7 @@
 // Used by both UI alerts tab and optional push notifications
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
 interface AlertRule {
   id: string;
@@ -29,6 +30,9 @@ const DEFAULT_ALERT_RULES: AlertRule[] = [
 ];
 
 export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
     const alerts = await cache.getOrFetch("alert-checks", CACHE_TTL.TVL_HISTORY, async () => {
       const [protocolsRes] = await Promise.all([

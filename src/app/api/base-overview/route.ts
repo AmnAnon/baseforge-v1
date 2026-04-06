@@ -1,7 +1,11 @@
 // src/app/api/base-overview/route.ts
 import { NextResponse } from "next/server";
+import { rateLimiterMiddleware } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateResponse = await rateLimiterMiddleware()(req);
+  if (rateResponse) return rateResponse;
+
   try {
       const [tvlResponse, volumeResponse] = await Promise.all([
       fetch('https://api.llama.fi/v2/historicalChainTvl/Base'),
