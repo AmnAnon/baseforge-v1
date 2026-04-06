@@ -46,64 +46,65 @@ function getLabel(address: string): string {
 
 export async function GET(req: Request) {
   try {
-    const data = await cache.getOrFetch("whales-data", CACHE_TTL.WHALE_TX, async () => {
     const url = new URL(req.url);
     const minUSDParam = parseInt(url.searchParams.get("min") || "40000");
     const minUSD = Number.isFinite(minUSDParam) && minUSDParam >= 0 ? minUSDParam : 40000;
 
-    const monitoredAddresses = [
-      { addr: "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", label: "Uniswap V3" },
-      { addr: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4", label: "Aerodrome" },
-      { addr: "0x47536A12A465AC89E6Ad27884e2773dC1a5fA857", label: "Seamless" },
-    ];
+    const data = await cache.getOrFetch(`whales-data-${minUSD}`, CACHE_TTL.WHALE_TX, async () => {
+      const monitoredAddresses = [
+        { addr: "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", label: "Uniswap V3" },
+        { addr: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4", label: "Aerodrome" },
+        { addr: "0x47536A12A465AC89E6Ad27884e2773dC1a5fA857", label: "Seamless" },
+      ];
 
-    const whaleTransactions: WhaleTransaction[] = [];
+      const whaleTransactions: WhaleTransaction[] = [];
 
-    if (ETHERSCAN_API_KEY) {
-      const ethPrice = await getEthPrice();
-      const fetchPromises = monitoredAddresses.map(async ({ addr }) => {
-        try {
-          const etherscanUrl = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=txlist&address=${addr}&startblock=0&endblock=99999999&page=1&offset=20&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
-          const res = await fetch(etherscanUrl, { cache: "no-store" });
-          const data = await res.json();
+      if (ETHERSCAN_API_KEY) {
+        const ethPrice = await getEthPrice();
+        const fetchPromises = monitoredAddresses.map(async ({ addr }) => {
+          try {
+            const etherscanUrl = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=txlist&address=${addr}&startblock=0&endblock=99999999&page=1&offset=20&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
+            const res = await fetch(etherscanUrl, { cache: "no-store" });
+            const data = await res.json();
 
-          if (data.status === "1" && data.result) {
-            return data.result
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .filter((tx: any) => {
-                const ethValue = parseFloat(tx.value) / 1e18;
-                return ethValue * ethPrice >= minUSD;
-              })
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              .map((tx: any) => {
-                const ethValue = parseFloat(tx.value) / 1e18;
-                return {
-                  hash: tx.hash,
-                  from: getLabel(tx.from),
-                  to: getLabel(tx.to),
-                  value: `${ethValue.toFixed(2)} ETH`,
-                  valueUSD: Math.round(ethValue * ethPrice),
-                  timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
-                  type: ethValue > 50 ? "swap" : "transfer",
-                  tokenSymbol: "ETH",
-                } as WhaleTransaction;
-              });
+            if (data.status === "1" && data.result) {
+              return data.result
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .filter((tx: any) => {
+                  const ethValue = parseFloat(tx.value) / 1e18;
+                  return ethValue * ethPrice >= minUSD;
+                })
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                .map((tx: any) => {
+                  const ethValue = parseFloat(tx.value) / 1e18;
+                  return {
+                    hash: tx.hash,
+                    from: getLabel(tx.from),
+                    to: getLabel(tx.to),
+                    value: `${ethValue.toFixed(2)} ETH`,
+                    valueUSD: Math.round(ethValue * ethPrice),
+                    timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
+                    type: ethValue > 50 ? "swap" : "transfer",
+                    tokenSymbol: "ETH",
+                  } as WhaleTransaction;
+                });
+            }
+            return [];
+          } catch { return []; }
+        });
+
+        const results = await Promise.allSettled(fetchPromises);
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            whaleTransactions.push(...result.value);
           }
-          return [];
-        } catch { return []; }
-      });
-
-      const results = await Promise.allSettled(fetchPromises);
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          whaleTransactions.push(...result.value);
         }
       }
-    }
 
-    const uniqueTx = Array.from(
-      new Map(whaleTransactions.map(tx => [tx.hash, tx])).values()
-    ).sort((a, b) => b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0);
+      const uniqueTx = Array.from(
+        new Map(whaleTransactions.map(tx => [tx.hash, tx])).values()
+      ).sort((a, b) => b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0);
+
       return {
         whales: uniqueTx.slice(0, 50),
         summary: {
@@ -132,5 +133,7 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export const dynamic = "force-dynamic";
 
 export const revalidate = 60;
