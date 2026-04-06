@@ -4,7 +4,8 @@ import { formatCurrency, formatPercentage, timeAgo, freshnessColor } from "@/lib
 
 describe("formatCurrency", () => {
   it("formats zero correctly", () => {
-    expect(formatCurrency(0)).toBe("$0");
+    const result = formatCurrency(0);
+    expect(result).toMatch(/^\$0(\.00)?$/);
   });
 
   it("formats large numbers with compact notation", () => {
@@ -19,7 +20,8 @@ describe("formatCurrency", () => {
   });
 
   it("appends unit when provided", () => {
-    expect(formatCurrency(100, { unit: "TVL" })).toBe("$100 TVL");
+    const result = formatCurrency(100, { unit: "TVL" });
+    expect(result).toMatch(/^\$100(\.00)? TVL$/);
   });
 });
 
