@@ -4,24 +4,12 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
-
-interface ProtocolRevenue {
-  name: string;
-  category: string;
-  tvl: number;
-  fees24h: number;
-  feesAnnualized: number;
-  revenueToTvl: number; // annualized fees as % of TVL — "real yield"
-  tokenEmissions: number;
-  netYield: number; // fees - emissions (positive = profitable, negative = token printing)
-  change24h: number;
-  audits: number;
-}
+import { validateOrFallback } from "@/lib/validation";
+import { RevenueResponseSchema } from "@/lib/zod/schemas";
 
 // Token emission estimates for protocols with known tokenomics
-// These are rough estimates — subgraph would give exact numbers
 const TOKEN_EMISSIONS: Record<string, number> = {
-  "aerodrome-finance": 850_000, // ~$850k/yr in AERO emissions
+  "aerodrome-finance": 850_000,
   "moonwell": 120_000,
   "sonne-finance": 80_000,
   "seamless-protocol": 150_000,
@@ -31,29 +19,28 @@ const TOKEN_EMISSIONS: Record<string, number> = {
   "baseswap": 200_000,
 };
 
+const EMPTY_REVENUE = () => ({
+  protocols: [],
+  aggregate: { totalFees24h: 0, totalFeesAnnualized: 0, protocolCount: 0, timestamp: Date.now() },
+  timestamp: Date.now(),
+  isStale: true,
+});
+
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getOrFetch("revenue-data", CACHE_TTL.PROTOCOL_LIST, async () => {
+    const data = await cache.getWithStaleFallback("revenue-data", CACHE_TTL.PROTOCOL_LIST, async () => {
       const [feesRes, protocolsRes] = await Promise.all([
         fetch("https://api.llama.fi/v2/fees?chain=base", { cache: "no-store" }),
         fetch("https://api.llama.fi/protocols", { cache: "no-store" }),
       ]);
 
-      if (!protocolsRes.ok) {
-        throw new Error("Failed to fetch protocols");
-      }
+      if (!protocolsRes.ok) throw new Error("Failed to fetch protocols");
 
       const protocols = await protocolsRes.json();
-      const protocolMap: Record<string, { name: string; chainTvls?: Record<string, number>; change_1d?: number; audits?: number; category?: string; slug?: string; forkedFrom?: string[] }> = {};
-      for (const p of protocols) {
-        const slug = (p.name || "").toLowerCase().replace(/ /g, "-");
-        protocolMap[slug] = p;
-      }
 
-      // Chain-level fee estimate from DefiLlama
       let totalFees24h = 0;
       if (feesRes.ok) {
         const feesJson = await feesRes.json();
@@ -63,37 +50,24 @@ export async function GET(req: Request) {
         }
       }
 
-      const revenues: ProtocolRevenue[] = [];
-
-      // Generate per-protocol revenue from protocols data
-      // Estimate: protocol's share of total TVL = share of fees
+      const revenues = [];
       const baseProtos = protocols
-        .filter((p: { chainTvls?: Record<string, number>; change_1d?: number; audits?: number; category?: string; slug?: string; name: string; forkedFrom?: string[] }) => (p.chainTvls?.Base || 0) > 1_000_000)
+        .filter((p: { chainTvls?: Record<string, number> }) => (p.chainTvls?.Base || 0) > 1_000_000)
         .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) => (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0));
 
       for (const proto of baseProtos) {
         const slug = proto.slug || proto.name.toLowerCase().replace(/ /g, "-");
         const tvl = proto.chainTvls.Base || 0;
         const change24h = proto.change_1d || 0;
-        const audits = proto.audits || 0;
         const category = proto.category || "DeFi";
 
-        // Estimate proportional fee share
-        // More accurate for high-TVL protocols
         const tvlShare = totalFees24h > 0 ? tvl / totalFees24h : 0;
-        const estimatedFees24h = totalFees24h * Math.min(tvlShare, 0.25); // cap at 25% per protocol
-
-        // Revenue = fees that actually go to token holders
-        // Lending: ~70% (rest goes to stakers/depositors)
-        // DEXes: ~80%
+        const estimatedFees24h = totalFees24h * Math.min(tvlShare, 0.25);
         const revMult = category === "Lending" ? 0.7 : 0.8;
         const estimatedRevenue24h = estimatedFees24h * revMult;
 
-        // Token emissions (annual / 365 = daily)
         const annualEmissions = TOKEN_EMISSIONS[slug] || 0;
         const dailyEmissions = annualEmissions / 365;
-
-        // Net yield = revenue - emissions (negative means the protocol is subsidizing TVL with tokens)
         const netYield = estimatedRevenue24h - dailyEmissions;
 
         revenues.push({
@@ -106,12 +80,12 @@ export async function GET(req: Request) {
           tokenEmissions: Math.round(dailyEmissions),
           netYield: Math.round(netYield),
           change24h,
-          audits,
+          audits: proto.audits || 0,
         });
       }
 
       return {
-        protocols: revenues.sort((a, b) => b.fees24h - a.fees24h),
+        protocols: revenues.sort((a: { fees24h: number }, b: { fees24h: number }) => b.fees24h - a.fees24h),
         aggregate: {
           totalFees24h: Math.round(totalFees24h),
           totalFeesAnnualized: Math.round(totalFees24h * 365),
@@ -122,9 +96,16 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json(data);
+    const validated = validateOrFallback(RevenueResponseSchema, data, EMPTY_REVENUE(), "revenue");
+    const headers: Record<string, string> = validated.isStale
+      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=120", "X-Cache-Status": "STALE" }
+      : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
+
+    return NextResponse.json(validated, { headers });
   } catch (err) {
-    console.error("Revenue API error:", err);
-    return NextResponse.json({ error: "Revenue data unavailable" }, { status: 500 });
+    return NextResponse.json(
+      { ...EMPTY_REVENUE(), isStale: true },
+      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } }
+    );
   }
 }

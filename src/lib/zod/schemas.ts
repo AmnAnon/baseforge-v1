@@ -1,5 +1,6 @@
 // src/lib/zod/schemas.ts
 // Zod schemas for every external API response — DefiLlama, CoinGecko, Etherscan
+// Plus derived schemas for our own API routes with isStale tracking.
 
 import { z } from "zod";
 
@@ -88,7 +89,7 @@ export const EtherscanApiResponseSchema = z.object({
 
 export const BaseMetricsSchema = z.object({
   totalTvl: z.number(),
-  protocols: z.number(),
+  totalProtocols: z.number(),
   avgApy: z.number(),
   change24h: z.number(),
 });
@@ -108,6 +109,82 @@ export const AnalyticsResponseSchema = z.object({
   protocols: z.array(ProtocolSummarySchema).optional().default([]),
   protocolData: z.record(z.string(), z.unknown()).optional().default({}),
   timestamp: z.number(),
+  isStale: z.boolean().optional().default(false),
+});
+
+export const MarketResponseSchema = z.object({
+  tokens: z.array(z.object({
+    id: z.string(),
+    symbol: z.string(),
+    name: z.string(),
+    price: z.number(),
+    change24h: z.number(),
+    volume24h: z.number(),
+    marketCap: z.number(),
+  })).default([]),
+  summary: z.object({
+    totalTokens: z.number(),
+    avgChange24h: z.number(),
+    totalVolume24h: z.number(),
+  }),
+  topGainers: z.array(z.unknown()).default([]),
+  topLosers: z.array(z.unknown()).default([]),
+  topByVolume: z.array(z.unknown()).default([]),
+  timestamp: z.number(),
+  isStale: z.boolean().optional().default(false),
+});
+
+export const ChartsResponseSchema = z.object({
+  tvlData: z.array(z.object({ date: z.string(), tvl: z.number() })).default([]),
+  feesData: z.array(z.object({ date: z.string(), fees: z.number() })).default([]),
+  revenueData: z.array(z.object({ date: z.string(), revenue: z.number() })).default([]),
+  supplyBorrowData: z.array(z.object({ date: z.string(), supply: z.number(), borrow: z.number() })).default([]),
+  isStale: z.boolean().optional().default(false),
+});
+
+export const RiskResponseSchema = z.object({
+  protocols: z.array(z.unknown()).default([]),
+  summary: z.object({
+    totalAnalyzed: z.number(),
+    avgHealthScore: z.number(),
+    highRiskCount: z.number(),
+    unauditedCount: z.number(),
+    dominantProtocol: z.string(),
+    totalBaseTVL: z.number(),
+    concentrationRisk: z.enum(["HIGH", "MEDIUM", "LOW"]),
+  }),
+  timestamp: z.number(),
+  isStale: z.boolean().optional().default(false),
+});
+
+export const WhalesResponseSchema = z.object({
+  whales: z.array(z.unknown()).default([]),
+  summary: z.object({
+    total: z.number(),
+    largest: z.number(),
+    avgSize: z.number(),
+    types: z.record(z.string(), z.number()).default({}),
+  }),
+  timestamp: z.number(),
+  isStale: z.boolean().optional().default(false),
+});
+
+export const RevenueResponseSchema = z.object({
+  protocols: z.array(z.unknown()).default([]),
+  aggregate: z.object({
+    totalFees24h: z.number(),
+    totalFeesAnnualized: z.number(),
+    protocolCount: z.number(),
+    timestamp: z.number(),
+  }),
+  timestamp: z.number(),
+  isStale: z.boolean().optional().default(false),
+});
+
+export const AlertsResponseSchema = z.object({
+  alerts: z.array(z.unknown()).default([]),
+  timestamp: z.number(),
+  isStale: z.boolean().optional().default(false),
 });
 
 // Type exports

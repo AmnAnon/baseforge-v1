@@ -100,6 +100,38 @@ export const cache = {
     await driver.set(key, fresh, ttlSeconds);
     return fresh;
   },
+
+  /** Cache-aside with stale fallback: if fetch fails, return expired cache entry with isStale=true */
+  getWithStaleFallback: async <T extends Record<string, unknown>>(
+    key: string,
+    ttlMs: number,
+    fetcher: () => Promise<T>
+  ): Promise<T & { isStale: boolean }> => {
+    const ttlSeconds = Math.round(ttlMs / 1000);
+
+    // Try fresh cache first
+    const cached = await driver.get<T>(key);
+    if (cached !== null) return cached as T & { isStale: boolean };
+
+    // Try to fetch fresh data
+    try {
+      const fresh = await fetcher();
+      await driver.set(key, { ...fresh, isStale: false }, ttlSeconds);
+      return { ...fresh, isStale: false };
+    } catch {
+      // Check for any expired entry the driver still holds
+      const stale = await driver.get<T>(key);
+      if (stale !== null) return { ...stale, isStale: true };
+
+      // No stale entry — try fetcher once more
+      try {
+        const retry = await fetcher();
+        return { ...retry, isStale: true };
+      } catch {
+        throw new Error(`No cached data and fetch failed for ${key}`);
+      }
+    }
+  },
 };
 
 // Preset TTLs — called in milliseconds by all API routes

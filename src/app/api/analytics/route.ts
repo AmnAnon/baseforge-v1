@@ -2,6 +2,9 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { validateOrFallback } from "@/lib/validation";
+import { AnalyticsResponseSchema } from "@/lib/zod/schemas";
+import { logger } from "@/lib/logger";
 
 // Categories to exclude — not native DeFi protocols
 const EXCLUDED = new Set([
@@ -11,6 +14,17 @@ const EXCLUDED = new Set([
   "Liquidity Manager",  // Aggregators that don't hold native TVL
   "RWA",                // Real-world assets (different risk model)
 ]);
+
+function emptyAnalytics() {
+  return {
+    baseMetrics: { totalTvl: 0, totalProtocols: 0, avgApy: 0, change24h: 0 },
+    tvlHistory: [] as { date: string | number; tvl: number }[],
+    protocols: [] as { id: string; name: string; tvl: number; change24h: number; logo: string; category: string }[],
+    protocolData: {} as Record<string, unknown>,
+    timestamp: Date.now(),
+    isStale: true,
+  };
+}
 
 async function fetchYields() {
   try {
@@ -40,7 +54,7 @@ export async function GET(req: Request) {
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getOrFetch("analytics", CACHE_TTL.TVL_HISTORY, async () => {
+    const data = await cache.getWithStaleFallback("analytics", CACHE_TTL.TVL_HISTORY, async () => {
       const [protocolsRes, tvlRes] = await Promise.all([
         fetch("https://api.llama.fi/protocols", { cache: "no-store" }),
         fetch("https://api.llama.fi/v2/historicalChainTvl/Base", { cache: "no-store" }),
@@ -138,9 +152,32 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json(data);
+    // Validate the shape we return to clients
+    const validated = validateOrFallback(
+      AnalyticsResponseSchema,
+      data,
+      { ...emptyAnalytics() },
+      "analytics"
+    );
+
+    // Tag stale responses so the UI can show a warning
+    if (validated.isStale === undefined) {
+      (validated as typeof validated & { isStale: boolean }).isStale = false;
+    }
+
+    const staleHeaders: Record<string, string> = validated.isStale
+      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=300", "X-Cache-Status": "STALE" }
+      : { "Cache-Control": "public, max-age=300, stale-while-revalidate=600", "X-Cache-Status": "HIT" };
+
+    return NextResponse.json(validated, { headers: staleHeaders });
   } catch (err) {
-    console.error("Analytics API error:", err);
-    return NextResponse.json({ error: "Analytics fetch failed" }, { status: 500 });
+    logger.error("Analytics API error", { error: err instanceof Error ? err.message : "unknown" });
+    return NextResponse.json(
+      { ...emptyAnalytics(), isStale: true },
+      {
+        status: 200,
+        headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=300" },
+      }
+    );
   }
 }

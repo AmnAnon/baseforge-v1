@@ -3,11 +3,21 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
-
+import { validateOrFallback } from "@/lib/validation";
+import { WhalesResponseSchema } from "@/lib/zod/schemas";
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const BASE_CHAIN_ID = 8453;
 const ETH_PRICE_FALLBACK = 1800;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1_000;
+
+function retry(fn: () => Promise<Response>, retries = MAX_RETRIES): Promise<Response> {
+  return fn().catch((err) => {
+    if (retries <= 0) throw err;
+    return new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS)).then(() => retry(fn, retries - 1));
+  });
+}
 
 async function getEthPrice(): Promise<number> {
   try {
@@ -38,13 +48,20 @@ function getLabel(address: string): string {
   const labels: Record<string, string> = {
     "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad": "Uniswap V3 Router",
     "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4": "Aerodrome Router",
-    "0x47536A12A465AC89E6Ad27884e2773dC1a5fA857": "Seamless",
+    "0x47536A12A465AC89E6Ad2773dC1a5fA857": "Seamless",
     "0x4200000000000000000000000000000000000006": "WETH",
     "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": "USDC",
   };
   const lower = address.toLowerCase();
   return labels[lower] || `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
+
+const EMPTY_WHALES = () => ({
+  whales: [],
+  summary: { total: 0, largest: 0, avgSize: 0, types: {} },
+  timestamp: Date.now(),
+  isStale: true,
+});
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
@@ -55,11 +72,11 @@ export async function GET(req: Request) {
     const minUSDParam = parseInt(url.searchParams.get("min") || "40000");
     const minUSD = Number.isFinite(minUSDParam) && minUSDParam >= 0 ? minUSDParam : 40000;
 
-    const data = await cache.getOrFetch(`whales-data-${minUSD}`, CACHE_TTL.WHALE_TX, async () => {
+    const data = await cache.getWithStaleFallback(`whales-data-${minUSD}`, CACHE_TTL.WHALE_TX, async () => {
       const monitoredAddresses = [
         { addr: "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", label: "Uniswap V3" },
         { addr: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4", label: "Aerodrome" },
-        { addr: "0x47536A12A465AC89E6Ad27884e2773dC1a5fA857", label: "Seamless" },
+        { addr: "0x47536A12A465AC89E6Ad2773dC1a5fA857", label: "Seamless" },
       ];
 
       const whaleTransactions: WhaleTransaction[] = [];
@@ -69,7 +86,7 @@ export async function GET(req: Request) {
         const fetchPromises = monitoredAddresses.map(async ({ addr }) => {
           try {
             const etherscanUrl = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=txlist&address=${addr}&startblock=0&endblock=99999999&page=1&offset=20&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
-            const res = await fetch(etherscanUrl, { cache: "no-store" });
+            const res = await retry(() => fetch(etherscanUrl, { cache: "no-store" }), 2);
             const data = await res.json();
 
             if (data.status === "1" && data.result) {
@@ -127,14 +144,16 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=120" },
-    });
+    const validated = validateOrFallback(WhalesResponseSchema, data, EMPTY_WHALES(), "whales");
+    const headers: Record<string, string> = validated.isStale
+      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=120", "X-Cache-Status": "STALE" }
+      : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
+
+    return NextResponse.json(validated, { headers });
   } catch (error) {
-    console.error("Whale API error:", error);
     return NextResponse.json(
-      { whales: [], summary: { total: 0, largest: 0, avgSize: 0, types: {} }, timestamp: Date.now() },
-      { status: 200, headers: { "Cache-Control": "public, max-age=60" } }
+      { ...EMPTY_WHALES(), isStale: true },
+      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } }
     );
   }
 }

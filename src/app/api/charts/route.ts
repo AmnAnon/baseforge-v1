@@ -2,13 +2,23 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { validateOrFallback } from "@/lib/validation";
+import { ChartsResponseSchema } from "@/lib/zod/schemas";
+
+const EMPTY_CHARTS = () => ({
+  tvlData: [],
+  feesData: [],
+  revenueData: [],
+  supplyBorrowData: [],
+  isStale: true as const,
+});
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getOrFetch("charts", CACHE_TTL.TVL_HISTORY, async () => {
+    const data = await cache.getWithStaleFallback("charts", CACHE_TTL.TVL_HISTORY, async () => {
       // TVL history — the reliable DefiLlama endpoint
       const [tvlRes, feeRes, revRes] = await Promise.all([
         fetch("https://api.llama.fi/v2/historicalChainTvl/Base", { cache: "no-store" }),
@@ -62,10 +72,17 @@ export async function GET(req: Request) {
       return { tvlData, feesData, revenueData, supplyBorrowData };
     });
 
-    return NextResponse.json(data);
+    const validated = validateOrFallback(ChartsResponseSchema, data, EMPTY_CHARTS(), "charts");
+    const headers: Record<string, string> = validated.isStale
+      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=300", "X-Cache-Status": "STALE" }
+      : { "Cache-Control": "public, max-age=300, stale-while-revalidate=600", "X-Cache-Status": "HIT" };
+
+    return NextResponse.json(validated, { headers });
   } catch (err) {
-    console.error("Charts API error:", err);
-    return NextResponse.json({ tvlData: [], feesData: [], revenueData: [], supplyBorrowData: [] });
+    return NextResponse.json(
+      { ...EMPTY_CHARTS(), isStale: true },
+      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=300" } }
+    );
   }
 }
 

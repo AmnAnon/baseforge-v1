@@ -2,18 +2,28 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { validateOrFallback } from "@/lib/validation";
+import { MarketResponseSchema } from "@/lib/zod/schemas";
 
-// Same exclusion as analytics — CEX/Chain/Bridge are not DeFi protocols
 const EXCLUDED = new Set(["CEX", "Chain", "Bridge", "Liquidity Manager", "RWA"]);
+
+const EMPTY_MARKET = () => ({
+  tokens: [],
+  summary: { totalTokens: 0, avgChange24h: 0, totalVolume24h: 0 },
+  topGainers: [],
+  topLosers: [],
+  topByVolume: [],
+  timestamp: Date.now(),
+  isStale: true,
+});
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getOrFetch("market", CACHE_TTL.PRICES, async () => {
+    const data = await cache.getWithStaleFallback("market", CACHE_TTL.PRICES, async () => {
       const [priceRes, protocolsRes, yieldsRes] = await Promise.all([
-        // /simple/price — cheaper endpoint, less rate-limiting
         fetch(
           "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin,aave,uniswap,lido-dao,compound-governance-token,pendle,morpho,maker,aerodrome-finance,ondo,synthetix-network-token&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=true",
           { cache: "no-store" }
@@ -28,7 +38,6 @@ export async function GET(req: Request) {
         tvl?: number; chain?: string; apy?: number;
       }> = [];
 
-      // CoinGecko prices
       if (priceRes.ok) {
         const cg = await priceRes.json();
         const info: Record<string, { name: string; sym: string }> = {
@@ -58,7 +67,6 @@ export async function GET(req: Request) {
         }
       }
 
-      // Yields for APY
       const yieldMap: Record<string, number> = {};
       if (yieldsRes.ok) {
         const yd = await yieldsRes.json();
@@ -67,7 +75,6 @@ export async function GET(req: Request) {
         }
       }
 
-      // Top 20 Base-native DeFi protocols (CEX excluded, by TVL)
       if (protocolsRes.ok) {
         const all = await protocolsRes.json();
         const baseProtos = all
@@ -109,12 +116,17 @@ export async function GET(req: Request) {
         timestamp: Date.now(),
       };
     });
-    return NextResponse.json(data);
+
+    const validated = validateOrFallback(MarketResponseSchema.strict(), data, EMPTY_MARKET(), "market");
+    const headers: Record<string, string> = validated.isStale
+      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=300", "X-Cache-Status": "STALE" }
+      : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
+
+    return NextResponse.json(validated, { headers });
   } catch (err) {
-    console.error("Market error:", err);
-    return NextResponse.json({
-      tokens: [], summary: { totalTokens: 0, avgChange24h: 0, totalVolume24h: 0 },
-      topGainers: [], topLosers: [], topByVolume: [],
-    }, { status: 500 });
+    return NextResponse.json({ ...EMPTY_MARKET(), isStale: true }, {
+      status: 200,
+      headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=300" },
+    });
   }
 }

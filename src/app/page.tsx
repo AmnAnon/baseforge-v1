@@ -29,6 +29,7 @@ import ProtocolCompareSection from "@/components/sections/ProtocolCompareSection
 import GasTrackerSection from "@/components/sections/GasTrackerSection";
 import RevenueDashboard from "@/components/sections/RevenueDashboard";
 import MEVSection from "@/components/sections/MEVSection";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useRealTimeData } from "@/hooks/useRealTimeData";
 import { timeAgo, freshnessColor } from "@/lib/utils";
 
@@ -107,40 +108,101 @@ export default function Home() {
   };
 
   const renderSection = () => {
+    const fallback = (label: string) => (
+      <ErrorBoundary
+        fallback={
+          <div className="flex flex-col items-center justify-center p-8 bg-gray-900/50 rounded-2xl border border-red-500/20">
+            <p className="text-red-400 font-semibold mb-2">
+              {label} failed to load
+            </p>
+            <p className="text-xs text-gray-500 mb-4">
+              This section encountered an error without affecting the rest of the dashboard.
+            </p>
+            <button
+              onClick={() => setTab("overview")}
+              className="px-4 py-2 text-sm bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-500/30 rounded-lg transition-colors"
+            >
+              Go to Overview
+            </button>
+          </div>
+        }
+      >
+        {null}
+      </ErrorBoundary>
+    );
+
     switch (tab) {
       case "market":
-        return <MarketSection />;
+        return (
+          <ErrorBoundary>
+            <MarketSection />
+          </ErrorBoundary>
+        );
       case "whales":
-        return <WhalesSection />;
+        return (
+          <ErrorBoundary>
+            <WhalesSection />
+          </ErrorBoundary>
+        );
       case "risk":
-        return <RiskSection />;
+        return (
+          <ErrorBoundary>
+            <RiskSection />
+          </ErrorBoundary>
+        );
       case "charts":
         return (
-          <ChartsSection
-            data={
-              analytics?.tvlHistory
-                ? {
-                    tvlData: analytics.tvlHistory.map(d => ({ date: d.date, tvl: d.tvl })),
-                    feesData: [],
-                    revenueData: [],
-                    supplyBorrowData: [],
-                  }
-                : null
-            }
-          />
+          <ErrorBoundary>
+            <ChartsSection
+              data={
+                analytics?.tvlHistory
+                  ? {
+                      tvlData: analytics.tvlHistory.map(d => ({ date: d.date, tvl: d.tvl })),
+                      feesData: [],
+                      revenueData: [],
+                      supplyBorrowData: [],
+                    }
+                  : null
+              }
+            />
+          </ErrorBoundary>
         );
       case "portfolio":
-        return <PortfolioSection />;
+        return (
+          <ErrorBoundary>
+            <PortfolioSection />
+          </ErrorBoundary>
+        );
       case "alerts":
-        return <AlertsSection />;
+        return (
+          <ErrorBoundary>
+            <AlertsSection />
+          </ErrorBoundary>
+        );
       case "compare":
-        return <ProtocolCompareSection />;
+        return (
+          <ErrorBoundary>
+            <ProtocolCompareSection />
+          </ErrorBoundary>
+        );
       case "revenue":
-        return <RevenueDashboard />;
+        return (
+          <ErrorBoundary>
+            <RevenueDashboard />
+          </ErrorBoundary>
+        );
       case "mev":
-        return <MEVSection />;
+        return (
+          <ErrorBoundary>
+            <MEVSection />
+          </ErrorBoundary>
+        );
       default:
-        return <OverviewSection data={analytics} isLoading={isLoading} />;
+        return (
+          <ErrorBoundary>
+            <OverviewSection data={analytics} isLoading={isLoading} />
+          </ErrorBoundary>
+        );
     }
   };
 

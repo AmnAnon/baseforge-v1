@@ -1,9 +1,10 @@
 // src/app/api/alerts/route.ts
 // Alert check engine — scans Base protocols for trigger conditions
-// Used by both UI alerts tab and optional push notifications
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { validateOrFallback } from "@/lib/validation";
+import { AlertsResponseSchema } from "@/lib/zod/schemas";
 
 interface AlertRule {
   id: string;
@@ -29,12 +30,18 @@ const DEFAULT_ALERT_RULES: AlertRule[] = [
   { id: "high-apy", type: "apy_anomaly", protocol: "*", condition: "apy", threshold: 500, severity: "warning" },
 ];
 
+const EMPTY_ALERTS = () => ({
+  alerts: [],
+  timestamp: Date.now(),
+  isStale: true,
+});
+
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
-    const alerts = await cache.getOrFetch("alert-checks", CACHE_TTL.TVL_HISTORY, async () => {
+    const data = await cache.getWithStaleFallback("alert-checks", CACHE_TTL.TVL_HISTORY, async () => {
       const [protocolsRes] = await Promise.all([
         fetch("https://api.llama.fi/protocols", { cache: "no-store" }),
       ]);
@@ -50,10 +57,8 @@ export async function GET(req: Request) {
 
       for (const proto of baseProtos) {
         const name = proto.name;
-        const tvl = proto.chainTvls.Base || 0;
         const change24h = proto.change_1d || 0;
 
-        // TVL drop alert
         if (change24h < -15) {
           events.push({
             rule: DEFAULT_ALERT_RULES[0],
@@ -64,7 +69,6 @@ export async function GET(req: Request) {
           });
         }
 
-        // Health decrease alert (simplified: no audits + declining TVL)
         const audits = proto.audits || 0;
         const change7d = proto.change_7d || 0;
         if (audits === 0 && change7d < -10) {
@@ -79,34 +83,19 @@ export async function GET(req: Request) {
         }
       }
 
-      return events;
+      return { alerts: events };
     });
 
-    return NextResponse.json({ alerts, timestamp: Date.now() });
+    const validated = validateOrFallback(AlertsResponseSchema, data, EMPTY_ALERTS(), "alerts");
+    const headers: Record<string, string> = validated.isStale
+      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=120", "X-Cache-Status": "STALE" }
+      : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
+
+    return NextResponse.json(validated, { headers });
   } catch (err) {
-    console.error("Alerts API error:", err);
-    return NextResponse.json({ error: "Alert check failed" }, { status: 500 });
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const { protocol, ruleType, threshold } = body;
-
-    // In a production app, save to a persistent store (Upstash, etc.)
-    // For now, return the custom rule that would trigger
-    const customRule: AlertRule | null = {
-      id: `custom-${Date.now()}`,
-      type: ruleType,
-      protocol,
-      condition: ruleType,
-      threshold,
-      severity: threshold > 0 ? "info" : "critical",
-    };
-
-    return NextResponse.json({ rule: customRule });
-  } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    return NextResponse.json(
+      { ...EMPTY_ALERTS(), isStale: true },
+      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } }
+    );
   }
 }
