@@ -30,6 +30,7 @@ export function useRealTimeData() {
   const [lastError, setLastError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | undefined>(undefined);
+  const reconnectAttempts = useRef(0);
 
   const connect = useCallback(() => {
     esRef.current?.close();
@@ -38,7 +39,10 @@ export function useRealTimeData() {
     const es = new EventSource("/api/stream");
     esRef.current = es;
 
-    es.onopen = () => setConnectionState("connected");
+    es.onopen = () => {
+      setConnectionState("connected");
+      reconnectAttempts.current = 0;
+    };
 
     es.addEventListener("data", (event: MessageEvent) => {
       try {
@@ -56,9 +60,13 @@ export function useRealTimeData() {
       setLastError("Stream interrupted — reconnecting...");
       es.close();
 
+      // Exponential backoff: start at 1s, double each time, cap at 30s
+      const nextDelay = Math.min((reconnectAttempts.current + 1) * 1000, 30000);
+      reconnectAttempts.current++;
+
       reconnectTimerRef.current = window.setTimeout(() => {
         connect();
-      }, 3000);
+      }, nextDelay);
     };
   }, []);
 
@@ -75,6 +83,7 @@ export function useRealTimeData() {
     if (reconnectTimerRef.current !== undefined) {
       clearTimeout(reconnectTimerRef.current);
     }
+    reconnectAttempts.current = 0;
     connect();
   }, [connect]);
 
