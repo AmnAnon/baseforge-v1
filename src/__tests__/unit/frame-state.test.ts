@@ -42,7 +42,7 @@ describe("frame state encoding / decoding", () => {
   });
 
   it("returns empty object for undefined input", () => {
-    expect(decodeFrameState(undefined)).toEqual({});
+    expect(decodeFrameState(null)).toEqual({});
   });
 
   it("returns empty object for malformed base64", () => {
@@ -67,6 +67,6 @@ describe("frame state encoding / decoding", () => {
     const encoded = Buffer.from(futureState).toString("base64url");
     const decoded = decodeFrameState(encoded);
     expect(decoded.tab).toBe("overview");
-    expect((decoded as any).version).toBe(2);
+    expect((decoded as Record<string, unknown>).version).toBe(2);
   });
 });
