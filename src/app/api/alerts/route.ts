@@ -1,34 +1,15 @@
 // src/app/api/alerts/route.ts
-// Alert check engine — scans Base protocols for trigger conditions
+// Alert check engine — scans Base protocols against persisted alert rules in Postgres.
+// Reads rules from the database, evaluates conditions against live DefiLlama data,
+// and records triggered events with cooldown enforcement.
+
 import { NextResponse } from "next/server";
-import { cache, CACHE_TTL } from "@/lib/cache";
+import { and, eq, gte, desc, count } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { alertRules, alertEvents } from "@/lib/db/schema";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { AlertsResponseSchema } from "@/lib/zod/schemas";
-
-interface AlertRule {
-  id: string;
-  type: "tvl_drop" | "utilization_spike" | "apy_anomaly" | "whale_movement" | "health_decrease";
-  protocol: string;
-  condition: string;
-  threshold: number;
-  severity: "critical" | "warning" | "info";
-}
-
-interface AlertEvent {
-  rule: AlertRule;
-  protocol: string;
-  currentValue: number;
-  message: string;
-  triggeredAt: number;
-}
-
-const DEFAULT_ALERT_RULES: AlertRule[] = [
-  { id: "tvl-drop", type: "tvl_drop", protocol: "*", condition: "tvl_change_24h_pct", threshold: -15, severity: "critical" },
-  { id: "util-spike", type: "utilization_spike", protocol: "*", condition: "utilization_pct", threshold: 85, severity: "critical" },
-  { id: "health-dec", type: "health_decrease", protocol: "*", condition: "health_score", threshold: 40, severity: "warning" },
-  { id: "high-apy", type: "apy_anomaly", protocol: "*", condition: "apy", threshold: 500, severity: "warning" },
-];
 
 const EMPTY_ALERTS = () => ({
   alerts: [],
@@ -36,66 +17,144 @@ const EMPTY_ALERTS = () => ({
   isStale: true,
 });
 
+async function evaluateAlertRules() {
+  const rules = await db
+    .select()
+    .from(alertRules)
+    .where(eq(alertRules.enabled, true));
+
+  let protocols: {
+    name: string;
+    slug: string;
+    tvl?: number;
+    change_1d?: number;
+    change_7d?: number;
+    audits?: number;
+    apyMean30d?: number;
+    chainTvls?: Record<string, number>;
+  }[] = [];
+  try {
+    const protocolsRes = await fetch("https://api.llama.fi/protocols", { cache: "no-store" });
+    if (protocolsRes.ok) {
+      protocols = await protocolsRes.json();
+    }
+  } catch {
+    return;
+  }
+
+  const baseProtos = protocols.filter(
+    (p) => (p.chainTvls?.Base || 0) > 1_000_000
+  );
+
+  const now = new Date();
+
+  for (const proto of baseProtos) {
+    const name = proto.name;
+
+    for (const rule of rules) {
+      if (rule.protocol !== "*" && rule.protocol !== proto.slug && rule.protocol !== name) continue;
+
+      let value = 0;
+      let triggered = false;
+
+      switch (rule.condition) {
+        case "tvl_change_24h_pct": {
+          value = proto.change_1d || 0;
+          triggered = value < Number(rule.threshold);
+          break;
+        }
+        case "utilization_pct": {
+          value = proto.tvl ? 100 - Math.abs(proto.change_7d || 0) : 0;
+          triggered = value > Number(rule.threshold);
+          break;
+        }
+        case "health_score": {
+          const audits = proto.audits || 0;
+          const change7d = proto.change_7d || 0;
+          value = Math.max(0, 50 + audits * 5 + (change7d < -10 ? -10 : 0));
+          triggered = value < Number(rule.threshold);
+          break;
+        }
+        case "apy": {
+          value = proto.apyMean30d || 0;
+          triggered = value > Number(rule.threshold);
+          break;
+        }
+      }
+
+      if (!triggered) continue;
+
+      const cutoff = new Date(now.getTime() - rule.cooldownMinutes! * 60 * 1000);
+      const recent = await db
+        .select({ count: count() })
+        .from(alertEvents)
+        .where(
+          and(
+            eq(alertEvents.ruleId, rule.id),
+            eq(alertEvents.protocol, name),
+            gte(alertEvents.triggeredAt, cutoff)
+          )
+        );
+
+      if (recent[0]?.count > 0) continue;
+
+      const message = buildAlertMessage(rule.condition, name, value);
+
+      await db
+        .insert(alertEvents)
+        .values({
+          ruleId: rule.id,
+          protocol: name,
+          currentValue: String(value),
+          message,
+          severity: rule.severity,
+          network: rule.network ?? "Base",
+        });
+    }
+  }
+}
+
+function buildAlertMessage(condition: string, name: string, value: number) {
+  switch (condition) {
+    case "tvl_change_24h_pct":
+      return `${name} TVL dropped ${value.toFixed(1)}% in 24h`;
+    case "utilization_pct":
+      return `${name} utilization at ${value.toFixed(1)}%`;
+    case "health_score":
+      return `${name} health score at ${value.toFixed(0)} (unaudited + declining TVL)`;
+    case "apy":
+      return `${name} 30d mean APY at ${value.toFixed(1)}% — anomalous yield`;
+    default:
+      return `${name} alert triggered: ${condition} = ${value}`;
+  }
+}
+
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getWithStaleFallback("alert-checks", CACHE_TTL.TVL_HISTORY, async () => {
-      const [protocolsRes] = await Promise.all([
-        fetch("https://api.llama.fi/protocols", { cache: "no-store" }),
-      ]);
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    await evaluateAlertRules();
 
-      if (!protocolsRes.ok) throw new Error("Failed to fetch protocols");
+    const triggered = await db
+      .select()
+      .from(alertEvents)
+      .where(gte(alertEvents.triggeredAt, twentyFourHoursAgo))
+      .orderBy(desc(alertEvents.triggeredAt));
 
-      const protocols = await protocolsRes.json();
-      const events: AlertEvent[] = [];
-
-      const baseProtos = protocols.filter(
-        (p: { chainTvls?: Record<string, number> }) => (p.chainTvls?.Base || 0) > 1_000_000
-      );
-
-      for (const proto of baseProtos) {
-        const name = proto.name;
-        const change24h = proto.change_1d || 0;
-
-        if (change24h < -15) {
-          events.push({
-            rule: DEFAULT_ALERT_RULES[0],
-            protocol: name,
-            currentValue: change24h,
-            message: `${name} TVL dropped ${change24h.toFixed(1)}% in 24h`,
-            triggeredAt: Date.now(),
-          });
-        }
-
-        const audits = proto.audits || 0;
-        const change7d = proto.change_7d || 0;
-        if (audits === 0 && change7d < -10) {
-          const healthEstimate = Math.max(0, 50 + audits * 5 + (change7d < -10 ? -10 : 0));
-          events.push({
-            rule: DEFAULT_ALERT_RULES[2],
-            protocol: name,
-            currentValue: healthEstimate,
-            message: `${name} health score estimated at ${healthEstimate} (unaudited + declining TVL)`,
-            triggeredAt: Date.now(),
-          });
-        }
-      }
-
-      return { alerts: events };
-    });
-
-    const validated = validateOrFallback(AlertsResponseSchema, data, EMPTY_ALERTS(), "alerts");
-    const headers: Record<string, string> = validated.isStale
-      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=120", "X-Cache-Status": "STALE" }
-      : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
-
-    return NextResponse.json(validated, { headers });
-  } catch (err) {
-    return NextResponse.json(
-      { ...EMPTY_ALERTS(), isStale: true },
-      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } }
+    const validated = validateOrFallback(
+      AlertsResponseSchema,
+      { alerts: triggered, timestamp: Date.now() },
+      EMPTY_ALERTS(),
+      "alerts"
     );
+
+    return NextResponse.json(validated, {
+      headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=60" },
+    });
+  } catch (err) {
+    console.error("[alerts] Error:", err);
+    return NextResponse.json({ ...EMPTY_ALERTS(), isStale: true }, { status: 500 });
   }
 }

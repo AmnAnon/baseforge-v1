@@ -10,6 +10,11 @@ export async function register() {
         environment: process.env.NODE_ENV,
       });
     });
+
+    // Seed default alert rules on startup if no rules exist
+    await import("@/lib/db/seed").then(({ seedDefaultAlertRules }) =>
+      seedDefaultAlertRules().catch(console.error)
+    );
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {

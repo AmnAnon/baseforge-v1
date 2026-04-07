@@ -1,10 +1,11 @@
 // src/components/sections/AlertsSection.tsx
 // Active protocol alerts — TVL drops, utilization spikes, health changes
+// Alerts are persisted in Postgres with acknowledge capability.
 "use client";
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { formatCurrency, timeAgo, freshnessColor } from "@/lib/utils";
+import { timeAgo, freshnessColor } from "@/lib/utils";
 import {
   AlertTriangle,
   CheckCircle,
@@ -12,23 +13,26 @@ import {
   RefreshCw,
   Bell,
   BellOff,
+  Check,
 } from "lucide-react";
 
 interface AlertEvent {
-  rule: {
-    id: string;
-    type: string;
-    severity: "critical" | "warning" | "info";
-  };
+  id: string;
+  ruleId: string | null;
   protocol: string;
-  currentValue: number;
+  network: string | null;
+  currentValue: string;
   message: string;
-  triggeredAt: number;
+  severity: "critical" | "warning" | "info";
+  triggeredAt: string;
+  acknowledged: boolean;
+  acknowledgedAt: string | null;
 }
 
 interface AlertsResponse {
   alerts: AlertEvent[];
   timestamp: number;
+  isStale?: boolean;
 }
 
 const SEVERITY_CONFIG = {
@@ -60,9 +64,10 @@ export default function AlertsSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showAcknowledged, setShowAcknowledged] = useState(false);
+  const [acknowledging, setAcknowledging] = useState<string | null>(null);
 
   const fetchAlerts = async () => {
-    setIsLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/alerts");
@@ -72,6 +77,31 @@ export default function AlertsSection() {
       setError((err as Error).message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const acknowledgeAlert = async (eventId: string) => {
+    setAcknowledging(eventId);
+    try {
+      const res = await fetch("/api/alerts/acknowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId }),
+      });
+      if (!res.ok) throw new Error(`Failed to acknowledge: ${res.status}`);
+      // Optimistic update — remove from visible list
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              alerts: prev.alerts.filter((a) => a.id !== eventId),
+            }
+          : null
+      );
+    } catch (err) {
+      console.error("[Alerts] Acknowledge error:", err);
+    } finally {
+      setAcknowledging(null);
     }
   };
 
@@ -101,8 +131,13 @@ export default function AlertsSection() {
     );
   }
 
-  const criticalCount = data?.alerts.filter(a => a.rule.severity === "critical").length || 0;
-  const warningCount = data?.alerts.filter(a => a.rule.severity === "warning").length || 0;
+  const activeAlerts = data?.alerts.filter((a) => !a.acknowledged) ?? [];
+  const criticalCount = activeAlerts.filter((a) => a.severity === "critical").length;
+  const warningCount = activeAlerts.filter((a) => a.severity === "warning").length;
+
+  const displayedAlerts = showAcknowledged
+    ? data?.alerts ?? []
+    : activeAlerts;
 
   return (
     <section className="space-y-6" aria-labelledby="alerts-heading">
@@ -123,6 +158,16 @@ export default function AlertsSection() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowAcknowledged(!showAcknowledged)}
+            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+              showAcknowledged
+                ? "bg-slate-800 text-slate-300 border border-slate-700"
+                : "bg-gray-800 text-gray-500 border border-gray-700"
+            }`}
+          >
+            {showAcknowledged ? "Hide acknowledged" : "Show acknowledged"}
+          </button>
+          <button
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={`p-2 rounded-lg transition-colors ${
               autoRefresh ? "bg-emerald-900/30 text-emerald-400" : "bg-gray-800 text-gray-500"
@@ -142,7 +187,27 @@ export default function AlertsSection() {
         </div>
       </div>
 
-      {data?.alerts.length === 0 ? (
+      {error && (
+        <Card className="p-6 bg-red-900/20 border-red-500/30">
+          <AlertTriangle className="h-6 w-6 text-red-400 mb-3" />
+          <p className="text-red-400">Could not check alerts</p>
+          <p className="text-sm text-gray-500 mt-1">{error}</p>
+          <button
+            onClick={fetchAlerts}
+            className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm"
+          >
+            Retry
+          </button>
+        </Card>
+      )}
+
+      {isLoading && !data ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="p-4 animate-pulse bg-gray-800/50 h-24" />
+          ))}
+        </div>
+      ) : displayedAlerts.length === 0 ? (
         <Card className="p-8 bg-emerald-900/10 border-emerald-500/20 text-center">
           <CheckCircle className="h-12 w-12 text-emerald-400 mx-auto mb-3" />
           <p className="text-emerald-400 font-medium">All clear — no active alerts</p>
@@ -150,28 +215,52 @@ export default function AlertsSection() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {data?.alerts.map((alert, i) => {
-            const config = SEVERITY_CONFIG[alert.rule.severity];
+          {displayedAlerts.map((alert) => {
+            const config = SEVERITY_CONFIG[alert.severity];
             const Icon = config.icon;
             return (
               <Card
-                key={i}
-                className={`${config.bg} ${config.border} p-4`}
+                key={alert.id}
+                className={`${config.bg} ${config.border} p-4 ${
+                  alert.acknowledged ? "opacity-50" : ""
+                }`}
               >
                 <div className="flex items-start gap-3">
                   <Icon className={`h-5 w-5 ${config.color} mt-0.5 flex-shrink-0`} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded ${config.bg} ${config.color}`}>
                         {config.label}
                       </span>
                       <span className="text-sm font-medium text-white">{alert.protocol}</span>
+                      {alert.network && (
+                        <span className="text-xs text-gray-500 px-2 py-0.5 rounded border border-gray-700">
+                          {alert.network}
+                        </span>
+                      )}
+                      {alert.acknowledged && (
+                        <span className="text-xs text-gray-500">
+                          acknowledged {timeAgo(new Date(alert.acknowledgedAt!).getTime())}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-300">{alert.message}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {timeAgo(alert.triggeredAt)}
+                      {timeAgo(new Date(alert.triggeredAt).getTime())}
                     </p>
                   </div>
+                  {!alert.acknowledged && (
+                    <button
+                      onClick={() => acknowledgeAlert(alert.id)}
+                      disabled={acknowledging === alert.id}
+                      className="p-2 bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-500/20 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+                      title="Acknowledge alert"
+                    >
+                      <Check className={`h-4 w-4 text-emerald-400 ${
+                        acknowledging === alert.id ? "animate-spin" : ""
+                      }`} />
+                    </button>
+                  )}
                 </div>
               </Card>
             );

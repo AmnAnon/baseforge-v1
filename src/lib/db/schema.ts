@@ -1,7 +1,11 @@
 // src/lib/db/schema.ts
 // Drizzle ORM schema definitions for BaseForge Analytics
 
-import { pgTable, text, integer, numeric, timestamp, serial, boolean, jsonb, uuid, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, timestamp, boolean, jsonb, uuid, index, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
+
+// ─── enums ────────────────────────────────────────────────────────
+export const severityEnum = pgEnum("severity", ["critical", "warning", "info"]);
+export const alertTypeEnum = pgEnum("alert_type", ["tvl_drop", "utilization_spike", "apy_anomaly", "whale_movement", "health_decrease"]);
 
 // ─── protocols ─────────────────────────────────────────────────────
 export const protocols = pgTable(
@@ -99,7 +103,58 @@ export const userPreferences = pgTable(
   })
 );
 
+// ─── alert_rules ───────────────────────────────────────────────────
+export const alertRules = pgTable(
+  "alert_rules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    type: alertTypeEnum("type").notNull(),
+    protocol: text("protocol").notNull(),
+    network: text("network"),
+    condition: text("condition").notNull(),
+    threshold: numeric("threshold", { precision: 20, scale: 6 }).notNull(),
+    severity: severityEnum("severity").notNull(),
+    cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    enabledIdx: index("alert_rules_enabled_idx").on(table.enabled),
+    protocolIdx: index("alert_rules_protocol_idx").on(table.protocol),
+    networkIdx: index("alert_rules_network_idx").on(table.network),
+  })
+);
+
+// ─── alert_events ──────────────────────────────────────────────────
+export const alertEvents = pgTable(
+  "alert_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ruleId: uuid("rule_id").references(() => alertRules.id, { onDelete: "set null" }),
+    protocol: text("protocol").notNull(),
+    network: text("network"),
+    currentValue: numeric("current_value", { precision: 20, scale: 6 }).notNull(),
+    message: text("message").notNull(),
+    severity: severityEnum("severity").notNull(),
+    triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
+    acknowledged: boolean("acknowledged").notNull().default(false),
+    acknowledgedAt: timestamp("acknowledged_at"),
+  },
+  (table) => ({
+    eventTriggeredIdx: index("alert_events_triggered_idx").on(table.triggeredAt),
+    eventProtocolIdx: index("alert_events_protocol_idx").on(table.protocol),
+    eventSeverityIdx: index("alert_events_severity_idx").on(table.severity),
+    eventDashboardIdx: index("alert_events_dashboard_idx").on(table.severity, table.acknowledged, table.triggeredAt),
+    eventNetworkIdx: index("alert_events_network_idx").on(table.network),
+  })
+);
+
 // ─── Type exports ──────────────────────────────────────────────────
+export type AlertRule = typeof alertRules.$inferSelect;
+export type NewAlertRule = typeof alertRules.$inferInsert;
+export type AlertEvent = typeof alertEvents.$inferSelect;
+export type NewAlertEvent = typeof alertEvents.$inferInsert;
 export type Protocol = typeof protocols.$inferSelect;
 export type NewProtocol = typeof protocols.$inferInsert;
 export type HistoricalTvl = typeof historicalTvl.$inferSelect;

@@ -182,9 +182,31 @@ export const RevenueResponseSchema = z.object({
 });
 
 export const AlertsResponseSchema = z.object({
-  alerts: z.array(z.unknown()).default([]),
+  alerts: z.array(z.object({
+    id: z.string(),
+    ruleId: z.string().nullable(),
+    protocol: z.string(),
+    network: z.string().nullable(),
+    currentValue: z.string(),
+    message: z.string(),
+    severity: z.enum(["critical", "warning", "info"]),
+    triggeredAt: z.string(),
+    acknowledged: z.boolean(),
+    acknowledgedAt: z.string().nullable(),
+  })).default([]),
   timestamp: z.number(),
   isStale: z.boolean().optional().default(false),
+});
+
+export const AlertRuleRequestSchema = z.object({
+  type: z.enum(["tvl_drop", "utilization_spike", "apy_anomaly", "whale_movement", "health_decrease"]),
+  protocol: z.string().min(1),
+  network: z.string().nullable().optional(),
+  condition: z.string().min(1),
+  threshold: z.number(),
+  severity: z.enum(["critical", "warning", "info"]),
+  cooldownMinutes: z.number().int().positive().optional(),
+  enabled: z.boolean().optional(),
 });
 
 // Type exports

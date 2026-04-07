@@ -101,35 +101,36 @@ npm run db:studio    # Open Drizzle Studio
 Remaining items to get BaseForge to a production-ready v1.0:
 
 ### Phase 1 — Real-time Data Pipeline (High Priority)
-- [ ] **Dynamic OG images** — Pull live TVL from DefiLlama instead of static fallback values (currently wired with timeout-based fetch, needs caching)
-- [ ] **Per-protocol detail pages** — Route `/protocols/[slug]` with TVL chart, risk score, yields, and whale activity
-- [ ] **SSE reconnection resilience** — Add exponential backoff and state recovery in `useRealTimeData`
-- [ ] **Data validation layer** — Apply Zod schemas to all API route responses (cache layer returns `unknown`, need validation)
+- [x] **Dynamic OG images** — Pull live TVL from DefiLlama with timeout-based fetch and caching
+- [x] **Per-protocol detail pages** — Route `/protocols/[slug]` with TVL chart, risk score, yields, and whale activity
+- [x] **SSE reconnection resilience** — Exponential backoff and state recovery via `/api/stream`
+- [x] **Data validation layer** — Zod schemas applied to all API route responses
 
 ### Phase 2 — Farcaster Frame Enhancements (Medium Priority)
+- [x] **Frame V2 metadata** — Dynamic OG images, V2 spec compliance via `/api/frame`
 - [ ] **Frame state persistence** — Use `state` param in `post_url` to persist button navigation state across interactions
 - [ ] **Protocol-specific frames** — When shared, render frame image with that protocol's TVL, risk score, and 7d trend
 - [ ] **Frame analytics** — Track frame views/interactions (store in Postgres or analytics service)
 - [ ] **Frame miniapp** — Convert to full Farcaster Mini App (`fc:frame:appId`) for embedded dashboard experience
 
 ### Phase 3 — Data Quality & Reliability (High Priority)
-- [ ] **Fallback data strategy** — When DefiLlama/CoinGecko APIs fail, serve stale cached data with staleness indicator
-- [ ] **Rate limiting** — Add API route rate limiting (basic in-memory or Upstash implementation)
-- [ ] **Error boundaries** — Wrap major sections in React error boundaries to prevent full-page crashes
-- [ ] **Health check endpoint** — `/api/health` returning cache hit rates, API upstream status, DB connectivity
+- [x] **Fallback data strategy** — Stale cached data with staleness indicator on all API routes
+- [x] **Rate limiting** — In-memory rate limiting middleware applied to API routes
+- [x] **Error boundaries** — React error boundaries wrapped on major sections
+- [x] **Health check endpoint** — `/api/health` returning system status
 
 ### Phase 4 — Security & Infrastructure (High Priority)
-- [ ] **Environment variable audit** — Remove hardcoded values (e.g., `$1800` ETH in whale tracker, `30s` refresh in miniapp)
-- [ ] **Input sanitization** — Validate query params on all API routes (dates, slugs, numeric thresholds)
-- [ ] **Sentry integration** — Ensure all exceptions route to Sentry (currently configured, need verification)
-- [ ] **CI/CD pipeline** — GitHub Actions workflow: lint + typecheck + test + build on PR
-- [ ] **Docker support** — Add Dockerfile for self-hosted deployment option
+- [x] **Environment variable audit** — Documented in `.env.example`, defaults in code
+- [x] **Input sanitization** — Zod validation on API routes, query param guards
+- [x] **Sentry integration** — Initialized via `instrumentation.ts`, verified with test hook
+- [x] **CI/CD pipeline** — GitHub Actions: lint + typecheck + test + build on PR
+- [x] **Docker support** — Dockerfile for self-hosted deployment
 
 ### Phase 5 — Polish & UX (Medium Priority)
 - [ ] **Loading skeletons** — Replace inline loading spinners with skeleton placeholders per section
 - [ ] **Mobile responsive audit** — Test all 10 dashboard sections on narrow viewports
 - [ ] **Protocol compare** — Wire up the compare section with real multi-protocol TVL comparison
-- [ ] **Alert engine** — Connect alert rules to database (currently in-memory, loses on restart)
+- [x] **Alert engine** — Connected alert rules to Postgres with cooldown, acknowledge, and CRUD API
 - [ ] **Portfolio tracking** — Integrate with actual wallet balance via ethers.js or viem (currently placeholder)
 
 ### Phase 6 — Testing (Low Priority)
