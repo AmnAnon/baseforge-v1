@@ -126,6 +126,35 @@ export const alertRules = pgTable(
   })
 );
 
+// ─── frame_interactions ────────────────────────────────────────────
+export const frameInteractions = pgTable(
+  "frame_interactions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    fid: integer("fid"),
+    buttonIndex: integer("button_index").notNull(),
+    action: text("action"),
+    castFid: integer("cast_fid"),
+    castHash: text("cast_hash"),
+    messageHash: text("message_hash"),
+    address: text("address"),
+    tab: text("tab"),
+    protocol: text("protocol"),
+    route: text("route").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    frameFidIdx: index("frame_interactions_fid_idx").on(table.fid),
+    frameRouteIdx: index("frame_interactions_route_idx").on(table.route),
+    frameCreatedIdx: index("frame_interactions_created_idx").on(table.createdAt),
+    frameTabIdx: index("frame_interactions_tab_idx").on(table.tab),
+  })
+);
+
+// ─── Type exports ──────────────────────────────────────────────────
+export type FrameInteraction = typeof frameInteractions.$inferSelect;
+export type NewFrameInteraction = typeof frameInteractions.$inferInsert;
+
 // ─── alert_events ──────────────────────────────────────────────────
 export const alertEvents = pgTable(
   "alert_events",
