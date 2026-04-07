@@ -32,6 +32,7 @@ import MEVSection from "@/components/sections/MEVSection";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useRealTimeData } from "@/hooks/useRealTimeData";
 import { timeAgo, freshnessColor } from "@/lib/utils";
+import AdminStatsBar from "@/components/AdminStatsBar";
 
 interface AnalyticsData {
   baseMetrics?: {
@@ -262,6 +263,9 @@ export default function Home() {
       <main className="p-3 sm:p-6" role="main">
         {renderSection()}
       </main>
+
+      {/* Admin frame analytics */}
+      <AdminStatsBar />
 
       {/* Bottom navigation */}
       <nav
