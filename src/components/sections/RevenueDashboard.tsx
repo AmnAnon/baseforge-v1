@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatPercentage, timeAgo, freshnessColor } from "@/lib/utils";
 import {
   DollarSign,
@@ -99,7 +100,28 @@ export default function RevenueDashboard() {
         </button>
       </div>
 
-      {/* Summary */}
+      {/* Loading skeleton */}
+      {isLoading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Card key={i} className="bg-gray-900/60 border-gray-800 p-4">
+                <Skeleton className="h-3 w-24 mb-2" />
+                <Skeleton className="h-6 w-20" />
+              </Card>
+            ))}
+          </div>
+          <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
+            <div className="p-4 space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          </Card>
+        </div>
+      ) : (
+        <>
+      {/* Summary */ }
       {data && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="bg-gray-900/60 border-gray-800 p-4">
@@ -149,30 +171,31 @@ export default function RevenueDashboard() {
 
       {/* Protocol Table */}
       <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800">
               <th className="text-left p-3 text-gray-500 font-medium text-xs uppercase">Protocol</th>
-              <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">TVL</th>
+              <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden sm:table-cell">TVL</th>
               {view === "fees" && (
                 <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Fees 24h</th>
               )}
               {view === "fees" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Annualized</th>
+                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden md:table-cell">Annualized</th>
               )}
               {view === "yield" && (
                 <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Rev/TVL %</th>
               )}
               {view === "yield" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Real Yield</th>
+                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden sm:table-cell">Real Yield</th>
               )}
               {view === "net" && (
                 <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Net Yield/Day</th>
               )}
               {view === "net" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Emissions/Day</th>
+                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden sm:table-cell">Emissions/Day</th>
               )}
-              <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Audits</th>
+              <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden md:table-cell">Audits</th>
             </tr>
           </thead>
           <tbody>
@@ -184,28 +207,31 @@ export default function RevenueDashboard() {
                     <p className="font-medium text-white">{proto.name}</p>
                     <p className="text-xs text-gray-500">{proto.category}</p>
                   </td>
-                  <td className="p-3 text-right text-gray-300">{formatCurrency(proto.tvl)}</td>
+                  <td className="p-3 text-right text-gray-300 hidden sm:table-cell">{formatCurrency(proto.tvl)}</td>
 
                   {view === "fees" && <td className="p-3 text-right text-emerald-400">{formatCurrency(proto.fees24h)}</td>}
-                  {view === "fees" && <td className="p-3 text-right text-white">{formatCurrency(proto.feesAnnualized)}</td>}
+                  {view === "fees" && <td className="p-3 text-right text-white hidden md:table-cell">{formatCurrency(proto.feesAnnualized)}</td>}
 
                   {view === "yield" && <td className={`p-3 text-right font-medium ${proto.revenueToTvl > 5 ? "text-emerald-400" : "text-gray-400"}`}>{proto.revenueToTvl.toFixed(2)}%</td>}
                   {view === "yield" && (
-                    <td className={`p-3 text-right font-medium ${proto.revenueToTvl > 5 ? "text-emerald-400" : "text-gray-400"}`}>
+                    <td className={`p-3 text-right font-medium hidden sm:table-cell ${proto.revenueToTvl > 5 ? "text-emerald-400" : "text-gray-400"}`}>
                       {proto.revenueToTvl > 0 ? `${proto.revenueToTvl.toFixed(1)}%` : "N/A"}
                     </td>
                   )}
 
                   {view === "net" && <td className={`p-3 text-right font-medium ${netColor}`}>{formatCurrency(proto.netYield)}</td>}
-                  {view === "net" && <td className="p-3 text-right text-gray-400">{formatCurrency(proto.tokenEmissions)}</td>}
+                  {view === "net" && <td className="p-3 text-right text-gray-400 hidden sm:table-cell">{formatCurrency(proto.tokenEmissions)}</td>}
 
-                  <td className="p-3 text-right text-gray-400">{proto.audits > 0 ? proto.audits : "—"}</td>
+                  <td className="p-3 text-right text-gray-400 hidden md:table-cell">{proto.audits > 0 ? proto.audits : "—"}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        </div>
       </Card>
+      </>
+      )}
     </section>
   );
 }
