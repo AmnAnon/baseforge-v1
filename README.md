@@ -108,10 +108,10 @@ Remaining items to get BaseForge to a production-ready v1.0:
 
 ### Phase 2 — Farcaster Frame Enhancements (Medium Priority)
 - [x] **Frame V2 metadata** — Dynamic OG images, V2 spec compliance via `/api/frame`
-- [ ] **Frame state persistence** — Use `state` param in `post_url` to persist button navigation state across interactions
-- [ ] **Protocol-specific frames** — When shared, render frame image with that protocol's TVL, risk score, and 7d trend
-- [ ] **Frame analytics** — Track frame views/interactions (store in Postgres or analytics service)
-- [ ] **Frame miniapp** — Convert to full Farcaster Mini App (`fc:frame:appId`) for embedded dashboard experience
+- [x] **Protocol-specific frames** — Dynamic OG images with TVL, Health Score, and APY per protocol
+- [x] **Frame miniapp** — Full Farcaster Mini App with `.well-known/farcaster.json` manifest, `fc:frame:app_url`, and `action: "app"` launch
+- [x] **Frame analytics** — Interaction logging to Postgres with `Promise.race()` timeout, capturing fid, button clicks, cast source, and wallet
+- [ ] **Frame analytics queries** — Dashboard endpoint for click-through rates, top protocols by frame traffic, and button popularity
 
 ### Phase 3 — Data Quality & Reliability (High Priority)
 - [x] **Fallback data strategy** — Stale cached data with staleness indicator on all API routes
@@ -127,11 +127,11 @@ Remaining items to get BaseForge to a production-ready v1.0:
 - [x] **Docker support** — Dockerfile for self-hosted deployment
 
 ### Phase 5 — Polish & UX (Medium Priority)
-- [ ] **Loading skeletons** — Replace inline loading spinners with skeleton placeholders per section
-- [ ] **Mobile responsive audit** — Test all 10 dashboard sections on narrow viewports
-- [ ] **Protocol compare** — Wire up the compare section with real multi-protocol TVL comparison
+- [x] **Loading skeletons** — Replace inline loading spinners with skeleton placeholders per section
+- [x] **Mobile responsive audit** — Test all 10 dashboard sections on narrow viewports
+- [x] **Protocol compare** — Wire up the compare section with real multi-protocol TVL comparison
 - [x] **Alert engine** — Connected alert rules to Postgres with cooldown, acknowledge, and CRUD API
-- [ ] **Portfolio tracking** — Integrate with actual wallet balance via ethers.js or viem (currently placeholder)
+- [x] **Portfolio tracking** — Viem-based wallet balance tracking with Ethereum + 6 ERC20 tokens on Base via multicall
 
 ### Phase 6 — Testing (Low Priority)
 - [ ] **API route tests** — Mock DefiLlama/ETC responses, test cache TTL behavior, error cases
