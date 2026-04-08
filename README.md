@@ -111,7 +111,7 @@ Remaining items to get BaseForge to a production-ready v1.0:
 - [x] **Protocol-specific frames** — Dynamic OG images with TVL, Health Score, and APY per protocol
 - [x] **Frame miniapp** — Full Farcaster Mini App with `.well-known/farcaster.json` manifest, `fc:frame:app_url`, and `action: "app"` launch
 - [x] **Frame analytics** — Interaction logging to Postgres with `Promise.race()` timeout, capturing fid, button clicks, cast source, and wallet
-- [ ] **Frame analytics queries** — Dashboard endpoint for click-through rates, top protocols by frame traffic, and button popularity
+- [x] **Frame analytics queries** — Dashboard endpoint for click-through rates, top protocols by frame traffic, and button popularity
 
 ### Phase 3 — Data Quality & Reliability (High Priority)
 - [x] **Fallback data strategy** — Stale cached data with staleness indicator on all API routes

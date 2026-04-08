@@ -1,91 +1,131 @@
 // src/app/api/admin/analytics/route.ts
-// Queries frame_interactions for admin dashboard analytics.
-// Protects via a simple admin FID check passed as ?adminFid=.
+// Aggregated frame interaction analytics for the admin dashboard.
+// Protected by x-admin-key header matching ADMIN_KEY env var.
 
 import { NextResponse } from "next/server";
-import { eq, count, sql } from "drizzle-orm";
-import { frameInteractions as frameTable } from "@/lib/db/schema";
+import { count, sql, desc } from "drizzle-orm";
+import { frameInteractions as t } from "@/lib/db/schema";
 import { db } from "@/lib/db/client";
 
-// Hardcoded admin FID — replace with your actual Farcaster FID
-const ADMIN_FID = process.env.ADMIN_FID ? parseInt(process.env.ADMIN_FID) : 666666;
+const ADMIN_KEY = process.env.ADMIN_KEY || "";
 
-// ─── helpers ───────────────────────────────────────────────────────────
+const BUTTON_LABELS: Record<number, string> = {
+  1: "Launch Dashboard (Overview)",
+  2: "Whales",
+  3: "Risk",
+};
+
+// ─── Queries ────────────────────────────────────────────────────────
+
+async function getTotalInteractions() {
+  const [row] = await db.select({ total: count() }).from(t);
+  return Number(row?.total ?? 0);
+}
+
+async function getClicksPerButton() {
+  const rows = await db
+    .select({
+      buttonIndex: t.buttonIndex,
+      clicks: count(),
+    })
+    .from(t)
+    .groupBy(t.buttonIndex)
+    .orderBy(t.buttonIndex);
+
+  return rows.map((r) => ({
+    buttonIndex: r.buttonIndex,
+    label: BUTTON_LABELS[r.buttonIndex] || `Button ${r.buttonIndex}`,
+    clicks: Number(r.clicks),
+  }));
+}
+
+async function getUniqueFIDs() {
+  const [row] = await db
+    .select({ n: sql<number>`count(distinct ${t.fid})` })
+    .from(t)
+    .where(sql`${t.fid} IS NOT NULL`);
+  return Number(row?.n ?? 0);
+}
+
+/** Daily Active Users — distinct FIDs per day over the last 7 days */
+async function getDAUTrend() {
+  const rows = await db
+    .select({
+      date: sql<string>`date_trunc('day', ${t.createdAt})::date::text`,
+      dau: sql<number>`count(distinct ${t.fid})`,
+      interactions: count(),
+    })
+    .from(t)
+    .where(sql`${t.createdAt} >= now() - interval '7 days'`)
+    .groupBy(sql`date_trunc('day', ${t.createdAt})`)
+    .orderBy(sql`date_trunc('day', ${t.createdAt})`);
+
+  return rows.map((r) => ({
+    date: r.date,
+    dau: Number(r.dau),
+    interactions: Number(r.interactions),
+  }));
+}
 
 async function getClicksPerTab() {
   const rows = await db
-    .select({
-      tab: frameTable.tab,
-      clicks: count(),
-    })
-    .from(frameTable)
-    .groupBy(frameTable.tab);
+    .select({ tab: t.tab, clicks: count() })
+    .from(t)
+    .groupBy(t.tab)
+    .orderBy(desc(count()));
 
   const result: Record<string, number> = {};
   for (const row of rows) {
-    if (row.tab) {
-      result[row.tab] = Number(row.clicks);
-    }
+    if (row.tab) result[row.tab] = Number(row.clicks);
   }
   return result;
 }
 
-async function getUniqueFIDs() {
-  const rows = await db
-    .select({ uniqueCount: countDistinct(frameTable.fid) })
-    .from(frameTable)
-    .where(sql`${frameTable.fid} IS NOT NULL`);
-
-  return Number(rows[0]?.uniqueCount ?? 0);
-}
-
-async function getTotalInteractions() {
-  const rows = await db.select({ total: count() }).from(frameTable);
-  return Number(rows[0]?.total ?? 0);
-}
-
 async function getTopProtocols(limit = 10) {
   const rows = await db
-    .select({
-      protocol: frameTable.protocol,
-      views: count(),
-    })
-    .from(frameTable)
-    .where(sql`${frameTable.protocol} IS NOT NULL`)
-    .groupBy(frameTable.protocol)
-    .orderBy(sql`views DESC`)
+    .select({ protocol: t.protocol, views: count() })
+    .from(t)
+    .where(sql`${t.protocol} IS NOT NULL`)
+    .groupBy(t.protocol)
+    .orderBy(desc(count()))
     .limit(limit);
 
   return rows
-    .filter(r => r.protocol)
-    .map(r => ({ protocol: r.protocol!, views: Number(r.views) }));
+    .filter((r) => r.protocol)
+    .map((r) => ({ protocol: r.protocol!, views: Number(r.views) }));
 }
 
-function countDistinct(expr: typeof frameTable.fid) {
-  return sql<number>`count(distinct ${expr})`;
-}
-
-// ─── route ─────────────────────────────────────────────────────────────
+// ─── Route ──────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const adminFid = parseInt(searchParams.get("adminFid") || "0");
-
-  if (!adminFid || adminFid !== ADMIN_FID) {
+  // Auth: x-admin-key header must match ADMIN_KEY env var
+  const key = request.headers.get("x-admin-key");
+  if (!ADMIN_KEY || key !== ADMIN_KEY) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
-    const [clicksPerTab, uniqueUsers, totalInteractions, topProtocols] = await Promise.all([
-      getClicksPerTab(),
-      getUniqueFIDs(),
+    const [
+      totalInteractions,
+      clicksPerButton,
+      uniqueUsers,
+      dauTrend,
+      clicksPerTab,
+      topProtocols,
+    ] = await Promise.all([
       getTotalInteractions(),
+      getClicksPerButton(),
+      getUniqueFIDs(),
+      getDAUTrend(),
+      getClicksPerTab(),
       getTopProtocols(),
     ]);
 
     return NextResponse.json({
       totalInteractions,
       uniqueUsers,
+      clicksPerButton,
+      dauTrend,
       clicksPerTab,
       topProtocols,
     });
