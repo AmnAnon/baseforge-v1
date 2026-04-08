@@ -136,5 +136,5 @@ Remaining items to get BaseForge to a production-ready v1.0:
 ### Phase 6 — Testing (Low Priority)
 - [x] **API route tests** — Mock DefiLlama/external responses, stale cache fallback, error cases, category filtering
 - [x] **Hook tests** — `useRealTimeData` SSE connection lifecycle, reconnection with exponential backoff, disconnect cleanup
-- [ ] **Component tests** — Snapshot key sections with mocked data
+- [x] **Component tests** — Snapshot key sections with mocked data
 - [x] **E2E smoke tests** — Route accessibility checks for `/`, `/api/frame`, `/api/stream`, `/api/analytics`, `/api/health`
