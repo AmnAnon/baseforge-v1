@@ -62,23 +62,26 @@ const MOCK_COMPARE_RESPONSE = {
 
 // ─── Mocks ────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
+
 // Mock Tremor components — avoid heavy charting libs in test env
 vi.mock("@tremor/react", () => ({
   Card: ({ children, className }: { children: React.ReactNode; className?: string }) => (
     <div data-testid="tremor-card" className={className}>{children}</div>
   ),
   Title: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-  Button: ({ children, onClick, className, ...props }: any) => (
-    <button onClick={onClick} className={className} {...props}>{children}</button>
+  Button: ({ children, onClick, className }: AnyRecord) => (
+    <button onClick={onClick} className={className}>{children}</button>
   ),
-  Select: ({ children, value, onValueChange, ...props }: any) => (
+  Select: ({ children, value }: AnyRecord) => (
     <div data-testid="tremor-select" data-value={value}>{children}</div>
   ),
-  SelectItem: ({ children, value, ...props }: any) => (
+  SelectItem: ({ children, value }: AnyRecord) => (
     <div data-testid="tremor-select-item" data-value={value}>{children}</div>
   ),
-  BarChart: ({ data }: any) => <div data-testid="tremor-bar-chart" />,
-  LineChart: ({ data }: any) => <div data-testid="tremor-line-chart" />,
+  BarChart: () => <div data-testid="tremor-bar-chart" />,
+  LineChart: () => <div data-testid="tremor-line-chart" />,
 }));
 
 // Mock chart components that depend on Tremor
@@ -88,7 +91,7 @@ vi.mock("@/components/charts/BaseTVLChart", () => ({
 
 // Mock BaseNetworkMetrics
 vi.mock("@/components/sections/BaseNetworkMetrics", () => ({
-  default: ({ data, isLoading }: { data: any; isLoading: boolean }) => (
+  default: ({ data, isLoading }: { data: { totalTvl?: number } | null; isLoading: boolean }) => (
     <div data-testid="base-network-metrics">
       {isLoading ? "Loading metrics..." : `TVL: ${data?.totalTvl ?? "N/A"}`}
     </div>
@@ -96,10 +99,11 @@ vi.mock("@/components/sections/BaseNetworkMetrics", () => ({
 }));
 
 // Mock ProtocolSwitcher
+interface MockProtocol { name: string }
 vi.mock("@/components/ui/ProtocolSwitcher", () => ({
-  default: ({ protocols, selectedProtocol, isLoading }: any) => (
+  default: ({ protocols, isLoading }: { protocols: MockProtocol[]; isLoading: boolean }) => (
     <div data-testid="protocol-switcher">
-      {isLoading ? "Loading protocols..." : `Protocols: ${protocols.map((p: any) => p.name).join(", ")}`}
+      {isLoading ? "Loading protocols..." : `Protocols: ${protocols.map((p) => p.name).join(", ")}`}
     </div>
   ),
 }));
