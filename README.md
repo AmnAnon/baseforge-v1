@@ -134,7 +134,7 @@ Remaining items to get BaseForge to a production-ready v1.0:
 - [x] **Portfolio tracking** — Viem-based wallet balance tracking with Ethereum + 6 ERC20 tokens on Base via multicall
 
 ### Phase 6 — Testing (Low Priority)
-- [ ] **API route tests** — Mock DefiLlama/ETC responses, test cache TTL behavior, error cases
-- [ ] **Hook tests** — Test `useRealTimeData` SSE connection state machine and reconnection logic
+- [x] **API route tests** — Mock DefiLlama/external responses, stale cache fallback, error cases, category filtering
+- [x] **Hook tests** — `useRealTimeData` SSE connection lifecycle, reconnection with exponential backoff, disconnect cleanup
 - [ ] **Component tests** — Snapshot key sections with mocked data
-- [ ] **E2E smoke tests** — Basic Next.js route accessibility checks (port from removed playwright config)
+- [x] **E2E smoke tests** — Route accessibility checks for `/`, `/api/frame`, `/api/stream`, `/api/analytics`, `/api/health`
