@@ -6,7 +6,7 @@
 //   - Key data elements appear when loaded
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import OverviewSection from "@/components/sections/OverviewSection";
 import MarketSection from "@/components/sections/MarketSection";
 import ProtocolCompareSection from "@/components/sections/ProtocolCompareSection";
@@ -210,9 +210,35 @@ describe("ProtocolCompareSection", () => {
     expect(fetch).toHaveBeenCalledWith("/api/analytics");
   });
 
-  it("shows select prompt while data loads", () => {
-    render(<ProtocolCompareSection />);
-    expect(screen.getByText(/Select two protocols/i)).toBeInTheDocument();
+  it("renders comparison table when data is available and protocols are selected", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(MOCK_COMPARE_RESPONSE),
+    }));
+    const { container } = render(<ProtocolCompareSection />);
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith("/api/analytics");
+    });
+    const table = container.querySelector("table");
+    expect(table).toBeInTheDocument();
+
+    // Check table headers
+    expect(within(table!).getByText("Aerodrome")).toBeInTheDocument();
+    expect(within(table!).getByText("Seamless")).toBeInTheDocument();
+
+    // Check some table content
+    expect(within(table!).getByText("TVL")).toBeInTheDocument();
+    expect(within(table!).getByText("$800M")).toBeInTheDocument();
+
+    expect(screen.queryByText("Select two protocols to compare")).not.toBeInTheDocument();
+  });
+
+  it("renders loading skeleton when fetching data", () => {
+    // Simulate loading state (fetch not yet resolved)
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {}))); // Never resolve
+    const { container } = render(<ProtocolCompareSection />);
+    // Expect one SectionSkeleton to be rendered
+    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(2);
   });
 
   it("renders compare section structure with selectors", () => {

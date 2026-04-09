@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
 import { formatCurrency, formatPercentage, timeAgo, freshnessColor } from "@/lib/utils";
 import {
   DollarSign,
@@ -106,15 +107,14 @@ export default function RevenueDashboard() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {[1, 2, 3, 4, 5].map((i) => (
               <Card key={i} className="bg-gray-900/60 border-gray-800 p-4">
-                <Skeleton className="h-3 w-24 mb-2" />
-                <Skeleton className="h-6 w-20" />
+                <MetricSkeleton />
               </Card>
             ))}
           </div>
           <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
             <div className="p-4 space-y-3">
               {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
+                <TableRowSkeleton key={i} cols={5} />
               ))}
             </div>
           </Card>

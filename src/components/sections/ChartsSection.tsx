@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, ComposedChart } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
+import { SectionSkeleton } from "@/components/ui/Skeleton";
 import { TrendingUp, DollarSign, AlertCircle } from "lucide-react";
 
 interface ChartsData {
@@ -49,10 +50,9 @@ export default function ChartsSection({
   if (isLoading || parentLoading) {
     return (
       <div className="space-y-8">
-        {[1, 2, 3, 4].map(i => (
+        {[1, 2, 3].map(i => (
           <Card key={i} className="bg-gray-900/60 border-gray-800 p-6">
-            <div className="h-7 bg-gray-800 rounded animate-pulse mb-4 w-48" />
-            <div className="h-[300px] bg-gray-800/50 rounded animate-pulse" />
+            <SectionSkeleton rows={1} />
           </Card>
         ))}
       </div>

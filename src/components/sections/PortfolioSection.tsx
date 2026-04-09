@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { formatCurrency, timeAgo, freshnessColor } from "@/lib/utils";
+import { MetricSkeleton, TableRowSkeleton, Skeleton } from "@/components/ui/Skeleton";
 import {
   Wallet,
   AlertTriangle,
@@ -120,6 +121,43 @@ export default function PortfolioSection() {
           <AlertTriangle className="h-5 w-5 text-red-400 flex-shrink-0" />
           <p className="text-red-400 text-sm">{error}</p>
         </Card>
+      )}
+
+      {/* Loading skeleton */}
+      {isLoading && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="bg-gray-900/60 border-gray-800 p-4">
+                <MetricSkeleton />
+              </Card>
+            ))}
+          </div>
+          <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-12 gap-4 px-4 py-3">
+                <Skeleton variant="line" className="col-span-4 w-full" />
+                <Skeleton variant="line" className="col-span-3 w-full" />
+                <Skeleton variant="line" className="col-span-2 w-full" />
+                <Skeleton variant="line" className="col-span-3 w-full" />
+              </div>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="grid grid-cols-12 gap-4 px-4 py-4 items-center">
+                  <div className="col-span-4 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-gray-700/50 to-gray-800/50 animate-pulse" />
+                    <div className="space-y-2 flex-1">
+                      <Skeleton variant="line" className="w-16 h-4" />
+                      <Skeleton variant="line" className="w-10 h-3" />
+                    </div>
+                  </div>
+                  <Skeleton variant="line" className="col-span-3 w-full" />
+                  <Skeleton variant="line" className="col-span-2 w-full" />
+                  <Skeleton variant="line" className="col-span-3 w-full" />
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* Results */}

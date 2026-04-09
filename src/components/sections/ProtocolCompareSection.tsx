@@ -5,6 +5,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { formatCurrency, formatPercentage, timeAgo, freshnessColor } from "@/lib/utils";
+import { SectionSkeleton } from "@/components/ui/Skeleton";
 import {
   TrendingUp,
   TrendingDown,
@@ -159,7 +160,9 @@ export default function ProtocolCompareSection() {
       </div>
 
       {/* Comparison Table */}
-      {protoA && protoB && (
+      {isLoading ? (
+        <SectionSkeleton rows={1} />
+      ) : protoA && protoB ? (
         <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -191,13 +194,11 @@ export default function ProtocolCompareSection() {
             </tbody>
           </table>
         </Card>
-      )}
-
-      {!protoA || !protoB ? (
+      ) : (
         <Card className="p-8 bg-gray-900/60 border-gray-800 text-center">
           <p className="text-gray-400">Select two protocols to compare</p>
         </Card>
-      ) : null}
+      )}
     </section>
   );
 }

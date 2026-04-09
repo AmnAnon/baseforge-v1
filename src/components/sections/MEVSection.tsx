@@ -13,6 +13,7 @@ import {
   Shield,
   Coins,
 } from "lucide-react";
+import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
 
 interface MEVStats {
   total24h: number;
@@ -83,6 +84,26 @@ export default function MEVSection() {
           <RefreshCw className={`h-5 w-5 text-emerald-400 ${isLoading ? "animate-spin" : ""}`} />
         </button>
       </div>
+
+      {/* Loading skeleton */}
+      {isLoading && !data && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="bg-gray-900/60 border-gray-800 p-4">
+                <MetricSkeleton />
+              </Card>
+            ))}
+          </div>
+          <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
+            <div className="p-4 space-y-3">
+              {[1, 2, 3].map((i) => (
+                <TableRowSkeleton key={i} cols={3} className="gap-3" />
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
 
       {data?.comingSoon && (
         <Card className="p-6 bg-yellow-900/20 border-yellow-500/30">

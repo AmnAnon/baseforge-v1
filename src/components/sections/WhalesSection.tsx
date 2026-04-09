@@ -11,6 +11,7 @@ import {
   Filter,
   Activity,
 } from "lucide-react";
+import { MetricSkeleton, CircleRowSkeleton } from "@/components/ui/Skeleton";
 
 interface WhaleTransaction {
   hash: string;
@@ -137,7 +138,15 @@ export default function WhalesSection() {
       </div>
 
       {/* Summary Cards */}
-      {data?.summary && (
+      {isLoading && !data ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="!bg-gray-900/60 border-emerald-500/20 p-4">
+              <MetricSkeleton />
+            </Card>
+          ))}
+        </div>
+      ) : data?.summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
             <p className="text-sm text-gray-400 mb-1">Total Whales</p>
@@ -197,14 +206,8 @@ export default function WhalesSection() {
       {/* Whale Table */}
       <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
         {isLoading ? (
-          <div className="p-8 space-y-3">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="flex items-center gap-4">
-                <div className="h-6 bg-gray-800 rounded animate-pulse w-48" />
-                <div className="h-6 bg-gray-800 rounded animate-pulse w-32" />
-                <div className="h-6 bg-gray-800 rounded animate-pulse w-24" />
-              </div>
-            ))}
+          <div className="p-8">
+            <CircleRowSkeleton rows={5} />
           </div>
         ) : filteredWhales.length === 0 ? (
           <div className="p-12 text-center">

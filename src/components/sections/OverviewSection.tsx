@@ -20,6 +20,7 @@ import {
 import BaseNetworkMetrics from "./BaseNetworkMetrics";
 import BaseTVLChart from "@/components/charts/BaseTVLChart";
 import ProtocolSwitcher, { Protocol } from "../ui/ProtocolSwitcher";
+import { MetricSkeleton } from "@/components/ui/Skeleton";
 
 interface MetricCardProps {
   title: string;
@@ -143,10 +144,7 @@ const MetricCard = ({
 
             <div>
               {isLoading ? (
-                <div className="space-y-2 animate-pulse">
-                  <div className="h-7 bg-gradient-to-r from-gray-700/50 to-gray-800/50 rounded-lg w-3/4"></div>
-                  <div className="h-3 bg-gradient-to-r from-gray-700/30 to-gray-800/30 rounded w-1/2"></div>
-                </div>
+                <MetricSkeleton />
               ) : (
                 <>
                   <p className="text-xl sm:text-2xl font-bold text-white mb-1.5 truncate group-hover:text-emerald-50 transition-colors" title={value !== null ? formatValue(value) : undefined}>

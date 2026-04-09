@@ -13,6 +13,7 @@ import {
   DollarSign,
   BarChart3,
 } from "lucide-react";
+import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
 
 interface TokenData {
   id: string;
@@ -307,13 +308,7 @@ export default function MarketSection({
         <Card className="bg-gray-900/60 p-6">
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center gap-4 animate-pulse">
-                <div className="h-4 bg-gray-800 rounded w-6" />
-                <div className="flex-1 h-4 bg-gray-800 rounded w-32" />
-                <div className="h-4 bg-gray-800 rounded w-20" />
-                <div className="h-4 bg-gray-800 rounded w-16" />
-                <div className="h-4 bg-gray-800 rounded w-24" />
-              </div>
+              <TableRowSkeleton key={i} cols={5} />
             ))}
           </div>
         </Card>

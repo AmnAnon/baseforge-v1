@@ -15,6 +15,7 @@ import {
   BellOff,
   Check,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 interface AlertEvent {
   id: string;
@@ -204,7 +205,19 @@ export default function AlertsSection() {
       {isLoading && !data ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-4 animate-pulse bg-gray-800/50 h-24" />
+            <Card key={i} className="p-4 bg-gray-900/60 border-gray-800">
+              <div className="flex items-start gap-3">
+                <Skeleton variant="line" className="w-5 h-5 rounded" />
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton variant="line" className="w-16 h-3" />
+                    <Skeleton variant="line" className="w-24 h-3" />
+                  </div>
+                  <Skeleton variant="line" className="w-3/4 h-3" />
+                  <Skeleton variant="line" className="w-20 h-2" />
+                </div>
+              </div>
+            </Card>
           ))}
         </div>
       ) : displayedAlerts.length === 0 ? (
