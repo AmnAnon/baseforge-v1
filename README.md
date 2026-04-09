@@ -1,8 +1,16 @@
 # BaseForge
 
-> Real-time DeFi analytics dashboard for the Base blockchain ecosystem.
+> The AI-Ready Intelligence Layer for the Base Ecosystem.
 
-BaseForge aggregates on-chain data from DefiLlama, Llama APIs, Etherscan, and multiple yield/risk sources into a single comprehensive dashboard covering TVL trends, protocol health scores, whale movements, MEV activity, gas tracking, revenue metrics, and portfolio tracking.
+BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, MEV activity, gas costs, protocol revenue — and compresses it into structured intelligence feeds designed for human traders **and** AI agents. Instead of raw dashboards, BaseForge delivers actionable signal: compressed market state, risk-weighted protocol health, and machine-readable context payloads that LLMs can consume directly.
+
+## Killer Use Cases
+
+1. **Automated Risk Assessment** — Real-time health scoring across every Base protocol, factoring in audit status, TVL concentration, fork lineage, oracle diversity, and 7d flow volatility. Get a single number that tells you whether a protocol is safe to interact with before you sign.
+
+2. **AI Agent Data Ingestion** — Plug your agent into `/api/agents/context` and get the entire Base ecosystem state as a single, compressed JSON payload — market overview, risk scores, protocol rankings, and anomaly signals — token-efficient and purpose-built for LLM context windows (Claude, Gemini, local models).
+
+3. **Whale Tracking & Intent Detection** — Monitor large transactions across Uniswap V3, Aerodrome, and Seamless on Base. Surface whale movements before they impact your positions, with historical flow patterns that reveal accumulation and distribution signatures.
 
 ## Features
 
@@ -138,3 +146,36 @@ Remaining items to get BaseForge to a production-ready v1.0:
 - [x] **Hook tests** — `useRealTimeData` SSE connection lifecycle, reconnection with exponential backoff, disconnect cleanup
 - [x] **Component tests** — Snapshot key sections with mocked data
 - [x] **E2E smoke tests** — Route accessibility checks for `/`, `/api/frame`, `/api/stream`, `/api/analytics`, `/api/health`
+
+---
+
+## Current Progress — Q2 2026: Intelligence Layer Pivot
+
+### Where we started
+After completing all 6 phases of the technical roadmap, BaseForge had a solid foundation but faced three critiques: no clear value proposition beyond "dashboard", no obvious killer use case, and no ecosystem layer for developers or agents.
+
+### What we changed
+- **Pivoted positioning** from "DeFi analytics dashboard" → **"The AI-Ready Intelligence Layer for the Base Ecosystem"**
+- **Added `/api/agents/context`** — a single compressed, token-efficient JSON endpoint designed for LLM ingestion (Claude, Gemini, local models)
+- **Added `/api/protocols`** — bulk protocol listing endpoint (was missing root route)
+
+### What's working now
+- Farcaster Frame v3 with miniapp support (8/8 tests passing)
+- Risk scoring across 580+ Base protocols with health scores, audit status, and risk factors
+- SSE streaming with exponential backoff and stale fallback
+- Zod-validated API responses with rate limiting (10 req/min per IP)
+- 580 protocols served at 23ms avg latency (when not rate-limited)
+
+### Next: The Agent Vision
+- **Agent SDK wrapper** — TypeScript/Python client for `/api/agents/context`
+- **Intent detection** — pattern recognition over whale flows (accumulation/distribution signals)
+- **Predictive risk model** — time-series-based risk projection, not just point-in-time scoring
+- **CLI/Developer platform** — `baseforge init`, templates for agents, bots, nodes
+
+### Known Issues
+- **Rate limiter dev-mode bypass** — line 58 of `src/lib/rate-limit.ts` checks `NODE_ENV === "development"`, but the value isn't set in the server process. Fix: change to `NODE_ENV !== "production"`.
+- **Farcaster Frame root-level meta tags** still use `vNext` in `layout.tsx`; the `/api/frame` route uses `v3` correctly.
+
+## Open Source
+
+BaseForge is open source. Contributions welcome — see the roadmap above for areas that need work.
