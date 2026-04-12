@@ -35,18 +35,18 @@ const MOCK_OVERVIEW_DATA = {
 
 const MOCK_MARKET_DATA = {
   tokens: [
-    { id: "ethereum", symbol: "ETH", name: "Ethereum", price: 3500, change24h: 2.5, volume24h: 15_000_000_000, marketCap: 420_000_000_000 },
-    { id: "usdc", symbol: "USDC", name: "USD Coin", price: 1.0, change24h: 0.01, volume24h: 5_000_000_000, marketCap: 30_000_000_000 },
-    { id: "cbeth", symbol: "cbETH", name: "Coinbase Staked ETH", price: 3600, change24h: 2.4, volume24h: 500_000_000, marketCap: 2_000_000_000 },
+    { id: "ethereum", symbol: "ETH", name: "Ethereum", logo: "", price: 3500, change24h: 2.5, volume24h: 15_000_000_000, marketCap: 420_000_000_000 },
+    { id: "usdc", symbol: "USDC", name: "USD Coin", logo: "", price: 1.0, change24h: 0.01, volume24h: 5_000_000_000, marketCap: 30_000_000_000 },
+    { id: "cbeth", symbol: "cbETH", name: "Coinbase Staked ETH", logo: "", price: 3600, change24h: 2.4, volume24h: 500_000_000, marketCap: 2_000_000_000 },
   ],
   topGainers: [
-    { id: "aerodrome", symbol: "AERO", name: "Aerodrome", price: 1.2, change24h: 15.3, volume24h: 200_000_000, marketCap: 800_000_000 },
+    { id: "aerodrome", symbol: "AERO", name: "Aerodrome", logo: "", price: 1.2, change24h: 15.3, volume24h: 200_000_000, marketCap: 800_000_000 },
   ],
   topLosers: [
-    { id: "extra-finance", symbol: "XFI", name: "Extra Finance", price: 0.05, change24h: -8.1, volume24h: 5_000_000, marketCap: 50_000_000 },
+    { id: "extra-finance", symbol: "XFI", name: "Extra Finance", logo: "", price: 0.05, change24h: -8.1, volume24h: 5_000_000, marketCap: 50_000_000 },
   ],
   topByVolume: [
-    { id: "ethereum", symbol: "ETH", name: "Ethereum", price: 3500, change24h: 2.5, volume24h: 15_000_000_000, marketCap: 420_000_000_000 },
+    { id: "ethereum", symbol: "ETH", name: "Ethereum", logo: "", price: 3500, change24h: 2.5, volume24h: 15_000_000_000, marketCap: 420_000_000_000 },
   ],
   summary: { totalTokens: 3, avgChange24h: 1.5, totalVolume24h: 20_500_000_000 },
   timestamp: Date.now(),

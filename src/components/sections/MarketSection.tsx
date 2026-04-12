@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card } from "@tremor/react";
 import {
   ArrowUpRight,
   ArrowDownRight,
@@ -15,15 +14,17 @@ import {
 } from "lucide-react";
 import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
 
+// ─── Types ──────────────────────────────────────────────────────
+
 interface TokenData {
   id: string;
   symbol: string;
   name: string;
+  logo: string;
   price: number;
   change24h: number;
   volume24h: number;
   marketCap: number;
-  tvl?: number;
 }
 
 interface MarketSummary {
@@ -39,78 +40,111 @@ interface ApiResponse {
   topByVolume: TokenData[];
   summary: MarketSummary;
   timestamp: number;
+  isStale?: boolean;
 }
 
-function formatUSD(value: number): string {
+// ─── Formatters ─────────────────────────────────────────────────
+
+function formatPrice(value: number): string {
+  if (value >= 10_000) return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  if (value >= 1) return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  if (value >= 0.0001) return `$${value.toFixed(6)}`;
+  return `$${value.toExponential(2)}`;
+}
+
+function formatCompact(value: number): string {
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
   if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
-  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
-  if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
-  return `${value.toFixed(value < 0.01 ? 6 : 2)}`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}K`;
+  return `$${value.toFixed(0)}`;
 }
 
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function formatPct(value: number): string {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
 }
+
+// ─── Token Row ──────────────────────────────────────────────────
 
 function TokenRow({ token, rank }: { token: TokenData; rank: number }) {
+  const isUp = token.change24h >= 0;
+
   return (
-    <div className="flex items-center gap-4 p-3 hover:bg-gray-800/30 transition-colors rounded-lg group">
-      <span className="text-sm text-gray-500 w-6 text-right tabular-nums">
-        {rank}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="font-medium text-white truncate">{token.name}</p>
-          <span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
-            {token.symbol}
-          </span>
+    <tr className="border-b border-gray-800/40 hover:bg-gray-800/20 transition-colors">
+      {/* Rank */}
+      <td className="py-3 px-2 text-center">
+        <span className="text-xs text-gray-500 tabular-nums">{rank}</span>
+      </td>
+
+      {/* Token (logo + name + symbol) */}
+      <td className="py-3 px-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img
+            src={token.logo}
+            alt={token.symbol}
+            width={28}
+            height={28}
+            className="rounded-full flex-shrink-0 bg-gray-800"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+          <div className="min-w-0">
+            <p className="font-semibold text-white text-sm truncate leading-tight">
+              {token.name}
+            </p>
+            <p className="text-xs text-gray-500 leading-tight">{token.symbol}</p>
+          </div>
         </div>
-      </div>
+      </td>
 
       {/* Price */}
-      <div className="text-right w-24">
-        <p className="text-sm font-bold text-white tabular-nums">
-          {formatUSD(token.price)}
-        </p>
-      </div>
+      <td className="py-3 px-2 text-right">
+        <span className="text-sm font-bold text-white tabular-nums whitespace-nowrap">
+          {formatPrice(token.price)}
+        </span>
+      </td>
 
-      {/* Change */}
-      <div
-        className={`flex items-center gap-1 text-sm w-20 ${
-          token.change24h >= 0 ? "text-emerald-400" : "text-red-400"
-        }`}
-      >
-        {token.change24h >= 0 ? (
-          <ArrowUpRight className="h-4 w-4" />
-        ) : (
-          <ArrowDownRight className="h-4 w-4" />
-        )}
-        <span className="tabular-nums">{token.change24h.toFixed(1)}%</span>
-      </div>
+      {/* 24h Change */}
+      <td className="py-3 px-2 text-right">
+        <div className={`inline-flex items-center gap-0.5 text-sm font-medium tabular-nums whitespace-nowrap ${isUp ? "text-emerald-400" : "text-red-400"}`}>
+          {isUp ? <ArrowUpRight className="h-3.5 w-3.5 flex-shrink-0" /> : <ArrowDownRight className="h-3.5 w-3.5 flex-shrink-0" />}
+          {formatPct(token.change24h)}
+        </div>
+      </td>
 
-      {/* Volume */}
-      <div className="text-right w-24">
-        <p className="text-sm text-gray-400 tabular-nums">
-          {formatUSD(token.volume24h)}
-        </p>
-        <p className="text-xs text-gray-500">24h vol</p>
-      </div>
+      {/* Volume (hidden on small screens) */}
+      <td className="py-3 px-2 text-right hidden sm:table-cell">
+        <span className="text-sm text-gray-400 tabular-nums whitespace-nowrap">
+          {formatCompact(token.volume24h)}
+        </span>
+      </td>
 
-      {/* Market Cap */}
-      <div className="text-right w-24">
-        <p className="text-sm text-gray-300 tabular-nums">
-          {formatUSD(token.marketCap)}
-        </p>
-        <p className="text-xs text-gray-500">mcap</p>
-      </div>
-    </div>
+      {/* Market Cap (hidden on small screens) */}
+      <td className="py-3 px-2 text-right hidden md:table-cell">
+        <span className="text-sm text-gray-300 tabular-nums whitespace-nowrap">
+          {formatCompact(token.marketCap)}
+        </span>
+      </td>
+    </tr>
   );
 }
+
+// ─── Tab Config ─────────────────────────────────────────────────
+
+type TabId = "all" | "gainers" | "losers" | "volume";
+
+const TABS: { id: TabId; label: string; shortLabel: string; icon: typeof BarChart3 }[] = [
+  { id: "all", label: "All Tokens", shortLabel: "All", icon: BarChart3 },
+  { id: "gainers", label: "Top Gainers", shortLabel: "Gainers", icon: TrendingUp },
+  { id: "losers", label: "Top Losers", shortLabel: "Losers", icon: TrendingDown },
+  { id: "volume", label: "By Volume", shortLabel: "Volume", icon: DollarSign },
+];
+
+// ─── Main Component ─────────────────────────────────────────────
 
 export default function MarketSection({
   data,
@@ -119,223 +153,208 @@ export default function MarketSection({
   data?: ApiResponse | null;
   isLoading?: boolean;
 }) {
-  const [marketData, setMarketData] = useState<ApiResponse | null>(
-    data ?? null
-  );
+  const [marketData, setMarketData] = useState<ApiResponse | null>(data ?? null);
   const [isLoading, setIsLoading] = useState(!data);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tokens" | "gainers" | "losers" | "volume">(
-    "tokens"
-  );
+  const [tab, setTab] = useState<TabId>("all");
+
+  const fetchData = () => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    fetch("/api/market")
+      .then((r) => {
+        if (!r.ok) throw new Error(`API error: ${r.status}`);
+        return r.json();
+      })
+      .then((d) => { if (!cancelled) setMarketData(d); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
+    return () => { cancelled = true; };
+  };
 
   useEffect(() => {
-    const fetchMarket = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/market");
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        const json = await res.json();
-        setMarketData(json);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchMarket();
+    let cancelled = false;
+    fetch("/api/market")
+      .then((r) => {
+        if (!r.ok) throw new Error(`API error: ${r.status}`);
+        return r.json();
+      })
+      .then((d) => { if (!cancelled) { setMarketData(d); setIsLoading(false); } })
+      .catch((e) => { if (!cancelled) { setError(e.message); setIsLoading(false); } });
+    return () => { cancelled = true; };
   }, []);
 
-  if (error) {
+  // ── Error state ──
+
+  if (error && !marketData) {
     return (
-      <Card className="p-6 bg-red-900/20 border-red-500/30">
-        <AlertCircle className="h-6 w-6 text-red-400 mb-2" />
-        <p className="text-red-400 font-medium">Market data unavailable</p>
-        <p className="text-sm text-gray-500 mt-1">{error}</p>
-        <button
-          onClick={() => {
-            setError(null);
-            setIsLoading(true);
-            fetch("/api/market")
-              .then((r) => r.json())
-              .then((d) => setMarketData(d))
-              .catch((e) => setError(e.message))
-              .finally(() => setIsLoading(false));
-          }}
-          className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm"
-        >
-          Retry
-        </button>
-      </Card>
+      <section className="space-y-4">
+        <h2 className="text-2xl font-bold text-white">Market Overview</h2>
+        <div className="flex flex-col items-center justify-center p-8 bg-gray-900/50 rounded-2xl border border-red-500/20">
+          <AlertCircle className="h-6 w-6 text-red-400 mb-3" />
+          <p className="text-red-400 font-medium mb-1">Market data unavailable</p>
+          <p className="text-sm text-gray-500 mb-4">{error}</p>
+          <button
+            onClick={fetchData}
+            className="px-4 py-2 text-sm bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-500/30 rounded-lg transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </section>
     );
   }
 
   const loading = isLoading || parentLoading;
 
-  const getDisplayTokens = () => {
+  // ── Get display tokens based on active tab ──
+
+  const getDisplayTokens = (): TokenData[] => {
     if (!marketData) return [];
     switch (tab) {
-      case "gainers":
-        if (marketData.topGainers.length > 0) return marketData.topGainers;
-        return marketData.tokens
-          .filter((t) => t.change24h > 0)
-          .sort((a, b) => b.change24h - a.change24h)
-          .slice(0, 5);
-      case "losers":
-        if (marketData.topLosers.length > 0) return marketData.topLosers;
-        return marketData.tokens
-          .filter((t) => t.change24h < 0)
-          .sort((a, b) => a.change24h - b.change24h)
-          .slice(0, 5);
-      case "volume":
-        return marketData.topByVolume;
-      default:
-        return marketData.tokens.sort((a, b) => b.marketCap - a.marketCap);
+      case "gainers": return marketData.topGainers;
+      case "losers": return marketData.topLosers;
+      case "volume": return marketData.topByVolume;
+      default: return marketData.tokens;
     }
   };
 
+  const displayTokens = getDisplayTokens();
+
   return (
-    <section className="space-y-6" aria-labelledby="market-heading">
-      <div className="flex items-start justify-between">
+    <section className="space-y-5" aria-labelledby="market-heading">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 id="market-heading" className="text-2xl font-bold text-white">
+          <h2 id="market-heading" className="text-2xl sm:text-3xl font-bold text-white">
             Market Overview
           </h2>
-          <p className="text-sm text-gray-400">
-            {marketData?.tokens.length ?? "—"} tracked tokens
+          <p className="text-sm text-gray-400 mt-0.5">
+            Base ecosystem tokens — real-time prices
           </p>
         </div>
-
         <button
-          onClick={() => {
-            setIsLoading(true);
-            fetch("/api/market")
-              .then((r) => r.json())
-              .then((d) => setMarketData(d))
-              .catch((e) => setError(e.message))
-              .finally(() => setIsLoading(false));
-          }}
+          onClick={fetchData}
           disabled={isLoading}
-          className="p-2 bg-emerald-900/30 border border-emerald-500/20 rounded-lg hover:bg-emerald-800/50 transition-colors disabled:opacity-50"
+          className="p-2 bg-emerald-900/30 border border-emerald-500/20 rounded-xl hover:bg-emerald-800/50 transition-colors disabled:opacity-50 flex-shrink-0"
           aria-label="Refresh market data"
         >
-          <RefreshCw
-            className={`h-5 w-5 text-emerald-400 ${
-              isLoading ? "animate-spin" : ""
-            }`}
-          />
+          <RefreshCw className={`h-5 w-5 text-emerald-400 ${isLoading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
       {/* Summary Cards */}
-      {marketData?.summary && !loading && (
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <BarChart3 className="h-4 w-4 text-gray-500" />
-              <p className="text-xs text-gray-400 uppercase tracking-wide">
-                Tokens
-              </p>
+      {loading && !marketData ? (
+        <div className="grid grid-cols-3 gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+              <MetricSkeleton />
             </div>
-            <p className="text-2xl font-bold text-white">
-              {marketData.summary.totalTokens}
-            </p>
-          </Card>
-          <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
-            <div className="flex items-center gap-2 mb-1">
-              {marketData.summary.avgChange24h >= 0 ? (
-                <TrendingUp className="h-4 w-4 text-emerald-400" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-400" />
-              )}
-              <p className="text-xs text-gray-400 uppercase tracking-wide">
-                Avg 24h Change
-              </p>
-            </div>
-            <p
-              className={`text-2xl font-bold ${
-                marketData.summary.avgChange24h >= 0
-                  ? "text-emerald-400"
-                  : "text-red-400"
-              }`}
-            >
-              {marketData.summary.avgChange24h >= 0 ? "+" : ""}
-              {marketData.summary.avgChange24h.toFixed(2)}%
-            </p>
-          </Card>
-          <Card className="!bg-gray-900/60 border-emerald-500/20 p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <DollarSign className="h-4 w-4 text-gray-500" />
-              <p className="text-xs text-gray-400 uppercase tracking-wide">
-                24h Volume
-              </p>
-            </div>
-            <p className="text-2xl font-bold text-white tabular-nums">
-              {formatUSD(marketData.summary.totalVolume24h)}
-            </p>
-          </Card>
+          ))}
         </div>
-      )}
+      ) : marketData?.summary ? (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-1">
+              <BarChart3 className="h-3.5 w-3.5 text-gray-500" />
+              <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Tokens</p>
+            </div>
+            <p className="text-lg sm:text-2xl font-bold text-white tabular-nums">{marketData.summary.totalTokens}</p>
+          </div>
+          <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-1">
+              {marketData.summary.avgChange24h >= 0 ? (
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <TrendingDown className="h-3.5 w-3.5 text-red-400" />
+              )}
+              <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">Avg 24h</p>
+            </div>
+            <p className={`text-lg sm:text-2xl font-bold tabular-nums ${marketData.summary.avgChange24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {formatPct(marketData.summary.avgChange24h)}
+            </p>
+          </div>
+          <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+            <div className="flex items-center gap-1.5 mb-1">
+              <DollarSign className="h-3.5 w-3.5 text-gray-500" />
+              <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider">24h Vol</p>
+            </div>
+            <p className="text-lg sm:text-2xl font-bold text-white tabular-nums">{formatCompact(marketData.summary.totalVolume24h)}</p>
+          </div>
+        </div>
+      ) : null}
 
       {/* Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-gray-800 pb-2">
-        {(
-          [
-            { id: "tokens", label: "All Tokens", icon: BarChart3 },
-            { id: "gainers", label: "Top Gainers", icon: TrendingUp },
-            { id: "losers", label: "Top Losers", icon: TrendingDown },
-            { id: "volume", label: "By Volume", icon: DollarSign },
-          ] as const
-        ).map(({ id, label, icon: Icon }) => (
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {TABS.map(({ id, label, shortLabel, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
               tab === id
                 ? "bg-emerald-900/40 text-emerald-400 border border-emerald-500/30"
                 : "text-gray-400 hover:text-emerald-300 hover:bg-gray-800/30"
             }`}
           >
-            <Icon className="h-4 w-4" />
-            {label}
+            <Icon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sm:hidden">{shortLabel}</span>
           </button>
         ))}
       </div>
 
-      {/* Token List */}
-      {loading ? (
-        <Card className="bg-gray-900/60 p-6">
+      {/* Token Table */}
+      {loading && !marketData ? (
+        <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
           <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
+            {[1, 2, 3, 4, 5, 6].map((i) => (
               <TableRowSkeleton key={i} cols={5} />
             ))}
           </div>
-        </Card>
+        </div>
       ) : (
-        <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
-          {/* Table Header */}
-          <div className="flex items-center gap-4 p-3 border-b border-gray-800 text-xs text-gray-500">
-            <span className="w-6 text-right">#</span>
-            <span className="flex-1">Token</span>
-            <span className="w-24 text-right">Price</span>
-            <span className="w-20 text-right">24h %</span>
-            <span className="w-24 text-right">Volume</span>
-            <span className="w-24 text-right">Mcap</span>
+        <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px]">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="py-2.5 px-2 text-center text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider w-10">#</th>
+                  <th className="py-2.5 px-2 text-left text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider">Token</th>
+                  <th className="py-2.5 px-2 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider">Price</th>
+                  <th className="py-2.5 px-2 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider">24h %</th>
+                  <th className="py-2.5 px-2 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider hidden sm:table-cell">Volume</th>
+                  <th className="py-2.5 px-2 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase tracking-wider hidden md:table-cell">Market Cap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayTokens.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-16 text-center text-gray-500">
+                      No market data available
+                    </td>
+                  </tr>
+                ) : (
+                  displayTokens.map((token, i) => (
+                    <TokenRow token={token} rank={i + 1} key={token.id} />
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
-          <div className="divide-y divide-gray-800/50">
-            {getDisplayTokens().length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                No market data available
-              </div>
-            ) : (
-              getDisplayTokens().map((token, i) => (
-                <TokenRow token={token} rank={i + 1} key={token.id} />
-              ))
+          {/* Footer */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-gray-800/50 bg-gray-950/30">
+            <p className="text-[10px] text-gray-600">
+              Powered by CoinGecko · Envio HyperSync
+            </p>
+            {marketData?.timestamp && (
+              <p className="text-[10px] text-gray-600 tabular-nums">
+                Updated {new Date(marketData.timestamp).toLocaleTimeString()}
+              </p>
             )}
           </div>
-        </Card>
+        </div>
       )}
     </section>
   );

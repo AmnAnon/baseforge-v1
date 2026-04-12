@@ -117,6 +117,7 @@ export const MarketResponseSchema = z.object({
     id: z.string(),
     symbol: z.string(),
     name: z.string(),
+    logo: z.string().default(""),
     price: z.number(),
     change24h: z.number(),
     volume24h: z.number(),
