@@ -15,9 +15,9 @@ export async function GET() {
 
   const manifest = {
     accountAssociation: {
-      header: "",
-      payload: "",
-      signature: "",
+      header: process.env.FC_ACCOUNT_HEADER || "",
+      payload: process.env.FC_ACCOUNT_PAYLOAD || "",
+      signature: process.env.FC_ACCOUNT_SIGNATURE || "",
     },
     miniapp: {
       version: "1",

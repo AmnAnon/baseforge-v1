@@ -11,6 +11,7 @@ Professional documentation for the BaseForge Analytics platform.
 | [Data Sources](./DATA_SOURCES.md) | Current and planned data sources, indexer comparison |
 | [Risk Methodology](./RISK_METHODOLOGY.md) | Transparent breakdown of the health/risk scoring algorithm |
 | [Setup Guide](./SETUP.md) | Local development, Docker, and production deployment |
+| [Deployment](./DEPLOYMENT.md) | Base App + Farcaster deployment (post-April 9 2026 changes) |
 | [Database Migrations](./DATABASE.md) | Drizzle ORM migration strategy, commands, and safety rules |
 | [Contributing](./CONTRIBUTING.md) | How to contribute — code style, PR process, issue guidelines |
 | [Agent Guide](./AGENT_GUIDE.md) | AI agent integration guide with prompt templates |
