@@ -66,9 +66,9 @@ function buildFrame({ image, aspectRatio, buttons, input, state, appUrl }: Frame
   const stateStr = state ? encodeFrameState(state) : "";
 
   let metaTags = `
-    <meta property="fc:frame" content="vNext" />
-    <meta property="fc:frame:image" content="${encode(image)}" />
-    <meta property="fc:frame:image:aspect_ratio" content="${encode(aspectRatio)}" />
+    <meta property="fc:frame" content="v3" />
+    <meta property="og:image" content="${encode(image)}" />
+    <meta property="og:image:aspect_ratio" content="${encode(aspectRatio)}" />
   `;
 
   for (const btn of buttons) {

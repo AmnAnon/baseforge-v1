@@ -42,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     // Farcaster Frame V1 metadata — embedded as OpenGraph other tags
     other: {
-      "fc:frame": "vNext",
+      "fc:frame": "v3",
       "fc:frame:image": `${baseUrl}/api/og`,
       "fc:frame:image:aspect_ratio": "1.91:1",
       "fc:frame:button:1": "Launch Dashboard",

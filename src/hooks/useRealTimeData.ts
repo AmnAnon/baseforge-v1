@@ -32,6 +32,8 @@ export function useRealTimeData() {
   const reconnectTimerRef = useRef<number | undefined>(undefined);
   const reconnectAttempts = useRef(0);
 
+  const connectRef = useRef<() => void>(() => {});
+
   const connect = useCallback(() => {
     esRef.current?.close();
     setConnectionState("connecting");
@@ -65,10 +67,14 @@ export function useRealTimeData() {
       reconnectAttempts.current++;
 
       reconnectTimerRef.current = window.setTimeout(() => {
-        connect();
+        connectRef.current();
       }, nextDelay);
     };
   }, []);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimerRef.current !== undefined) {

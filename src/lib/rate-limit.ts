@@ -54,8 +54,8 @@ export const defaultRateLimiter = new RateLimiter({
 
 export function rateLimiterMiddleware(limiter: RateLimiter = defaultRateLimiter) {
   return async (request: Request): Promise<Response | null> => {
-    // Skip in dev
-    if (process.env.NODE_ENV === "development") return null;
+    // Skip rate limiting outside production
+    if (process.env.NODE_ENV !== "production") return null;
 
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0] ??
