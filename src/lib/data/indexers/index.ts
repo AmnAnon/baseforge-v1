@@ -12,6 +12,7 @@
 
 import { cache } from "@/lib/cache";
 import { logger, timing } from "@/lib/logger";
+import { monitor } from "@/lib/monitoring";
 import * as envio from "./envio-provider";
 import * as fallback from "./fallback-provider";
 import type {
@@ -56,12 +57,17 @@ async function isEnvioAvailable(): Promise<boolean> {
 
   try {
     const health = await envio.checkHealth();
+    const wasHealthy = envioHealthy;
     envioHealthy = health.healthy;
     lastEnvioCheck = Date.now();
     if (!health.healthy) {
       logger.warn("Envio HyperSync unhealthy, using fallback", {
         latencyMs: health.latencyMs,
       });
+      monitor.trackDataSourceFailure("envio", new Error("Health check failed"), { latencyMs: health.latencyMs });
+    } else if (!wasHealthy && health.healthy) {
+      // Recovery detected
+      monitor.trackDataSourceRecovery("envio-hypersync", HEALTH_CHECK_INTERVAL);
     }
     return health.healthy;
   } catch {
@@ -84,12 +90,15 @@ async function withFallback<T>(
   if (await isEnvioAvailable()) {
     try {
       const data = await primary();
-      end();
+      const latencyMs = end();
+      monitor.trackLatency(`indexer.${label}`, latencyMs, { provider: "envio" });
       return { data, source: "envio-hypersync" };
     } catch (err) {
       logger.warn(`Envio ${label} failed, falling back`, {
         error: err instanceof Error ? err.message : "unknown",
       });
+      monitor.trackDataSourceFailure("envio", err, { operation: label });
+      monitor.trackProviderSwitch("envio-hypersync", "etherscan-fallback", err instanceof Error ? err.message : "unknown");
       // Mark unhealthy for circuit breaker
       envioHealthy = false;
     }
@@ -98,10 +107,12 @@ async function withFallback<T>(
   // Fallback (Etherscan + DefiLlama)
   try {
     const data = await secondary();
-    end();
+    const latencyMs = end();
+    monitor.trackLatency(`indexer.${label}`, latencyMs, { provider: "etherscan-fallback" });
     return { data, source: "etherscan-fallback" };
   } catch (err) {
     end();
+    monitor.trackDataSourceFailure("etherscan", err, { operation: label });
     logger.error(`Both providers failed for ${label}`, {
       error: err instanceof Error ? err.message : "unknown",
     });

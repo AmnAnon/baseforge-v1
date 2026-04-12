@@ -72,7 +72,7 @@ const TABS: TabConfig[] = [
 export default function Home() {
   const [tab, setTab] = useState<TabType>("overview");
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const { data: streamData, connectionState: streamState, isConnected } = useRealTimeData();
+  const { data: streamData, connectionState: streamState, isConnected, isFailed, reconnect, health } = useRealTimeData();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
@@ -247,13 +247,23 @@ export default function Home() {
 
           {streamData && !isLoading && (
             <div className="flex items-center gap-2 text-xs text-gray-500 mt-2">
-              <Signal className={`h-3 w-3 ${isConnected ? "text-emerald-400" : "text-yellow-400"}`} />
+              <Signal className={`h-3 w-3 ${isConnected ? "text-emerald-400" : isFailed ? "text-red-400" : "text-yellow-400"}`} />
               <span>
-                SSE {isConnected ? "Live" : streamState} —
-                <span className="text-emerald-400/70 ml-1">
-                  {streamData?.timestamp ? new Date(streamData.timestamp).toLocaleTimeString() : "connecting..."}
-                </span>
+                SSE {isConnected ? "Live" : isFailed ? "Failed" : streamState}
+                {isFailed && (
+                  <button onClick={reconnect} className="ml-2 text-emerald-400 hover:text-emerald-300 underline underline-offset-2">
+                    Reconnect
+                  </button>
+                )}
+                {!isFailed && (
+                  <span className="text-emerald-400/70 ml-1">
+                    {streamData?.timestamp ? new Date(streamData.timestamp).toLocaleTimeString() : "connecting..."}
+                  </span>
+                )}
               </span>
+              {health.attempts > 0 && !isConnected && (
+                <span className="text-yellow-500/60">retry {health.attempts}</span>
+              )}
             </div>
           )}
         </div>

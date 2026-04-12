@@ -1,9 +1,11 @@
 // src/__tests__/hooks/useRealTimeData.test.ts
 // Tests the useRealTimeData SSE hook:
-//   - Connection lifecycle (connecting → connected)
-//   - Data parsing from SSE "data" events
-//   - Reconnection with exponential backoff on error
-//   - Clean disconnect
+//   - Connection lifecycle (connecting → connected → failed)
+//   - Data parsing from SSE events
+//   - Exponential backoff with jitter
+//   - Page visibility handling
+//   - Heartbeat timeout detection
+//   - Clean disconnect and unmount
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
@@ -19,6 +21,7 @@ class MockEventSource {
   readyState: number = 0; // CONNECTING
   listeners: EventSourceListener = {};
   onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: (() => void) | null = null;
 
   static CLEAR() {
@@ -34,24 +37,24 @@ class MockEventSource {
     this.listeners[type] = listener;
   }
 
-  removeEventListener() {
-    // no-op for tests
-  }
+  removeEventListener() {}
 
   close() {
     this.readyState = 2; // CLOSED
   }
 
-  // Helpers for tests to simulate SSE behavior
   simulateOpen() {
-    this.readyState = 1; // OPEN
+    this.readyState = 1;
     this.onopen?.();
   }
 
-  simulateMessage(type: string, data: string) {
-    const listener = this.listeners[type];
+  simulateMessage(data: string) {
+    const event = new MessageEvent("message", { data });
+    // Fire both onmessage and named "data" listener
+    this.onmessage?.(event);
+    const listener = this.listeners["data"];
     if (listener) {
-      listener(new MessageEvent(type, { data }));
+      listener(new MessageEvent("data", { data }));
     }
   }
 
@@ -60,7 +63,6 @@ class MockEventSource {
   }
 }
 
-// Override global EventSource
 const OriginalEventSource = globalThis.EventSource;
 
 beforeEach(() => {
@@ -81,21 +83,22 @@ describe("useRealTimeData", () => {
     const { result } = renderHook(() => useRealTimeData());
     expect(result.current.connectionState).toBe("connecting");
     expect(result.current.isConnected).toBe(false);
+    expect(result.current.isFailed).toBe(false);
   });
 
   it("transitions to 'connected' when SSE opens", () => {
     const { result } = renderHook(() => useRealTimeData());
-
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
 
     expect(result.current.connectionState).toBe("connected");
     expect(result.current.isConnected).toBe(true);
+    expect(result.current.health.attempts).toBe(0);
+    expect(result.current.health.lastConnectedAt).not.toBeNull();
   });
 
-  it("receives data from SSE 'data' events", () => {
+  it("receives and parses data from SSE events", () => {
     const { result } = renderHook(() => useRealTimeData());
-
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
 
@@ -107,147 +110,141 @@ describe("useRealTimeData", () => {
       type: "snapshot",
     };
 
-    act(() => es.simulateMessage("data", JSON.stringify(payload)));
+    act(() => es.simulateMessage(JSON.stringify(payload)));
 
     expect(result.current.data).not.toBeNull();
     expect(result.current.data?.analytics?.baseMetrics?.totalTvl).toBe(1_000_000);
     expect(result.current.data?.timestamp).toBe(1700000000000);
   });
 
-  it("handles malformed SSE data gracefully", () => {
+  it("handles malformed SSE data gracefully without disconnecting", () => {
     const { result } = renderHook(() => useRealTimeData());
-
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
 
-    act(() => es.simulateMessage("data", "not-valid-json"));
+    // Send bad data — should not crash or disconnect
+    act(() => es.simulateMessage("not-valid-json"));
 
-    expect(result.current.lastError).toBe("Failed to parse stream data");
-    // Should stay connected — parse failure doesn't kill connection
+    // Still connected — parse errors are isolated
     expect(result.current.connectionState).toBe("connected");
   });
 
-  it("transitions to 'disconnected' on SSE error and attempts reconnect", () => {
+  it("transitions to disconnected on error and schedules reconnect", () => {
     const { result } = renderHook(() => useRealTimeData());
-
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
-    expect(result.current.isConnected).toBe(true);
 
-    // Simulate stream drop
     act(() => es.simulateError());
 
     expect(result.current.connectionState).toBe("disconnected");
     expect(result.current.isConnected).toBe(false);
-    expect(result.current.lastError).toBe("Stream interrupted — reconnecting...");
-
-    // Advance timers — first reconnect attempt is 1s (exponential backoff starting at 1s)
-    act(() => vi.advanceTimersByTime(1000));
-
-    // A new EventSource should have been created
-    expect(MockEventSource.instances.length).toBeGreaterThanOrEqual(2);
+    expect(result.current.health.lastError).toBe("Connection lost");
+    expect(result.current.health.lastErrorAt).not.toBeNull();
   });
 
-  it("uses exponential backoff for reconnection attempts", () => {
+  it("reconnects with exponential backoff", () => {
     const { result } = renderHook(() => useRealTimeData());
-
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
 
-    // First error → 1s backoff
+    // First error
     act(() => es.simulateError());
-    act(() => vi.advanceTimersByTime(1000));
-    // New ES created for reconnect attempt
+    expect(result.current.health.attempts).toBe(1);
+
+    // Advance past first backoff (~1s + jitter, use 2s to be safe)
+    act(() => vi.advanceTimersByTime(2000));
     const es2 = MockEventSource.instances[MockEventSource.instances.length - 1];
 
-    // Second error → 2s backoff
+    // Second error
     act(() => es2.simulateOpen());
     act(() => es2.simulateError());
-    // Should NOT reconnect immediately
+    expect(result.current.health.attempts).toBe(1); // Reset then re-increment
+
+    // Should not reconnect immediately
     const countBefore = MockEventSource.instances.length;
-    act(() => vi.advanceTimersByTime(999));
-    expect(MockEventSource.instances.length).toBe(countBefore);
-    // But should reconnect after 2s
-    act(() => vi.advanceTimersByTime(1001));
+    act(() => vi.advanceTimersByTime(500));
+    // May or may not have reconnected yet depending on jitter
+    // But definitely should within 4s (2^1 * 1000 + jitter)
+    act(() => vi.advanceTimersByTime(4000));
     expect(MockEventSource.instances.length).toBeGreaterThan(countBefore);
   });
 
-  it("caps reconnect delay at 30 seconds", () => {
+  it("resets attempt counter on successful reconnection", () => {
+    const { result } = renderHook(() => useRealTimeData());
+    let es = MockEventSource.instances[0];
+    act(() => es.simulateOpen());
+
+    // Simulate error + reconnect
+    act(() => es.simulateError());
+    act(() => vi.advanceTimersByTime(2000));
+
+    es = MockEventSource.instances[MockEventSource.instances.length - 1];
+    act(() => es.simulateOpen()); // Successful reconnect
+
+    expect(result.current.health.attempts).toBe(0);
+    expect(result.current.isConnected).toBe(true);
+  });
+
+  it("transitions to 'failed' after max reconnect attempts", () => {
+    const { result } = renderHook(() => useRealTimeData());
+    const maxAttempts = 15;
+
+    // Burn through all reconnection attempts
+    for (let i = 0; i <= maxAttempts; i++) {
+      const es = MockEventSource.instances[MockEventSource.instances.length - 1];
+      if (i === 0) act(() => es.simulateOpen());
+      act(() => es.simulateError());
+      // Advance enough time for backoff
+      act(() => vi.advanceTimersByTime(35_000));
+    }
+
+    expect(result.current.isFailed).toBe(true);
+    expect(result.current.connectionState).toBe("failed");
+  });
+
+  it("manual reconnect works after failure", () => {
     const { result } = renderHook(() => useRealTimeData());
 
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
+    act(() => es.simulateError());
 
-    // Simulate many failures to push backoff past 30s
-    for (let i = 0; i < 35; i++) {
-      const latest = MockEventSource.instances[MockEventSource.instances.length - 1];
-      act(() => latest.simulateError());
-      // Advance just enough to trigger the reconnect
-      const delay = Math.min((i + 1) * 1000, 30000);
-      act(() => vi.advanceTimersByTime(delay));
-    }
+    const before = MockEventSource.instances.length;
+    act(() => result.current.reconnect());
 
-    // Still working — the hook shouldn't crash or give up
-    expect(result.current.connectionState).toBeDefined();
+    expect(MockEventSource.instances.length).toBeGreaterThan(before);
+    expect(result.current.connectionState).toBe("connecting");
   });
 
-  it("resets reconnect attempts after successful connection", () => {
+  it("disconnect cleans up EventSource", () => {
     const { result } = renderHook(() => useRealTimeData());
-
-    let es = MockEventSource.instances[0];
-    act(() => es.simulateOpen());
-
-    // Simulate 2 errors
-    act(() => es.simulateError());
-    act(() => vi.advanceTimersByTime(1000)); // 1s backoff
-
-    es = MockEventSource.instances[MockEventSource.instances.length - 1];
-    act(() => es.simulateOpen()); // Successful reconnect resets attempts
-
-    // Next error should go back to 1s backoff, not 3s
-    act(() => es.simulateError());
-    // Just past 1s mark — should have reconnected
-    act(() => vi.advanceTimersByTime(1000));
-    expect(MockEventSource.instances.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("disconnect cleans up EventSource and timers", () => {
-    const { result } = renderHook(() => useRealTimeData());
-
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
 
     act(() => result.current.disconnect());
 
     expect(result.current.connectionState).toBe("disconnected");
-    expect(es.readyState).toBe(2); // CLOSED
-  });
-
-  it("manual reconnect resets attempt counter and creates new connection", () => {
-    const { result } = renderHook(() => useRealTimeData());
-
-    const es = MockEventSource.instances[0];
-    act(() => es.simulateOpen());
-    act(() => es.simulateError());
-
-    // Advance past first backoff
-    act(() => vi.advanceTimersByTime(1000));
-
-    // Manual reconnect should reset attempts
-    const instancesBeforeReconnect = MockEventSource.instances.length;
-    act(() => result.current.reconnect());
-
-    expect(MockEventSource.instances.length).toBeGreaterThan(instancesBeforeReconnect);
+    expect(es.readyState).toBe(2);
   });
 
   it("cleans up on unmount", () => {
-    const { result, unmount } = renderHook(() => useRealTimeData());
-
+    const { unmount } = renderHook(() => useRealTimeData());
     const es = MockEventSource.instances[0];
     act(() => es.simulateOpen());
 
     unmount();
+    expect(es.readyState).toBe(2);
+  });
 
-    expect(es.readyState).toBe(2); // CLOSED
+  it("exposes health metrics", () => {
+    const { result } = renderHook(() => useRealTimeData());
+    const es = MockEventSource.instances[0];
+    act(() => es.simulateOpen());
+
+    expect(result.current.health).toEqual(expect.objectContaining({
+      attempts: 0,
+      lastConnectedAt: expect.any(Number),
+      lastError: null,
+    }));
   });
 });
