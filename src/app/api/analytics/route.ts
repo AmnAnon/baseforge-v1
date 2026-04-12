@@ -88,7 +88,7 @@ export async function GET(req: Request) {
       );
 
       const enriched = baseProtos.map((p: {
-        name: string; slug?: string; chainTvls: Record<string, number>;
+        name: string; slug?: string; logo?: string; chainTvls: Record<string, number>;
         change_1d?: number; change_7d?: number; category?: string;
       }) => ({
         id: p.slug || p.name.toLowerCase().replace(/ /g, "-"),
@@ -97,6 +97,7 @@ export async function GET(req: Request) {
         change_1d: p.change_1d || 0,
         change_7d: p.change_7d || 0,
         category: p.category || "DeFi",
+        logo: p.logo || `https://icons.llamao.fi/icons/protocols/${(p.slug || p.name.toLowerCase().replace(/ /g, "-"))}`,
       }));
 
       // Build per-protocol detail data

@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check, ExternalLink } from "lucide-react";
+import ProtocolLogo from "./ProtocolLogo";
 
 export interface Protocol {
   id: string;
@@ -57,11 +58,11 @@ export default function ProtocolSwitcher({
         aria-label="Select protocol"
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <img
+          <ProtocolLogo
             src={selectedProtocol.logo}
-            alt={selectedProtocol.name}
-            className="w-8 h-8 rounded-full border-2 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
-            onError={(e) => (e.currentTarget.src = "/default-token.svg")}
+            name={selectedProtocol.name}
+            size={32}
+            className="border-2 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
           />
           <div className="flex flex-col items-start min-w-0">
             <span className="font-bold text-white text-sm sm:text-base truncate max-w-full">
@@ -95,11 +96,11 @@ export default function ProtocolSwitcher({
                   }`}
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <img
+                    <ProtocolLogo
                       src={protocol.logo}
-                      alt={protocol.name}
-                      className="w-7 h-7 rounded-full border border-gray-700"
-                      onError={(e) => (e.currentTarget.src = "/default-token.svg")}
+                      name={protocol.name}
+                      size={28}
+                      className="border border-gray-700"
                     />
                     <div className="flex flex-col items-start min-w-0">
                       <span className="font-semibold text-white text-sm truncate max-w-full">

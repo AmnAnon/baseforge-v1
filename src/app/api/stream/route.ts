@@ -37,12 +37,12 @@ async function getAnalytics() {
         date: new Date(d.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         tvl: d.tvl,
       })),
-      protocols: baseProtos.map((p: { name: string; chainTvls: Record<string, number>; change_1d?: number; category?: string }) => ({
-        id: p.name.toLowerCase().replace(/ /g, "-"),
+      protocols: baseProtos.map((p: { name: string; slug?: string; logo?: string; chainTvls: Record<string, number>; change_1d?: number; category?: string }) => ({
+        id: p.slug || p.name.toLowerCase().replace(/ /g, "-"),
         name: p.name,
         tvl: p.chainTvls.Base || 0,
         change24h: p.change_1d || 0,
-        logo: "",
+        logo: p.logo || `https://icons.llamao.fi/icons/protocols/${(p.slug || p.name.toLowerCase().replace(/ /g, "-"))}`,
         category: p.category || "",
       })),
       protocolData: {},
