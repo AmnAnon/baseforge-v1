@@ -49,6 +49,8 @@ export async function generateMetadata(): Promise<Metadata> {
       "fc:frame:button:2": "↻ Refresh",
       "fc:frame:post_url": `${baseUrl}/api/frame`,
       "fc:frame:input:text": "Search protocols...",
+      // Base.dev domain verification
+      "base:app_id": "69db4cc2ed56423f0cd3e634",
     },
   };
 }
