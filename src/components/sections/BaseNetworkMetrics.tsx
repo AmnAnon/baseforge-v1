@@ -18,19 +18,19 @@ export default function BaseNetworkMetrics({ data, isLoading }: BaseMetricsProps
   const metrics = [
     {
       label: "Base TVL",
-      value: data?.totalTvl ? `$${(data.totalTvl / 1e9).toFixed(2)}B` : "N/A",
+      value: data?.totalTvl ? `$${(data.totalTvl / 1e9).toFixed(2)}B` : "Loading...",
       icon: DollarSign,
       change: data?.change24h || null,
     },
     {
       label: "Protocols",
-      value: data?.totalProtocols || "N/A",
+      value: data?.totalProtocols || "—",
       icon: Network,
       change: null,
     },
     {
       label: "Avg APY",
-      value: data?.avgApy ? `${data.avgApy.toFixed(2)}%` : "N/A",
+      value: data?.avgApy ? `${data.avgApy.toFixed(2)}%` : "—",
       icon: TrendingUp,
       change: null,
     },

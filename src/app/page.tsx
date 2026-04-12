@@ -275,10 +275,17 @@ export default function Home() {
       {/* Main content */}
       <main className="p-3 sm:p-6" role="main">
         {renderSection()}
+
+        {/* Global footer */}
+        <footer className="mt-8 mb-2 text-center">
+          <p className="text-[10px] text-gray-600">
+            Data from Envio HyperSync + DefiLlama + CoinGecko · Beta · Real-time via SSE
+          </p>
+        </footer>
       </main>
 
-      {/* Admin frame analytics */}
-      <AdminStatsBar />
+      {/* Admin frame analytics — dev only */}
+      {process.env.NEXT_PUBLIC_ADMIN_KEY && <AdminStatsBar />}
 
       {/* Bottom navigation */}
       <nav

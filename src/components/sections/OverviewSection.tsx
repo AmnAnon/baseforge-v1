@@ -110,7 +110,7 @@ const MetricCard = ({
       : "text-red-400";
 
   const formatValue = (val: number | null) => {
-    if (val === null) return "N/A";
+    if (val === null) return "—";
     if (format === "percentage") return `${val.toFixed(2)}%`;
     return formatCurrency(val);
   };
