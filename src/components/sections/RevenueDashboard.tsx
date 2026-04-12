@@ -1,33 +1,25 @@
 // src/components/sections/RevenueDashboard.tsx
-// Protocol revenue breakdown — real fees vs token emissions
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/Skeleton";
-import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
-import { formatCurrency, formatPercentage, timeAgo, freshnessColor } from "@/lib/utils";
 import {
   DollarSign,
   TrendingUp,
-  Coins,
-  AlertTriangle,
-  Layers,
   BarChart3,
   RefreshCw,
+  AlertTriangle,
+  Clock,
 } from "lucide-react";
+import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
 
 interface ProtocolRevenue {
   name: string;
   category: string;
-  tvl: number;
   fees24h: number;
+  fees7d: number;
   feesAnnualized: number;
-  revenueToTvl: number;
-  tokenEmissions: number;
-  netYield: number;
-  change24h: number;
-  audits: number;
+  revenue24h: number;
+  revenueAnnualized: number;
 }
 
 interface RevenueResponse {
@@ -35,202 +27,182 @@ interface RevenueResponse {
   aggregate: {
     totalFees24h: number;
     totalFeesAnnualized: number;
+    totalRevenue24h: number;
     protocolCount: number;
+    timestamp: number;
   };
   timestamp: number;
+  isStale?: boolean;
+}
+
+function formatUSD(n: number): string {
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
+  return `$${n.toFixed(0)}`;
 }
 
 export default function RevenueDashboard() {
   const [data, setData] = useState<RevenueResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"fees" | "yield" | "net">("fees");
-
-  const fetchData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/revenue");
-      if (!res.ok) throw new Error(`API error: ${res.status}`);
-      setData(await res.json());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [sortBy, setSortBy] = useState<"fees24h" | "revenue24h" | "feesAnnualized">("fees24h");
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    fetch("/api/revenue")
+      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
+      .then((d) => { if (!cancelled) { setData(d); setIsLoading(false); } })
+      .catch((e) => { if (!cancelled) { setError(e.message); setIsLoading(false); } });
+    return () => { cancelled = true; };
   }, []);
 
-  if (error) {
-    return (
-      <Card className="p-6 bg-red-900/20 border-red-500/30">
-        <AlertTriangle className="h-6 w-6 text-red-400 mb-3" />
-        <p className="text-red-400 font-medium">Revenue data unavailable</p>
-        <p className="text-sm text-gray-500 mt-1">{error}</p>
-        <button onClick={fetchData} className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm">
-          Retry
-        </button>
-      </Card>
-    );
-  }
+  const handleRefresh = () => {
+    setIsLoading(true);
+    setError(null);
+    fetch("/api/revenue")
+      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
+      .then((d) => { setData(d); setIsLoading(false); })
+      .catch((e) => { setError(e.message); setIsLoading(false); });
+  };
 
-  const profitCount = data?.protocols.filter(p => p.netYield > 0).length || 0;
-  const printingCount = data?.protocols.filter(p => p.netYield < 0).length || 0;
+  const sorted = data?.protocols
+    ? [...data.protocols].sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0))
+    : [];
 
   return (
-    <section className="space-y-6" aria-labelledby="revenue-heading">
-      <div className="flex items-start justify-between">
+    <section className="space-y-5" aria-labelledby="revenue-heading">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 id="revenue-heading" className="text-2xl font-bold text-white flex items-center gap-2">
+          <h2 id="revenue-heading" className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
             <DollarSign className="h-6 w-6 text-emerald-400" />
             Protocol Revenue
           </h2>
-          <p className="text-sm text-gray-400">Real fees vs token emissions</p>
-          {data?.timestamp && (
-            <div className={`text-xs ${freshnessColor(data.timestamp)} mt-1`}>
-              {timeAgo(data.timestamp)}
-            </div>
-          )}
+          <p className="text-sm text-gray-400 mt-0.5">Real fees from DefiLlama — not estimates</p>
         </div>
-        <button onClick={fetchData} disabled={isLoading} className="p-2 bg-emerald-900/30 hover:bg-emerald-800/50 border border-emerald-500/20 rounded-lg transition-colors disabled:opacity-50" aria-label="Refresh revenue data">
+        <button onClick={handleRefresh} disabled={isLoading} className="p-2 bg-emerald-900/30 border border-emerald-500/20 rounded-xl hover:bg-emerald-800/50 transition-colors disabled:opacity-50 flex-shrink-0" aria-label="Refresh">
           <RefreshCw className={`h-5 w-5 text-emerald-400 ${isLoading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
-      {/* Loading skeleton */}
-      {isLoading ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Card key={i} className="bg-gray-900/60 border-gray-800 p-4">
-                <MetricSkeleton />
-              </Card>
+      {/* Loading */}
+      {isLoading && !data && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4"><MetricSkeleton /></div>
             ))}
           </div>
-          <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
-            <div className="p-4 space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <TableRowSkeleton key={i} cols={5} />
-              ))}
-            </div>
-          </Card>
-        </div>
-      ) : (
-        <>
-      {/* Summary */ }
-      {data && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <Card className="bg-gray-900/60 border-gray-800 p-4">
-            <p className="text-xs text-gray-500 mb-1">Total Fees (24h)</p>
-            <p className="text-xl font-bold text-emerald-400">{formatCurrency(data.aggregate.totalFees24h)}</p>
-          </Card>
-          <Card className="bg-gray-900/60 border-gray-800 p-4">
-            <p className="text-xs text-gray-500 mb-1">Fees (Annualized)</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(data.aggregate.totalFeesAnnualized)}</p>
-          </Card>
-          <Card className="bg-gray-900/60 border-gray-800 p-4">
-            <p className="text-xs text-gray-500 mb-1">Tracking</p>
-            <p className="text-xl font-bold text-white">{data.aggregate.protocolCount} protocols</p>
-          </Card>
-          <Card className="bg-gray-900/60 border-gray-800 p-4">
-            <p className="text-xs text-gray-500 mb-1">Profitable</p>
-            <p className="text-xl font-bold text-emerald-400">{profitCount}</p>
-          </Card>
-          <Card className="bg-gray-900/60 border-gray-800 p-4">
-            <p className="text-xs text-gray-500 mb-1">Token Printing</p>
-            <p className="text-xl font-bold text-red-400">{printingCount}</p>
-          </Card>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => <TableRowSkeleton key={i} cols={5} />)}
+          </div>
         </div>
       )}
 
-      {/* View Toggle */}
-      <div className="flex gap-2">
-        {[
-          { key: "fees" as const, label: "Fees Generated", icon: BarChart3 },
-          { key: "yield" as const, label: "Revenue-to-TVL", icon: TrendingUp },
-          { key: "net" as const, label: "Net Yield", icon: Coins },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setView(key)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              view === key
-                ? "bg-emerald-900/40 text-emerald-400 border border-emerald-500/30"
-                : "bg-gray-800/50 text-gray-400 hover:text-white border border-transparent"
-            }`}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Protocol Table */}
-      <Card className="overflow-hidden bg-gray-900/60 border-gray-800">
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800">
-              <th className="text-left p-3 text-gray-500 font-medium text-xs uppercase">Protocol</th>
-              <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden sm:table-cell">TVL</th>
-              {view === "fees" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Fees 24h</th>
-              )}
-              {view === "fees" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden md:table-cell">Annualized</th>
-              )}
-              {view === "yield" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Rev/TVL %</th>
-              )}
-              {view === "yield" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden sm:table-cell">Real Yield</th>
-              )}
-              {view === "net" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase">Net Yield/Day</th>
-              )}
-              {view === "net" && (
-                <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden sm:table-cell">Emissions/Day</th>
-              )}
-              <th className="text-right p-3 text-gray-500 font-medium text-xs uppercase hidden md:table-cell">Audits</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data?.protocols.map((proto, i) => {
-              const netColor = proto.netYield > 0 ? "text-emerald-400" : "text-red-400";
-              return (
-                <tr key={proto.name} className="border-b border-gray-800/50 hover:bg-gray-800/20 transition-colors">
-                  <td className="p-3">
-                    <p className="font-medium text-white">{proto.name}</p>
-                    <p className="text-xs text-gray-500">{proto.category}</p>
-                  </td>
-                  <td className="p-3 text-right text-gray-300 hidden sm:table-cell">{formatCurrency(proto.tvl)}</td>
-
-                  {view === "fees" && <td className="p-3 text-right text-emerald-400">{formatCurrency(proto.fees24h)}</td>}
-                  {view === "fees" && <td className="p-3 text-right text-white hidden md:table-cell">{formatCurrency(proto.feesAnnualized)}</td>}
-
-                  {view === "yield" && <td className={`p-3 text-right font-medium ${proto.revenueToTvl > 5 ? "text-emerald-400" : "text-gray-400"}`}>{proto.revenueToTvl.toFixed(2)}%</td>}
-                  {view === "yield" && (
-                    <td className={`p-3 text-right font-medium hidden sm:table-cell ${proto.revenueToTvl > 5 ? "text-emerald-400" : "text-gray-400"}`}>
-                      {proto.revenueToTvl > 0 ? `${proto.revenueToTvl.toFixed(1)}%` : "N/A"}
-                    </td>
-                  )}
-
-                  {view === "net" && <td className={`p-3 text-right font-medium ${netColor}`}>{formatCurrency(proto.netYield)}</td>}
-                  {view === "net" && <td className="p-3 text-right text-gray-400 hidden sm:table-cell">{formatCurrency(proto.tokenEmissions)}</td>}
-
-                  <td className="p-3 text-right text-gray-400 hidden md:table-cell">{proto.audits > 0 ? proto.audits : "—"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* Error */}
+      {error && !data && (
+        <div className="flex flex-col items-center justify-center p-8 bg-gray-900/50 rounded-2xl border border-red-500/20">
+          <AlertTriangle className="h-6 w-6 text-red-400 mb-3" />
+          <p className="text-red-400 font-medium mb-1">Revenue data unavailable</p>
+          <p className="text-sm text-gray-500 mb-4">{error}</p>
+          <button onClick={handleRefresh} className="px-4 py-2 text-sm bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-500/30 rounded-lg transition-colors">Retry</button>
         </div>
-      </Card>
-      </>
+      )}
+
+      {data && (
+        <>
+          {/* Summary */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Fees (24h)</p>
+              <p className="text-xl sm:text-2xl font-bold text-emerald-400 tabular-nums">{formatUSD(data.aggregate.totalFees24h)}</p>
+            </div>
+            <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Revenue (24h)</p>
+              <p className="text-xl sm:text-2xl font-bold text-white tabular-nums">{formatUSD(data.aggregate.totalRevenue24h || 0)}</p>
+            </div>
+            <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Annualized</p>
+              <p className="text-xl sm:text-2xl font-bold text-white tabular-nums">{formatUSD(data.aggregate.totalFeesAnnualized)}</p>
+            </div>
+            <div className="bg-gray-900/60 border border-emerald-500/10 rounded-xl p-3 sm:p-4">
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Protocols</p>
+              <p className="text-xl sm:text-2xl font-bold text-white tabular-nums">{data.aggregate.protocolCount}</p>
+            </div>
+          </div>
+
+          {/* Sort tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {([
+              { id: "fees24h" as const, label: "By Fees 24h", icon: BarChart3 },
+              { id: "revenue24h" as const, label: "By Revenue", icon: TrendingUp },
+              { id: "feesAnnualized" as const, label: "By Annualized", icon: DollarSign },
+            ]).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setSortBy(id)}
+                className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                  sortBy === id
+                    ? "bg-emerald-900/40 text-emerald-400 border border-emerald-500/30"
+                    : "text-gray-400 hover:text-emerald-300 hover:bg-gray-800/30"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Table */}
+          <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px]">
+                <thead>
+                  <tr className="border-b border-gray-800">
+                    <th className="py-2.5 px-3 text-center text-[10px] sm:text-xs text-gray-500 font-medium uppercase w-10">#</th>
+                    <th className="py-2.5 px-3 text-left text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Protocol</th>
+                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Fees 24h</th>
+                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden sm:table-cell">Revenue 24h</th>
+                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden md:table-cell">Annualized</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.length === 0 ? (
+                    <tr><td colSpan={5} className="py-16 text-center text-gray-500">No revenue data available</td></tr>
+                  ) : (
+                    sorted.map((p, i) => (
+                      <tr key={p.name} className="border-b border-gray-800/40 hover:bg-gray-800/20 transition-colors">
+                        <td className="py-3 px-3 text-center"><span className="text-xs text-gray-500 tabular-nums">{i + 1}</span></td>
+                        <td className="py-3 px-3">
+                          <p className="font-semibold text-white text-sm">{p.name}</p>
+                          <p className="text-xs text-gray-500">{p.category}</p>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <span className="text-sm font-bold text-emerald-400 tabular-nums">{formatUSD(p.fees24h)}</span>
+                        </td>
+                        <td className="py-3 px-3 text-right hidden sm:table-cell">
+                          <span className="text-sm text-white tabular-nums">{formatUSD(p.revenue24h)}</span>
+                        </td>
+                        <td className="py-3 px-3 text-right hidden md:table-cell">
+                          <span className="text-sm text-gray-400 tabular-nums">{formatUSD(p.feesAnnualized)}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-800/50 bg-gray-950/30">
+              <p className="text-[10px] text-gray-600">Powered by DefiLlama Fees API</p>
+              <div className="flex items-center gap-1 text-[10px] text-gray-600">
+                <Clock className="h-3 w-3" />
+                {new Date(data.timestamp).toLocaleTimeString()}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </section>
   );
