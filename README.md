@@ -169,19 +169,23 @@ After completing all 6 phases of the technical roadmap, BaseForge had a solid fo
 
 ### What we changed
 - **Pivoted positioning** from "DeFi analytics dashboard" → **"The AI-Ready Intelligence Layer for the Base Ecosystem"**
-- **Added `/api/agents/context`** — a single compressed, token-efficient JSON endpoint designed for LLM ingestion (Claude, Gemini, local models)
+- **Added `/api/agents/context`** — compressed, token-efficient JSON endpoint for LLM ingestion (v2: filterable, intent signals, confidence scores)
+- **Added `/api/agents/examples`** — interactive API reference with prompt templates and example payloads
 - **Added `/api/protocols`** — bulk protocol listing endpoint (was missing root route)
+- **Added `/api/swaps`** — real-time DEX swap events via Envio HyperSync
+- **Added `/api/lending`** — lending protocol events (deposits, borrows, liquidations)
 
 ### What's working now
 - Farcaster Frame v3 with miniapp support (8/8 tests passing)
-- Risk scoring across 580+ Base protocols with health scores, audit status, and risk factors
+- Risk scoring across 580+ Base protocols with on-chain data enrichment (swap volume, net flows, trader count)
 - SSE streaming with exponential backoff and stale fallback
-- Zod-validated API responses with rate limiting (10 req/min per IP)
-- 580 protocols served at 23ms avg latency (when not rate-limited)
+- Envio HyperSync primary indexer with Etherscan V2 fallback
+- Agent context endpoint v2 with query params, intent detection, and Zod validation
+- 93 tests passing, zero TypeScript errors
 
 ### Next: The Agent Vision
-- **Agent SDK wrapper** — TypeScript/Python client for `/api/agents/context`
-- **Intent detection** — pattern recognition over whale flows (accumulation/distribution signals)
+- **Agent SDK wrapper** — TypeScript/Python client for `/api/agents/context` (see `docs/AGENT_GUIDE.md` for usage)
+- **~~Intent detection~~** ✅ Implemented — accumulation/distribution/yield rotation/risk escalation signals
 - **Predictive risk model** — time-series-based risk projection, not just point-in-time scoring
 - **CLI/Developer platform** — `baseforge init`, templates for agents, bots, nodes
 
