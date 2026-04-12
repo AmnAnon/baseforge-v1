@@ -1,60 +1,12 @@
 // src/app/api/whales/route.ts
-// Whale tracker — large Base chain transactions via Etherscan V2
+// Whale tracker — powered by Envio HyperSync with Etherscan V2 fallback.
+// Returns whale-sized flows across Aerodrome, Uniswap V3, and Seamless.
+
 import { NextResponse } from "next/server";
-import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { WhalesResponseSchema } from "@/lib/zod/schemas";
-
-const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
-const BASE_CHAIN_ID = 8453;
-const ETH_PRICE_FALLBACK = 1800;
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1_000;
-
-function retry(fn: () => Promise<Response>, retries = MAX_RETRIES): Promise<Response> {
-  return fn().catch((err) => {
-    if (retries <= 0) throw err;
-    return new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS)).then(() => retry(fn, retries - 1));
-  });
-}
-
-async function getEthPrice(): Promise<number> {
-  try {
-    const res = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
-      { next: { revalidate: 300 } }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      return data?.ethereum?.usd || ETH_PRICE_FALLBACK;
-    }
-  } catch {}
-  return ETH_PRICE_FALLBACK;
-}
-
-interface WhaleTransaction {
-  hash: string;
-  from: string;
-  to: string;
-  value: string;
-  valueUSD: number;
-  timestamp: string;
-  type: "swap" | "transfer";
-  tokenSymbol?: string;
-}
-
-function getLabel(address: string): string {
-  const labels: Record<string, string> = {
-    "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad": "Uniswap V3 Router",
-    "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4": "Aerodrome Router",
-    "0x47536A12A465AC89E6Ad2773dC1a5fA857": "Seamless",
-    "0x4200000000000000000000000000000000000006": "WETH",
-    "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913": "USDC",
-  };
-  const lower = address.toLowerCase();
-  return labels[lower] || `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
+import { getWhaleFlows } from "@/lib/data/indexers";
 
 const EMPTY_WHALES = () => ({
   whales: [],
@@ -69,95 +21,61 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
-    const minUSDParam = parseInt(url.searchParams.get("min") || "40000");
-    const minUSD = Number.isFinite(minUSDParam) && minUSDParam >= 0 ? minUSDParam : 40000;
+    const minUSDParam = parseInt(url.searchParams.get("min") || "50000");
+    const minUSD = Number.isFinite(minUSDParam) && minUSDParam >= 0 ? minUSDParam : 50000;
+    const limitParam = parseInt(url.searchParams.get("limit") || "50");
+    const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : 50;
 
-    const data = await cache.getWithStaleFallback(`whales-data-${minUSD}`, CACHE_TTL.WHALE_TX, async () => {
-      const monitoredAddresses = [
-        { addr: "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", label: "Uniswap V3" },
-        { addr: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4", label: "Aerodrome" },
-        { addr: "0x47536A12A465AC89E6Ad2773dC1a5fA857", label: "Seamless" },
-      ];
+    const result = await getWhaleFlows({ minAmountUSD: minUSD, limit });
 
-      const whaleTransactions: WhaleTransaction[] = [];
-
-      if (ETHERSCAN_API_KEY) {
-        const ethPrice = await getEthPrice();
-        const fetchPromises = monitoredAddresses.map(async ({ addr }) => {
-          try {
-            const etherscanUrl = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=txlist&address=${addr}&startblock=0&endblock=99999999&page=1&offset=20&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
-            const res = await retry(() => fetch(etherscanUrl, { cache: "no-store" }), 2);
-            const data = await res.json();
-
-            if (data.status === "1" && data.result) {
-              return data.result
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .filter((tx: any) => {
-                  const ethValue = parseFloat(tx.value) / 1e18;
-                  return ethValue * ethPrice >= minUSD;
-                })
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .map((tx: any) => {
-                  const ethValue = parseFloat(tx.value) / 1e18;
-                  return {
-                    hash: tx.hash,
-                    from: getLabel(tx.from),
-                    to: getLabel(tx.to),
-                    value: `${ethValue.toFixed(2)} ETH`,
-                    valueUSD: Math.round(ethValue * ethPrice),
-                    timestamp: new Date(parseInt(tx.timeStamp) * 1000).toISOString(),
-                    type: ethValue > 50 ? "swap" : "transfer",
-                    tokenSymbol: "ETH",
-                  } as WhaleTransaction;
-                });
-            }
-            return [];
-          } catch { return []; }
-        });
-
-        const results = await Promise.allSettled(fetchPromises);
-        for (const result of results) {
-          if (result.status === "fulfilled") {
-            whaleTransactions.push(...result.value);
-          }
-        }
-      }
-
-      const uniqueTx = Array.from(
-        new Map(whaleTransactions.map(tx => [tx.hash, tx])).values()
-      ).sort((a, b) => b.timestamp > a.timestamp ? 1 : b.timestamp < a.timestamp ? -1 : 0);
-
-      return {
-        whales: uniqueTx.slice(0, 50),
-        summary: {
-          total: uniqueTx.length,
-          largest: uniqueTx.length > 0 ? uniqueTx[0].valueUSD : 0,
-          avgSize: uniqueTx.length > 0
-            ? Math.round(uniqueTx.reduce((sum, tx) => sum + tx.valueUSD, 0) / uniqueTx.length)
+    const responseData = {
+      whales: result.flows.map((f) => ({
+        hash: f.txHash,
+        from: f.from,
+        to: f.to,
+        value: `${f.tokenAmount} ${f.token}`,
+        valueUSD: f.amountUSD,
+        timestamp: new Date(f.timestamp * 1000).toISOString(),
+        type: f.type,
+        tokenSymbol: f.token,
+        protocol: f.protocol,
+        blockNumber: f.blockNumber,
+      })),
+      summary: {
+        total: result.flows.length,
+        largest: result.summary.largestFlowUSD,
+        avgSize:
+          result.flows.length > 0
+            ? Math.round(result.summary.totalVolumeUSD / result.flows.length)
             : 0,
-          types: uniqueTx.reduce((acc: Record<string, number>, tx) => {
-            acc[tx.type] = (acc[tx.type] || 0) + 1;
-            return acc;
-          }, {}),
-        },
-        timestamp: Date.now(),
-      };
+        types: result.summary.byType,
+      },
+      source: result.source,
+      timestamp: result.timestamp,
+      isStale: false,
+    };
+
+    const validated = validateOrFallback(WhalesResponseSchema, responseData, EMPTY_WHALES(), "whales");
+    return NextResponse.json(validated, {
+      headers: {
+        "Cache-Control": "public, max-age=30, stale-while-revalidate=120",
+        "X-Cache-Status": "HIT",
+        "X-Data-Source": result.source,
+      },
     });
-
-    const validated = validateOrFallback(WhalesResponseSchema, data, EMPTY_WHALES(), "whales");
-    const headers: Record<string, string> = validated.isStale
-      ? { "Cache-Control": "public, max-age=0, stale-while-revalidate=120", "X-Cache-Status": "STALE" }
-      : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
-
-    return NextResponse.json(validated, { headers });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { ...EMPTY_WHALES(), isStale: true },
-      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } }
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, max-age=0, stale-while-revalidate=120",
+          "X-Data-Source": "none",
+        },
+      }
     );
   }
 }
 
 export const dynamic = "force-dynamic";
-
-export const revalidate = 60;
+export const revalidate = 30;

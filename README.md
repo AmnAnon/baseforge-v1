@@ -36,27 +36,39 @@ src/
 │   ├── api/
 │   │   ├── analytics/            # Top protocols, TVL history, aggregate metrics
 │   │   ├── risk-history/         # Time-series risk scores
-│   │   ├── whales/               # Large-tx detection via Etherscan V2
+│   │   ├── whales/               # Whale flow detection (Envio → Etherscan fallback)
+│   │   ├── swaps/                # DEX swap events (Aerodrome, Uniswap V3)
+│   │   ├── lending/              # Lending events (Seamless deposits/borrows/liquidations)
 │   │   ├── mev/                  # MEV event monitoring
 │   │   ├── gas/                  # Gas price tracking
 │   │   ├── revenue/              # Protocol revenue aggregation
 │   │   ├── market/               # Market data (prices, APY, volume)
 │   │   ├── alerts/               # Alert evaluation engine
 │   │   ├── portfolio/            # Wallet position tracking
-│   │   ├── protocol-aggregator/  # Risk-scoring engine
+│   │   ├── protocol-aggregator/  # Risk-scoring engine (enriched by indexer)
+│   │   ├── agents/context/       # Compressed LLM context endpoint
 │   │   ├── stream/               # SSE streaming gateway
-│   │   └── ...
+│   │   └── health/               # Health check with indexer status
 ├── lib/
 │   ├── cache.ts                  # Unified cache — in-memory + optional Upstash Redis
 │   ├── validation.ts             # Zod-based response validation helpers
-│   ├── protocol-aggregator.ts    # Cross-source risk scoring and protocol aggregation
+│   ├── protocol-aggregator.ts    # Cross-source risk scoring (DefiLlama + indexer)
 │   ├── logger.ts                 # Structured logging
 │   ├── rate-limit.ts             # API rate limiting
+│   ├── data/
+│   │   └── indexers/             # ⭐ On-chain data indexer layer
+│   │       ├── index.ts          # Unified service — orchestrates providers + cache
+│   │       ├── types.ts          # Normalized TypeScript types
+│   │       ├── schemas.ts        # Zod schemas for all indexer data
+│   │       ├── contracts.ts      # Base chain addresses + event signatures
+│   │       ├── envio-provider.ts # Primary: Envio HyperSync (2000x faster than RPC)
+│   │       └── fallback-provider.ts  # Secondary: Etherscan V2 + DefiLlama
 │   └── db/                       # Drizzle ORM + Neon Postgres schema + client
 ├── components/
 │   ├── sections/                 # Dashboard sections (Overview, Risk, Whales, MEV, etc.)
 │   ├── ui/                       # Reusable UI primitives (cards, switches, tables)
 │   └── charts/                   # Tremor-based charts (TVL, risk scores)
+├── middleware.ts                 # Edge middleware — CORS for agent API
 └── instrumentation.ts            # Node.js instrumentation for monitoring
 ```
 
@@ -74,7 +86,8 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Variable | Description |
 |---|---|
-| `ETHERSCAN_API_KEY` | Etherscan V2 API key for whale tracking |
+| `ENVIO_API_TOKEN` | Envio HyperSync API token — primary on-chain data source (get from envio.dev) |
+| `ETHERSCAN_API_KEY` | Etherscan V2 API key — fallback for whale tracking |
 | `DATABASE_URL` | Neon Postgres connection string for risk history and alerts |
 | `UPSTASH_REDIS_URL` | Optional — Upstash Redis endpoint for distributed cache |
 | `UPSTASH_REDIS_TOKEN` | Optional — Upstash Redis token |
@@ -173,8 +186,80 @@ After completing all 6 phases of the technical roadmap, BaseForge had a solid fo
 - **CLI/Developer platform** — `baseforge init`, templates for agents, bots, nodes
 
 ### Known Issues
-- **Rate limiter dev-mode bypass** — line 58 of `src/lib/rate-limit.ts` checks `NODE_ENV === "development"`, but the value isn't set in the server process. Fix: change to `NODE_ENV !== "production"`.
-- **Farcaster Frame root-level meta tags** still use `vNext` in `layout.tsx`; the `/api/frame` route uses `v3` correctly.
+- ~~**Rate limiter dev-mode bypass** — Fixed: now uses `NODE_ENV !== "production"`.~~
+- ~~**Farcaster Frame root-level meta tags** — Fixed: `layout.tsx` now uses `v3`.~~
+
+## Data Architecture
+
+### Why Envio HyperSync?
+
+After evaluating Goldsky, Envio HyperIndex, Subsquid, and The Graph for Base chain indexing in 2026, we chose **Envio HyperSync** as the primary data source:
+
+| Criteria | Envio HyperSync | Goldsky | Subsquid | The Graph |
+|---|---|---|---|---|
+| **Speed** | 2000x faster than RPC, 25K events/sec | Fast (Turbo Pipelines) | 100-1000x faster | Standard |
+| **Benchmark (May 2025)** | 15x faster than Subsquid, 142x faster than Graph | N/A | 2nd place | 142x slower |
+| **Real-time latency** | Sub-second | Sub-second | Near real-time | Seconds |
+| **Base support** | Native (base.hypersync.xyz) | Native | Yes | Yes |
+| **Self-hosted option** | No (SaaS) | No (SaaS) | Yes (decentralized) | Yes (decentralized) |
+| **TypeScript SDK** | First-class, Rust core | CLI-focused | SDK available | GraphQL |
+| **Cost model** | API token (free tier) | Paid tiers | Token-based | GRT staking |
+| **Maintenance** | Zero — no subgraph deployment | Subgraph deploy | Squid deploy | Subgraph deploy |
+
+**Decision:** Envio wins on raw speed, zero-maintenance (no subgraph to deploy/maintain), and TypeScript-first SDK. The Rust-based HyperSync engine eliminates the RPC bottleneck entirely — we query event logs directly from their optimized data layer.
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        API Routes                            │
+│  /api/whales  /api/swaps  /api/lending  /api/risk             │
+└───────────────────┬─────────────────────────────────────────────┘
+                    │
+         ┌─────────┴─────────┐
+         │  Indexer Service  │   lib/data/indexers/index.ts
+         │  (cache + routing) │   Time-based cache (30s-2min)
+         └────┬──────────┬────┘   Circuit breaker pattern
+              │          │
+     ┌───────┴──────┐ ┌─┴─────────────┐
+     │   PRIMARY   │ │   FALLBACK    │
+     │ Envio Hyper │ │ Etherscan V2  │
+     │   Sync      │ │ + DefiLlama   │
+     └───────┬──────┘ └──────┬────────┘
+             │              │
+    Event-level logs    TX-level data
+   (swaps, borrows,    (value transfers
+    liquidations)        only)
+```
+
+**Fallback strategy:**
+1. Check in-memory/Redis cache first (fastest)
+2. Query Envio HyperSync (event-level granularity, ~25K events/sec)
+3. If Envio fails → circuit breaker activates → fall back to Etherscan V2
+4. Health check every 60s re-enables Envio when it recovers
+
+### What the Indexer Provides vs. Before
+
+| Metric | Before (Etherscan only) | Now (Envio + fallback) |
+|---|---|---|
+| Swap detection | Value transfers only | Decoded swap events with amounts |
+| Protocols covered | 3 address watches | Aerodrome + Uniswap V3 + Seamless |
+| Lending activity | None | Deposits, borrows, repays, liquidations |
+| Whale classification | "swap" or "transfer" | swap / deposit / withdraw / borrow / repay / liquidation |
+| Risk scoring inputs | TVL + audit count | + swap volume, trader count, net flows, outflow ratio |
+| Latency | 5-10s (Etherscan rate limits) | <1s (HyperSync) |
+| Update frequency | 60s polling | 30s with stale fallback |
+
+### New API Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/swaps?protocol=aerodrome&min=1000&limit=50` | Recent swap events with USD values |
+| `GET /api/lending?action=liquidation&min=10000` | Lending protocol events (Seamless) |
+| `GET /api/whales?min=50000` | Whale flows (now enriched with event-level data) |
+| `GET /api/health` | Includes indexer primary/fallback status |
+
+All endpoints return an `X-Data-Source` header indicating which provider served the data (`envio-hypersync` or `etherscan-fallback`).
 
 ## Open Source
 

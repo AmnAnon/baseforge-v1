@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { cache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
+import { getIndexerHealth } from "@/lib/data/indexers";
 
 interface HealthStatus {
   status: "ok" | "degraded" | "unhealthy";
@@ -69,6 +70,27 @@ export async function GET() {
   // Check DB only if URL is set
   if (process.env.DATABASE_URL) {
     checks.database = await checkDatabase();
+  }
+
+  // Check indexer health
+  try {
+    const indexerHealth = await getIndexerHealth();
+    checks.indexer_primary = {
+      status: indexerHealth.primary.healthy ? "ok" : "error",
+      latency: indexerHealth.primary.latencyMs,
+      detail: `${indexerHealth.primary.provider} block=${indexerHealth.primary.lastBlock} lag=${indexerHealth.primary.lag}`,
+    };
+    checks.indexer_fallback = {
+      status: indexerHealth.fallback.healthy ? "ok" : "error",
+      latency: indexerHealth.fallback.latencyMs,
+      detail: `${indexerHealth.fallback.provider} block=${indexerHealth.fallback.lastBlock}`,
+    };
+    checks.indexer_active = {
+      status: "ok",
+      detail: `active_provider=${indexerHealth.activeProvider}`,
+    };
+  } catch {
+    checks.indexer = { status: "error", detail: "Health check failed" };
   }
 
   // Determine overall status
