@@ -74,17 +74,19 @@ export default function Home() {
   const { data: streamData, connectionState: streamState, isConnected } = useRealTimeData();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const streamAnalytics = streamData?.analytics;
   useEffect(() => {
-    if (streamData?.analytics) {
-      setAnalytics({
-        baseMetrics: streamData.analytics.baseMetrics,
-        tvlHistory: streamData.analytics.tvlHistory,
-        protocols: streamData.analytics.protocols,
-        protocolData: streamData.analytics.protocolData || {},
-        timestamp: Date.now(),
-      });
-    }
-  }, [streamData?.analytics]);
+    if (!streamAnalytics) return;
+    const next = {
+      baseMetrics: streamAnalytics.baseMetrics,
+      tvlHistory: streamAnalytics.tvlHistory,
+      protocols: streamAnalytics.protocols,
+      protocolData: streamAnalytics.protocolData || {},
+      timestamp: Date.now(),
+    };
+    setAnalytics(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamAnalytics]);
 
   useEffect(() => {
     fetch("/api/analytics")

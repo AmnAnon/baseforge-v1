@@ -50,22 +50,27 @@ export default function RiskScoreChart({
 
   useEffect(() => {
     if (!protocolName) return;
-    setIsLoading(true);
-    setError(null);
+    let cancelled = false;
     fetch(`/api/risk-history?protocol=${protocolName}`)
       .then(r => {
         if (!r.ok) throw new Error(`API error: ${r.status}`);
         return r.json();
       })
       .then((data: RiskHistoryResponse) => {
-        setHistory(data.history || []);
-        setIsLoading(false);
+        if (!cancelled) {
+          setHistory(data.history || []);
+          setIsLoading(false);
+          setError(null);
+        }
       })
       .catch(err => {
-        console.error("Risk history fetch error:", err);
-        setError(err.message);
-        setIsLoading(false);
+        if (!cancelled) {
+          console.error("Risk history fetch error:", err);
+          setError(err.message);
+          setIsLoading(false);
+        }
       });
+    return () => { cancelled = true; };
   }, [protocolName]);
 
   if (isLoading || parentLoading) {

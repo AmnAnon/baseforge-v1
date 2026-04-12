@@ -38,12 +38,11 @@ interface ConnectionHealth {
 const MAX_RECONNECT_ATTEMPTS = 15;
 const BASE_DELAY_MS = 1_000;
 const MAX_DELAY_MS = 30_000;
-const HEARTBEAT_TIMEOUT_MS = 90_000; // If no data in 90s, connection is dead
+const HEARTBEAT_TIMEOUT_MS = 90_000;
 
 function backoffDelay(attempt: number): number {
-  // Exponential backoff with ±30% jitter
   const exponential = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
-  const jitter = exponential * 0.3 * (Math.random() * 2 - 1); // ±30%
+  const jitter = exponential * 0.3 * (Math.random() * 2 - 1);
   return Math.round(exponential + jitter);
 }
 
@@ -65,14 +64,16 @@ export function useRealTimeData() {
   const connectedAtRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
 
+  // Use refs to break circular dependency between callbacks
+  const connectRef = useRef<() => void>(() => {});
+  const scheduleReconnectRef = useRef<() => void>(() => {});
+
   // ── Heartbeat: detect silent drops ──────────────────────────
 
   const resetHeartbeat = useCallback(() => {
     if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
     heartbeatTimerRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
-      // No data received in 90s — connection is silently dead
-      console.warn("[SSE] Heartbeat timeout — reconnecting");
       esRef.current?.close();
       setConnectionState("disconnected");
       setHealth((h) => ({
@@ -80,7 +81,7 @@ export function useRealTimeData() {
         lastError: "Heartbeat timeout — no data in 90s",
         lastErrorAt: Date.now(),
       }));
-      scheduleReconnect();
+      scheduleReconnectRef.current();
     }, HEARTBEAT_TIMEOUT_MS);
   }, []);
 
@@ -100,18 +101,16 @@ export function useRealTimeData() {
 
     const delay = backoffDelay(attemptsRef.current);
     attemptsRef.current++;
-
     setHealth((h) => ({ ...h, attempts: attemptsRef.current }));
 
     reconnectTimerRef.current = setTimeout(() => {
-      if (mountedRef.current) connect();
+      if (mountedRef.current) connectRef.current();
     }, delay);
   }, []);
 
   // ── Core connection logic ───────────────────────────────────
 
   const connect = useCallback(() => {
-    // Clean up previous connection
     esRef.current?.close();
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
@@ -127,16 +126,16 @@ export function useRealTimeData() {
       setConnectionState("connected");
       attemptsRef.current = 0;
       connectedAtRef.current = Date.now();
-      setHealth((h) => ({
-        ...h,
+      setHealth({
         attempts: 0,
         lastConnectedAt: Date.now(),
         lastError: null,
-      }));
+        lastErrorAt: null,
+        uptimeMs: 0,
+      });
       resetHeartbeat();
     };
 
-    // EventSource default event (unnamed messages come through onmessage)
     es.onmessage = (event: MessageEvent) => {
       if (!mountedRef.current) return;
       try {
@@ -144,20 +143,14 @@ export function useRealTimeData() {
         setData(parsed);
         setConnectionState("connected");
         resetHeartbeat();
-
-        // Update uptime
         if (connectedAtRef.current) {
-          setHealth((h) => ({
-            ...h,
-            uptimeMs: Date.now() - (connectedAtRef.current || Date.now()),
-          }));
+          setHealth((h) => ({ ...h, uptimeMs: Date.now() - (connectedAtRef.current || Date.now()) }));
         }
       } catch {
-        // Malformed data — don't crash, just ignore this message
+        // Malformed data — ignore silently
       }
     };
 
-    // Also listen for named "data" events (server may use either format)
     es.addEventListener("data", (event: MessageEvent) => {
       if (!mountedRef.current) return;
       try {
@@ -181,29 +174,31 @@ export function useRealTimeData() {
         lastErrorAt: Date.now(),
         uptimeMs: 0,
       }));
-      scheduleReconnect();
+      scheduleReconnectRef.current();
     };
-  }, [resetHeartbeat, scheduleReconnect]);
+  }, [resetHeartbeat]);
+
+  // Keep refs in sync
+  useEffect(() => { connectRef.current = connect; }, [connect]);
+  useEffect(() => { scheduleReconnectRef.current = scheduleReconnect; }, [scheduleReconnect]);
 
   // ── Page visibility: pause when hidden ──────────────────────
 
   useEffect(() => {
     function handleVisibility() {
       if (document.hidden) {
-        // Page hidden — disconnect to save resources
         esRef.current?.close();
         if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
         if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
       } else {
-        // Page visible again — reconnect immediately
         attemptsRef.current = 0;
-        connect();
+        connectRef.current();
       }
     }
 
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [connect]);
+  }, []);
 
   // ── Lifecycle ───────────────────────────────────────────────
 
@@ -221,12 +216,12 @@ export function useRealTimeData() {
     if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
     attemptsRef.current = 0;
     setConnectionState("connecting");
-    connect();
-  }, [connect]);
+    connectRef.current();
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    connect();
+    connectRef.current();
 
     return () => {
       mountedRef.current = false;
@@ -234,7 +229,7 @@ export function useRealTimeData() {
       if (heartbeatTimerRef.current) clearTimeout(heartbeatTimerRef.current);
       esRef.current?.close();
     };
-  }, [connect]);
+  }, []);
 
   return {
     data,

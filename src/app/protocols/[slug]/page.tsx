@@ -87,12 +87,13 @@ export default function ProtocolDetailPage() {
 
   useEffect(() => {
     if (!slug) return;
-    setLoading(true);
+    let cancelled = false;
     fetch(`/api/protocols/${slug}`)
       .then((r) => r.json())
-      .then((d) => setData(d))
+      .then((d) => { if (!cancelled) setData(d); })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [slug]);
 
   if (loading) {
