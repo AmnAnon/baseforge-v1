@@ -2,7 +2,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { headers } from "next/headers";
+import DemoBanner from "@/components/DemoBanner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -58,9 +58,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const showDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true" || !!process.env.VERCEL_URL;
+
   return (
     <html lang="en">
       <body className={`${inter.className} bg-black text-white min-h-screen`}>
+        {showDemo && <DemoBanner />}
         {children}
       </body>
     </html>

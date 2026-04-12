@@ -2,7 +2,44 @@
 
 > The AI-Ready Intelligence Layer for the Base Ecosystem.
 
+<p align="center">
+  <a href="https://baseforge.vercel.app"><img src="https://img.shields.io/badge/🚀_Live_Demo-baseforge.vercel.app-10b981?style=for-the-badge" alt="Live Demo" /></a>
+  <a href="https://baseforge.vercel.app/api/agents/context?include=all&top=5"><img src="https://img.shields.io/badge/🤖_Agent_API-Try_it_now-8b5cf6?style=for-the-badge" alt="Agent API" /></a>
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmnAnon%2Fbaseforge&env=ETHERSCAN_API_KEY,DATABASE_URL,ENVIO_API_TOKEN&envDescription=See%20.env.example%20for%20all%20variables&project-name=baseforge"><img src="https://img.shields.io/badge/▲_Deploy_to_Vercel-000?style=for-the-badge&logo=vercel" alt="Deploy to Vercel" /></a>
+</p>
+
 BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, MEV activity, gas costs, protocol revenue — and compresses it into structured intelligence feeds designed for human traders **and** AI agents. Instead of raw dashboards, BaseForge delivers actionable signal: compressed market state, risk-weighted protocol health, and machine-readable context payloads that LLMs can consume directly.
+
+### Dashboard
+
+<p align="center">
+  <img src="public/preview.png" alt="BaseForge Dashboard" width="700" />
+</p>
+
+### AI Agent API — One call, entire ecosystem state
+
+```bash
+curl https://baseforge.vercel.app/api/agents/context?include=all&top=5 | jq
+```
+
+```jsonc
+{
+  "_v": "2.0",
+  "_chain": "base",
+  "_source": "envio-hypersync",
+  "market": { "totalTvl": 8200000000, "protocols": 340, "avgHealth": 68 },
+  "protocols": [
+    { "id": "aerodrome", "tvl": 2100000000, "health": 82, "level": "low" },
+    { "id": "uniswap-v3", "tvl": 950000000, "health": 90, "level": "low" }
+  ],
+  "risk": { "highRiskCount": 12, "concentration": { "hhi": 980, "level": "MEDIUM" } },
+  "intents": [
+    { "signal": "accumulation", "protocol": "aerodrome", "confidence": 0.7 }
+  ]
+}
+```
+
+> See [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) for full integration guide with prompt templates.
 
 ## Killer Use Cases
 
