@@ -1,0 +1,104 @@
+version: 2
+updates:
+  # ── npm dependencies (weekly) ────────────────────────────
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 10
+    reviewers:
+      - AmnAnon
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    # Group related updates to reduce PR noise
+    groups:
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "next*"
+          - "eslint-config-next"
+      tremor-ui:
+        patterns:
+          - "@tremor/*"
+          - "@radix-ui/*"
+      testing:
+        patterns:
+          - "vitest*"
+          - "@testing-library/*"
+          - "happy-dom"
+          - "jsdom"
+      sentry:
+        patterns:
+          - "@sentry/*"
+      drizzle:
+        patterns:
+          - "drizzle-*"
+          - "@neondatabase/*"
+      tailwind:
+        patterns:
+          - "tailwind*"
+          - "@tailwindcss/*"
+          - "postcss"
+          - "autoprefixer"
+    ignore:
+      # Pin Next.js major to 16 until we're ready
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      # Pin React 19 until ecosystem is stable
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # ── GitHub Actions (weekly) ─────────────────────────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 5
+    labels:
+      - ci/cd
+      - github-actions
+    commit-message:
+      prefix: "ci(deps)"
+
+  # ── Docker (weekly) ─────────────────────────────────────
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: UTC
+    open-pull-requests-limit: 3
+    labels:
+      - docker
+    commit-message:
+      prefix: "chore(docker)"
+
+  # ── Security alerts (daily) ─────────────────────────────
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 20
+    labels:
+      - security
+    commit-message:
+      prefix: "chore(security)"
+    # Only process security updates
+    allow:
+      - dependency-type: direct
+    # Auto-merge security fixes for minor/patch
+    reviewers:
+      - AmnAnon

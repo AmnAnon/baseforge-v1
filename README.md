@@ -3,9 +3,17 @@
 > The AI-Ready Intelligence Layer for the Base Ecosystem.
 
 <p align="center">
-  <a href="https://baseforge.vercel.app"><img src="https://img.shields.io/badge/🚀_Live_Demo-baseforge.vercel.app-10b981?style=for-the-badge" alt="Live Demo" /></a>
-  <a href="https://baseforge.vercel.app/api/agents/context?include=all&top=5"><img src="https://img.shields.io/badge/🤖_Agent_API-Try_it_now-8b5cf6?style=for-the-badge" alt="Agent API" /></a>
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmnAnon%2Fbaseforge&env=ETHERSCAN_API_KEY,DATABASE_URL,ENVIO_API_TOKEN&envDescription=See%20.env.example%20for%20all%20variables&project-name=baseforge"><img src="https://img.shields.io/badge/▲_Deploy_to_Vercel-000?style=for-the-badge&logo=vercel" alt="Deploy to Vercel" /></a>
+  <a href="https://baseforge.vercel.app"><img src="https://img.shields.io/badge/🚀_Live-baseforge.vercel.app-10b981?style=for-the-badge" alt="Live Demo" /></a>
+  <a href="https://baseforge.vercel.app/api/agents/context?include=all&top=5"><img src="https://img.shields.io/badge/🤖_Agent_API-Try_it-8b5cf6?style=for-the-badge" alt="Agent API" /></a>
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FAmnAnon%2Fbaseforge-v1&env=ETHERSCAN_API_KEY,DATABASE_URL,ENVIO_API_TOKEN&envDescription=See%20.env.example%20for%20all%20variables&project-name=baseforge"><img src="https://img.shields.io/badge/▲_Deploy_to_Vercel-000?style=for-the-badge&logo=vercel" alt="Deploy to Vercel" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/AmnAnon/baseforge-v1/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AmnAnon/baseforge-v1/ci.yml?style=flat-square&logo=githubactions&label=CI" alt="CI Status" /></a>
+  <a href="https://github.com/AmnAnon/baseforge-v1/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/AmnAnon/baseforge-v1/blob/main/SECURITY.md"><img src="https://img.shields.io/badge/Security-Policy-orange?style=flat-square" alt="Security" /></a>
+  <a href="https://app.dependabot.com/repositories/AmnAnon/baseforge-v1"><img src="https://img.shields.io/badge/Dependabot-enabled-025E8C?style=flat-square&logo=dependabot" alt="Dependabot" /></a>
+  <a href="https://vercel.com?utm_source=baseforge"><img src="https://img.shields.io/badge/Powered_by-Vercel-black?style=flat-square&logo=vercel" alt="Powered by Vercel" /></a>
 </p>
 
 BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, MEV activity, gas costs, protocol revenue — and compresses it into structured intelligence feeds designed for human traders **and** AI agents. Instead of raw dashboards, BaseForge delivers actionable signal: compressed market state, risk-weighted protocol health, and machine-readable context payloads that LLMs can consume directly.
