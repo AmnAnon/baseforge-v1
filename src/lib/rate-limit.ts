@@ -25,24 +25,29 @@ setInterval(() => {
 export class RateLimiter {
   constructor(private config: RateLimiterConfig) {}
 
-  check(key: string): { allowed: boolean; retryAfter?: number } {
+  check(key: string): { allowed: boolean; retryAfter?: number; remaining?: number } {
     const now = Date.now();
     const existing = windows.get(key);
 
     // New or expired window
     if (!existing || now > existing.resetAt) {
       windows.set(key, { count: 1, resetAt: now + this.config.windowMs });
-      return { allowed: true };
+      return { allowed: true, remaining: this.config.maxRequests - 1 };
     }
 
     // Within window
     if (existing.count < this.config.maxRequests) {
       existing.count++;
-      return { allowed: true };
+      return { allowed: true, remaining: this.config.maxRequests - existing.count };
     }
 
     // Rate limited
     return { allowed: false, retryAfter: Math.ceil((existing.resetAt - now) / 1000) };
+  }
+
+  /** Reset limit for a specific key (e.g., after tier upgrade). */
+  reset(key: string): void {
+    windows.delete(key);
   }
 }
 
@@ -77,4 +82,9 @@ export function rateLimiterMiddleware(limiter: RateLimiter = defaultRateLimiter)
     }
     return null;
   };
+}
+
+/** Create a per-API-key rate limiter with custom limits. */
+export function createApiKeyLimiter(rpm: number): RateLimiter {
+  return new RateLimiter({ windowMs: 60_000, maxRequests: rpm });
 }

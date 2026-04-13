@@ -51,6 +51,13 @@ Set environment variables on Vercel:
 | `DATABASE_URL` | Yes | [console.neon.tech](https://console.neon.tech) |
 | `ENVIO_API_TOKEN` | Yes | Your Envio HyperSync token |
 | `NEXT_PUBLIC_DEMO_MODE` | Optional | `true` for demo banner |
+| `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Sentry DSN for error tracking |
+| `ADMIN_KEY` | Optional | Random string for admin endpoints |
+| `CACHE_BACKEND` | **Required in prod** | Set to `upstash` (see Redis section below) |
+| `UPSTASH_REDIS_URL` | **Required in prod** | Upstash Redis URL |
+| `UPSTASH_REDIS_TOKEN` | **Required in prod** | Upstash Redis token |
+
+> **Production requirement:** `CACHE_BACKEND=upstash` with a valid Upstash Redis instance is **required** for production deployments. Using `memory` cache in prod will trigger a degraded health status.
 
 Deploy. Verify at `https://your-app.vercel.app/api/health`.
 
@@ -285,11 +292,89 @@ Once validated, submit your mini app for Warpcast discovery through the develope
 | `DATABASE_URL` | Required | Required | Neon Postgres |
 | `ENVIO_API_TOKEN` | Required | Required | Primary indexer |
 | `NEXT_PUBLIC_DEMO_MODE` | Optional | Optional | Show demo banner |
+| `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Recommended | Sentry error tracking |
+| `CACHE_BACKEND` | **Required: `upstash`** | **Required: `upstash`** | Prod cache backend |
+| `UPSTASH_REDIS_URL` | **Required in prod** | **Required in prod** | Redis connection |
+| `UPSTASH_REDIS_TOKEN` | **Required in prod** | **Required in prod** | Redis auth token |
 | `FC_ACCOUNT_HEADER` | — | Required | accountAssociation header |
 | `FC_ACCOUNT_PAYLOAD` | — | Required | accountAssociation payload |
 | `FC_ACCOUNT_SIGNATURE` | — | Required | accountAssociation signature |
 | `FC_BOT_MNEMONIC` | — | Optional | Frame interaction auth |
-| `ADMIN_KEY` | Optional | Optional | Admin analytics gate |
+| `ADMIN_KEY` | Optional | Optional | Admin endpoints gate |
+| `NEYNAR_API_KEY` | Optional | Optional | Farcaster social data |
+
+---
+
+## API Key Management
+
+BaseForge requires API keys for the `/api/agents/context` endpoint and other data endpoints. This enables per-consumer rate limiting and usage tracking.
+
+### Creating API Keys
+
+Use the admin API (requires `ADMIN_KEY`):
+
+```bash
+# Create a free-tier key (100 req/min)
+curl -X POST https://your-app.vercel.app/api/admin/api-keys \
+  -H "x-admin-key: $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent", "tier": "free"}'
+
+# Create a pro-tier key (1000 req/min)
+curl -X POST https://your-app.vercel.app/api/admin/api-keys \
+  -H "x-admin-key: $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "production-bot", "tier": "pro"}'
+```
+
+Response includes the raw key **once**:
+```json
+{
+  "message": "API key created",
+  "key": "bf_a1b2c3...",
+  "warning": "Store this key now — it will never be shown again",
+  "record": { "id": "...", "name": "my-agent", "tier": "free", "rateLimit": 100 }
+}
+```
+
+### Using API Keys
+
+```bash
+# Via header (preferred)
+curl https://your-app.vercel.app/api/agents/context?include=all \
+  -H "X-API-Key: bf_a1b2c3..."
+
+# Via query parameter
+curl "https://your-app.vercel.app/api/agents/context?include=all&apiKey=bf_a1b2c3..."
+```
+
+### Managing Keys
+
+```bash
+# List all keys + usage stats
+curl https://your-app.vercel.app/api/admin/api-keys \
+  -H "x-admin-key: $ADMIN_KEY"
+
+# Update a key (change name, toggle, adjust rate limit)
+curl -X PATCH "https://your-app.vercel.app/api/admin/api-keys?id=KEY_ID" \
+  -H "x-admin-key: $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+
+# Revoke a key
+curl -X DELETE "https://your-app.vercel.app/api/admin/api-keys?id=KEY_ID" \
+  -H "x-admin-key: $ADMIN_KEY"
+```
+
+### Tier Limits
+
+| Tier | Default Rate Limit | Use Case |
+|---|---|---|
+| `free` | 100 req/min | Development, testing, small bots |
+| `pro` | 1000 req/min | Production agents, trading bots |
+| `enterprise` | 10000 req/min | High-frequency, infrastructure |
+
+Rate limits are configurable per-key during creation or via PATCH.
 
 ---
 

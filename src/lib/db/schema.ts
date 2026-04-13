@@ -179,6 +179,52 @@ export const alertEvents = pgTable(
   })
 );
 
+// ─── api_keys ──────────────────────────────────────────────────────
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    key: text("key").notNull(),          // SHA-256 hash of the actual key
+    name: text("name").notNull(),         // Human-readable label
+    tier: text("tier").notNull().default("free"), // "free" | "pro" | "enterprise"
+    rateLimit: integer("rate_limit").notNull().default(100), // req/min
+    enabled: boolean("enabled").notNull().default(true),
+    lastUsedAt: timestamp("last_used_at"),
+    totalRequests: integer("total_requests").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => ({
+    keyIdx: uniqueIndex("api_keys_key_idx").on(table.key),
+    tierIdx: index("api_keys_tier_idx").on(table.tier),
+    enabledIdx: index("api_keys_enabled_idx").on(table.enabled),
+  })
+);
+
+// ─── api_key_usage ─────────────────────────────────────────────────
+export const apiKeyUsage = pgTable(
+  "api_key_usage",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    keyId: uuid("key_id")
+      .references(() => apiKeys.id, { onDelete: "cascade" })
+      .notNull(),
+    endpoint: text("endpoint").notNull(),
+    method: text("method").notNull().default("GET"),
+    statusCode: integer("status_code"),
+    latencyMs: integer("latency_ms"),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    keyIdIdx: index("api_key_usage_key_id_idx").on(table.keyId),
+    createdAtIdx: index("api_key_usage_created_idx").on(table.createdAt),
+    endpointIdx: index("api_key_usage_endpoint_idx").on(table.endpoint),
+  })
+);
+
 // ─── Type exports ──────────────────────────────────────────────────
 export type AlertRule = typeof alertRules.$inferSelect;
 export type NewAlertRule = typeof alertRules.$inferInsert;
@@ -192,3 +238,7 @@ export type Market = typeof markets.$inferSelect;
 export type NewMarket = typeof markets.$inferInsert;
 export type ApiCache = typeof apiCache.$inferSelect;
 export type UserPreference = typeof userPreferences.$inferSelect;
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type NewApiKey = typeof apiKeys.$inferInsert;
+export type ApiKeyUsage = typeof apiKeyUsage.$inferSelect;
+export type NewApiKeyUsage = typeof apiKeyUsage.$inferInsert;

@@ -15,6 +15,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { RateLimiter, rateLimiterMiddleware } from "@/lib/rate-limit";
+import { apiKeyMiddleware } from "@/lib/api-key";
 import { logger, timing } from "@/lib/logger";
 import { getLargeSwaps, getWhaleFlows, getLendingActivity, getIndexerHealth } from "@/lib/data/indexers";
 
@@ -329,13 +330,24 @@ async function buildProtocolSection(
 // ─── GET ─────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
+  // API key auth (required for agent context)
+  const authResult = await apiKeyMiddleware(req, {
+    required: true,
+    endpoint: "/api/agents/context",
+  });
+  if (authResult.response) return authResult.response;
+
+  const keyInfo = authResult.key
+    ? { tier: authResult.key.tier, rateLimit: authResult.key.rateLimit }
+    : null;
+
+  // Secondary rate limiter (IP-based, production only)
   const rateResponse = await rateLimiterMiddleware(agentRateLimiter)(req);
   if (rateResponse) return rateResponse;
 
   const end = timing("agents.context");
 
   try {
-    // Parse query params
     const url = new URL(req.url);
     const rawParams = {
       include: url.searchParams.get("include") || undefined,
@@ -354,7 +366,7 @@ export async function GET(req: Request) {
     if (cached) {
       end();
       return NextResponse.json(cached, {
-        headers: responseHeaders("HIT", "cache"),
+        headers: responseHeaders("HIT", "cache", keyInfo),
       });
     }
 
@@ -545,7 +557,7 @@ export async function GET(req: Request) {
     await cache.set(cacheKey, response, 120);
 
     return NextResponse.json(response, {
-      headers: responseHeaders("MISS", healthData?.activeProvider || "defillama"),
+      headers: responseHeaders("MISS", healthData?.activeProvider || "defillama", keyInfo),
     });
   } catch (err) {
     end();
@@ -563,15 +575,19 @@ export async function GET(req: Request) {
         risk: { avgHealth: 0, highRiskCount: 0, anomalies: [] },
         _stale: true,
       },
-      { status: 200, headers: responseHeaders("ERROR", "none") }
+      { status: 200, headers: responseHeaders("ERROR", "none", keyInfo) }
     );
   }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-function responseHeaders(cacheStatus: string, source: string): Record<string, string> {
-  return {
+function responseHeaders(
+  cacheStatus: string,
+  source: string,
+  key?: { tier: string; rateLimit: number } | null
+): Record<string, string> {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Content-Type": "baseforge.agent.context.v2",
     "X-Data-Source": source,
@@ -582,6 +598,11 @@ function responseHeaders(cacheStatus: string, source: string): Record<string, st
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
   };
+  if (key) {
+    headers["X-RateLimit-Tier"] = key.tier;
+    headers["X-RateLimit-Limit"] = String(key.rateLimit);
+  }
+  return headers;
 }
 
 function getMostCommonCategory(protocols: Array<{ cat: string }>): string {
