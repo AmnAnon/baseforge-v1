@@ -16,6 +16,7 @@
 // Requires: ENVIO_API_TOKEN env var (get from https://envio.dev)
 
 import { logger } from "@/lib/logger";
+import { circuitBreakers } from "@/lib/circuit-breaker";
 import { CONTRACTS, EVENT_SIGNATURES, TOKEN_SYMBOLS, TOKEN_DECIMALS } from "./contracts";
 import type {
   SwapEvent,
@@ -62,6 +63,45 @@ interface HyperSyncResponse {
 
 // ─── Low-level HyperSync query ──────────────────────────────────
 
+/**
+ * Retry a fetch with exponential backoff + jitter.
+ * 3 retries: 1s → 2s → 4s (with ±30% jitter)
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok) return res;
+
+      // Non-retryable errors (4xx except 429/503)
+      if (res.status < 500 && res.status !== 429 && res.status !== 503) {
+        const text = await res.text().catch(() => "unknown");
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+
+      lastError = new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    if (attempt < maxRetries) {
+      const delay = Math.min(1000 * 2 ** attempt, 8000);
+      const jitter = delay * 0.3 * (Math.random() * 2 - 1);
+      const waitMs = Math.round(delay + jitter);
+      logger.debug(`Envio retry ${attempt + 1}/${maxRetries} in ${waitMs}ms`, {
+        error: lastError.message,
+      });
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastError ?? new Error("Unknown fetch error");
+}
+
 async function queryHyperSync(params: {
   fromBlock: number;
   toBlock?: number;
@@ -102,12 +142,15 @@ async function queryHyperSync(params: {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${HYPERSYNC_BASE_URL}/query`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(query),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  // Execute through circuit breaker + retry wrapper
+  const res = await circuitBreakers.envio.execute(() =>
+    fetchWithRetry(`${HYPERSYNC_BASE_URL}/query`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(query),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+  );
 
   if (!res.ok) {
     const text = await res.text().catch(() => "unknown");

@@ -6,10 +6,12 @@ import { NextResponse } from "next/server";
 import { cache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
 import { getIndexerHealth } from "@/lib/data/indexers";
+import { circuitBreakers } from "@/lib/circuit-breaker";
 
 interface HealthStatus {
   status: "ok" | "degraded" | "unhealthy";
   checks: Record<string, { status: "ok" | "error"; latency?: number; detail?: string }>;
+  circuitBreakers?: Record<string, { state: string; failures: number; cooldownMs: number }>;
   uptimeSeconds: number;
   timestamp: number;
 }
@@ -62,10 +64,21 @@ export async function GET() {
   checks.coingecko = coingeckoCheck;
 
   const cacheStats = cache.stats();
-  checks.cache = {
-    status: "ok",
-    detail: `size=${cacheStats.size}, hitRate=${(cacheStats.hitRate * 100).toFixed(1)}%`,
-  };
+  const cacheBackend = process.env.CACHE_BACKEND || "memory";
+  const isProd = process.env.NODE_ENV === "production";
+
+  // Warn if using memory cache in production
+  if (isProd && cacheBackend === "memory") {
+    checks.cache = {
+      status: "error",
+      detail: "MEMORY cache in production — set CACHE_BACKEND=upstash for prod",
+    };
+  } else {
+    checks.cache = {
+      status: "ok",
+      detail: `backend=${cacheBackend}, size=${cacheStats.size}, hitRate=${(cacheStats.hitRate * 100).toFixed(1)}%`,
+    };
+  }
 
   // Check DB only if URL is set
   if (process.env.DATABASE_URL) {
@@ -102,9 +115,21 @@ export async function GET() {
         ? "degraded"
         : "unhealthy";
 
+  // Circuit breaker status
+  const cbStatus: HealthStatus["circuitBreakers"] = {};
+  for (const [name, cb] of Object.entries(circuitBreakers)) {
+    const snap = cb.metricsSnapshot;
+    cbStatus[name] = {
+      state: snap.state,
+      failures: snap.failures,
+      cooldownMs: 30_000,
+    };
+  }
+
   const result: HealthStatus = {
     status,
     checks,
+    circuitBreakers: cbStatus,
     uptimeSeconds: Math.round((Date.now() - START_TIME) / 1000),
     timestamp: Date.now(),
   };

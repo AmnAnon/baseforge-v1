@@ -4,6 +4,7 @@
 // Less granular but more reliable for basic metrics.
 
 import { logger } from "@/lib/logger";
+import { circuitBreakers } from "@/lib/circuit-breaker";
 import { CONTRACTS, TOKEN_SYMBOLS, ADDRESS_LABELS } from "./contracts";
 import type { SwapEvent, WhaleFlow, LendingEvent, IndexerHealthStatus, SwapQuery, WhaleQuery, LendingQuery } from "./types";
 
@@ -40,7 +41,9 @@ async function fetchEtherscanTxList(
 
   try {
     const url = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=${offset}&sort=desc&apikey=${apiKey}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    const res = await circuitBreakers.etherscan.execute(() =>
+      fetch(url, { signal: AbortSignal.timeout(10_000) })
+    );
     const data = await res.json();
     if (data.status === "1" && Array.isArray(data.result)) {
       return data.result;
