@@ -286,6 +286,60 @@ Check `_stale: true` or `_error` to detect degraded responses.
 
 ---
 
+## Whale Tracker API
+
+The `/api/whales` endpoint returns enriched smart money flows with intent classification and whale scoring.
+
+```bash
+# Basic — default $10K threshold
+curl https://your-app.vercel.app/api/whales
+
+# Custom threshold and limit
+curl "https://your-app.vercel.app/api/whales?min=25000&limit=100"
+
+# Low threshold for high volume ($5K)
+curl "https://your-app.vercel.app/api/whales?min=5000&limit=200"
+```
+
+### Response Fields
+
+| Field | Description |
+|---|---|
+| `whales[].intent` | Raw intent type: `accumulation`, `distribution`, `lp_entry`, `lp_exit`, `leverage`, `deleverage`, `arbitrage`, `transfer` |
+| `whales[].intentLabel` | Human-readable label (e.g. "Accumulation", "LP Exit") |
+| `whales[].intentColor` | CSS variable for the intent color |
+| `whales[].intentConfidence` | Classification confidence (0-1) |
+| `whales[].whaleScore` | Whale score (0-100) based on volume, activity, protocol diversity, type mix |
+| `whales[].fromLabel` | Smart wallet label if known (e.g. "Aerodrome: Treasury") |
+| `whales[].toLabel` | Same for destination address |
+| `whaleProfiles[]` | Top active whale wallets with score, tx count, volume, protocols |
+| `hotSignals[]` | Detected patterns: repeated whale moves, arbitrage, accumulation clusters |
+
+### Whale Score Factors
+
+Score is computed 0-100 from:
+- **Volume (0-40):** `log2(totalVolume / 10000) * 8`, capped at 40
+- **Activity (0-25):** `txCount * 3`, capped at 25
+- **Protocol Diversity (0-20):** `uniqueProtocols * 5`, capped at 20
+- **Type Diversity (0-15):** `uniqueTypes * 4`, capped at 15
+
+### AI Summary Prompt Template
+
+The whale tracker includes a one-line AI summary. To regenerate or customize:
+
+```
+Given these whale flows: {JSON of last 20 transactions},
+Provide a one-sentence summary highlighting:
+1. Total volume moved and number of transactions
+2. Dominant intent (accumulation vs distribution)
+3. Any unusual patterns (arb, large LP exits, repeated whale)
+4. Top active whale if score >= 70
+5. Hottest protocol by transaction count
+Keep it under 120 characters. Use "·" as separator. Prefix with "$" for shell style.
+```
+
+---
+
 ## Interactive Examples
 
 Visit `/api/agents/examples` for:
@@ -330,7 +384,17 @@ interface AgentContext {
     anomalies: Array<{ id: string; reason: string; severity: string }>;
     confidence: number;
   };
-  whales?: { flows: Array<{ tx: string; protocol: string; type: string; usd: number; token: string; amount: string }>; summary: { totalVolumeUSD: number; largestFlowUSD: number; netFlowUSD: number }; count: number };
+  whales?: {
+    flows: Array<{
+      tx: string; from: string; to: string; fromLabel?: string; toLabel?: string;
+      usd: number; token: string; amount: string; type: string; protocol: string;
+      intent: string; intentLabel: string; intentColor: string;
+      intentConfidence: number; whaleScore?: number;
+    }>;
+    summary: { totalVolumeUSD: number; largestFlowUSD: number; netFlowUSD: number; activeWhales: number };
+    whaleProfiles: Array<{ address: string; score: number; txCount: number; totalVolume: number; protocols: string[]; label?: string }>;
+    hotSignals: Array<{ id: string; type: string; description: string; confidence: number; transactions: string[] }>;
+  };
   lending?: { events: Array<{ tx: string; action: string; protocol: string; asset: string; usd: number; user: string }>; summary: { totalDepositsUSD: number; totalBorrowsUSD: number } };
   gas?: { baseFeeGwei: number; congestion: "low" | "medium" | "high"; estTxCostUSD: number };
   mev?: { status: "heuristic"; confidence: number; note: string; estimatedExtraction24h: number; sandwichCount: number; arbitrageCount: number };
