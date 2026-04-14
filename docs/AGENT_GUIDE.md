@@ -297,3 +297,188 @@ Visit `/api/agents/examples` for:
 ```bash
 curl https://your-baseforge.vercel.app/api/agents/examples | jq
 ```
+
+---
+
+## TypeScript Client Types
+
+Generate or use these types for type-safe integration:
+
+```typescript
+// Response shape from /api/agents/context v2
+interface AgentContext {
+  _v: "2.0";
+  _schema: "baseforge.agent.context";
+  _ts: number;
+  _iso: string;
+  _chain: "base";
+  _chainId: 8453;
+  _source: string;
+  _latencyMs: number;
+  _params: { include: string[]; protocol: string | null; timeframe: string; top: number };
+  market?: { totalTvl: number; protocols: number; avgApy: number; avgHealth: number; tvlTrend: "up" | "down" | "flat"; tvlTrendPct: number; topCategory: string };
+  protocols?: Array<{
+    id: string; name: string; cat: string; tvl: number;
+    c1d: number; c7d: number; c30d?: number; apy: number;
+    dom: number; health: number; risk: number; level: "low" | "medium" | "high";
+    audit: "audited" | "partial" | "unaudited"; factors: string[];
+  }>;
+  risk?: {
+    avgHealth: number; highRiskCount: number; highRiskProtocols: string[];
+    unauditedCount: number;
+    concentration: { level: "HIGH" | "MEDIUM" | "LOW"; dominant: string; dominantPct: number; hhi: number };
+    anomalies: Array<{ id: string; reason: string; severity: string }>;
+    confidence: number;
+  };
+  whales?: { flows: Array<{ tx: string; protocol: string; type: string; usd: number; token: string; amount: string }>; summary: { totalVolumeUSD: number; largestFlowUSD: number; netFlowUSD: number }; count: number };
+  lending?: { events: Array<{ tx: string; action: string; protocol: string; asset: string; usd: number; user: string }>; summary: { totalDepositsUSD: number; totalBorrowsUSD: number } };
+  gas?: { baseFeeGwei: number; congestion: "low" | "medium" | "high"; estTxCostUSD: number };
+  mev?: { status: "heuristic"; confidence: number; note: string; estimatedExtraction24h: number; sandwichCount: number; arbitrageCount: number };
+  intents?: Array<{ signal: string; protocol: string; confidence: number; evidence: string; actionable: string }>;
+  _ttl: number;
+  _next: string;
+}
+```
+
+### Full Client Class (TypeScript)
+
+```typescript
+class BaseForgeClient {
+  private baseUrl: string;
+  private apiKey: string;
+
+  constructor(baseUrl: string, apiKey: string) {
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.apiKey = apiKey;
+  }
+
+  async getContext(options?: {
+    include?: string;
+    protocol?: string;
+    timeframe?: "1h" | "6h" | "24h";
+    top?: number;
+    compact?: boolean;
+  }): Promise<AgentContext> {
+    const params = new URLSearchParams({
+      include: options?.include ?? "all",
+      ...(options?.protocol && { protocol: options.protocol }),
+      ...(options?.timeframe && { timeframe: options.timeframe }),
+      ...(options?.top && { top: String(options.top) }),
+      ...(options?.compact && { compact: "true" }),
+    });
+
+    const res = await fetch(`${this.baseUrl}/api/agents/context?${params}`, {
+      headers: { "X-API-Key": this.apiKey },
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(`BaseForge API error: ${error.error ?? "unknown"}`);
+    }
+
+    return res.json() as Promise<AgentContext>;
+  }
+}
+
+// Usage
+const client = new BaseForgeClient("https://your-app.vercel.app", "bf_your_key_here");
+const ctx = await client.getContext({ include: "all", top: 10 });
+console.log(ctx.market?.totalTvl);
+console.log(ctx.intents?.[0]?.signal);
+```
+
+---
+
+## Python Client Types
+
+```python
+from dataclasses import dataclass
+from typing import Optional, List
+import requests
+
+@dataclass
+class Protocol:
+    id: str
+    name: str
+    cat: str
+    tvl: int
+    c1d: float
+    c7d: float
+    apy: float
+    dom: float
+    health: int
+    risk: int
+    level: str  # "low", "medium", "high"
+    audit: str  # "audited", "partial", "unaudited"
+    factors: List[str]
+
+@dataclass
+class MarketOverview:
+    total_tvl: int
+    protocols: int
+    avg_apy: float
+    avg_health: int
+    tvl_trend: str  # "up", "down", "flat"
+    tvl_trend_pct: float
+    top_category: str
+
+class BaseForgeClient:
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+
+    def get_context(self, include: str = "all", protocol: str = None,
+                    timeframe: str = "24h", top: int = 15, compact: bool = False) -> dict:
+        params = {"include": include, "timeframe": timeframe, "top": str(top)}
+        if protocol:
+            params["protocol"] = protocol
+        if compact:
+            params["compact"] = "true"
+
+        headers = {"X-API-Key": self.api_key}
+        res = requests.get(f"{self.base_url}/api/agents/context", params=params, headers=headers)
+        res.raise_for_status()
+        return res.json()
+
+# Usage
+client = BaseForgeClient("https://your-app.vercel.app", "bf_your_key_here")
+ctx = client.get_context(include="all", top=10)
+print(ctx["market"]["totalTvl"])
+```
+
+---
+
+## Authentication & Rate Limits
+
+All data endpoints require an API key. Get one from your admin dashboard:
+
+```bash
+# Create a free-tier key
+curl -X POST https://your-app.vercel.app/api/admin/api-keys \
+  -H "x-admin-key: $ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent", "tier": "free"}'
+```
+
+| Tier | Rate Limit | Headers |
+|------|-----------|---------|
+| `free` | 100 req/min | `X-RateLimit-Tier: free`, `X-RateLimit-Limit: 100` |
+| `pro` | 1000 req/min | `X-RateLimit-Tier: pro`, `X-RateLimit-Limit: 1000` |
+| `enterprise` | 10000 req/min | `X-RateLimit-Tier: enterprise`, `X-RateLimit-Limit: 10000` |
+
+Pass your key via:
+- Header (preferred): `X-API-Key: bf_...`
+- Query param: `?apiKey=bf_...`
+
+---
+
+## OpenAPI Specification
+
+Full OpenAPI 3.1 spec is available at:
+- **Public**: `https://your-app.vercel.app/openapi.json`
+- **GitHub**: [`public/openapi.json`](../public/openapi.json)
+
+Use it with:
+- **Scalar**: `https://your-app.vercel.app/api-docs` (if hosted)
+- **Swagger Editor**: Paste `openapi.json` at [editor.swagger.io](https://editor.swagger.io)
+- **Codegen**: Generate TypeScript/Python/Go clients via `openapi-generator`

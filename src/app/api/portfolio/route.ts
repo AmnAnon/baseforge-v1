@@ -1,5 +1,13 @@
 // src/app/api/portfolio/route.ts
 // Portfolio tracker — on-chain wallet balances via viem multicall + USD values via CoinGecko.
+//
+// SECURITY NOTES:
+// - Read-only: this endpoint only fetches balances via public RPC calls
+// - NEVER stores private keys, seed phrases, or signatures
+// - NEVER signs transactions or initiates transfers
+// - Wallet address is only used as a public query parameter
+// - Rate limited to prevent abuse
+//
 // Replaces the old placeholder implementation with real Base chain data.
 import { NextResponse } from "next/server";
 import { isAddress } from "viem";

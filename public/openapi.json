@@ -1,0 +1,257 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "BaseForge API",
+    "description": "AI-Ready Intelligence Layer for the Base Ecosystem. Real-time DeFi analytics, protocol risk scoring, whale tracking, and compressed context payloads for AI agents.",
+    "version": "1.0.0",
+    "contact": { "name": "BaseForge", "url": "https://github.com/AmnAnon/baseforge-v1" },
+    "license": { "name": "MIT", "url": "https://github.com/AmnAnon/baseforge-v1/blob/main/LICENSE" }
+  },
+  "servers": [
+    { "url": "https://baseforge-v1.vercel.app", "description": "Production (Vercel)" },
+    { "url": "http://localhost:3000", "description": "Local development" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": { "type": "apiKey", "in": "header", "name": "X-API-Key", "description": "API key for agent endpoints" },
+      "AdminAuth": { "type": "apiKey", "in": "header", "name": "x-admin-key", "description": "Admin key for management endpoints" }
+    },
+    "schemas": {
+      "Market": {
+        "type": "object",
+        "properties": {
+          "totalTvl": { "type": "integer", "description": "Total TVL across all Base protocols (USD)" },
+          "protocols": { "type": "integer", "description": "Number of evaluated protocols" },
+          "avgApy": { "type": "number", "description": "Average APY across protocols" },
+          "avgHealth": { "type": "integer", "description": "Average health score (0-100)" },
+          "tvlTrend": { "type": "string", "enum": ["up", "down", "flat"] },
+          "tvlTrendPct": { "type": "number" },
+          "topCategory": { "type": "string" }
+        }
+      },
+      "Protocol": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "cat": { "type": "string" },
+          "tvl": { "type": "integer" },
+          "c1d": { "type": "number", "description": "24h TVL change %" },
+          "c7d": { "type": "number", "description": "7d TVL change %" },
+          "apy": { "type": "number", "description": "Average APY" },
+          "dom": { "type": "number", "description": "TVL dominance %" },
+          "health": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "risk": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "level": { "type": "string", "enum": ["low", "medium", "high"] },
+          "audit": { "type": "string", "enum": ["audited", "partial", "unaudited"] },
+          "factors": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "RiskSummary": {
+        "type": "object",
+        "properties": {
+          "avgHealth": { "type": "integer" },
+          "highRiskCount": { "type": "integer" },
+          "highRiskProtocols": { "type": "array", "items": { "type": "string" } },
+          "unauditedCount": { "type": "integer" },
+          "concentration": {
+            "type": "object",
+            "properties": {
+              "level": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] },
+              "dominant": { "type": "string" },
+              "dominantPct": { "type": "number" },
+              "hhi": { "type": "number", "description": "Herfindahl-Hirschman Index" }
+            }
+          },
+          "anomalies": { "type": "array", "items": { "$ref": "#/components/schemas/Anomaly" } },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      },
+      "Anomaly": {
+        "type": "object",
+        "properties": { "id": { "type": "string" }, "reason": { "type": "string" }, "severity": { "type": "string", "enum": ["high", "medium", "low"] } }
+      },
+      "IntentSignal": {
+        "type": "object",
+        "properties": {
+          "signal": { "type": "string", "enum": ["accumulation", "distribution", "yield_rotation", "risk_escalation"] },
+          "protocol": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "evidence": { "type": "string" },
+          "actionable": { "type": "string" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": { "error": { "type": "string" }, "detail": { "type": "string" } }
+      }
+    }
+  },
+  "paths": {
+    "/api/agents/context": {
+      "get": {
+        "summary": "AI Agent Context — compressed ecosystem state for LLMs",
+        "tags": ["Agents"],
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          { "name": "include", "in": "query", "schema": { "type": "string", "default": "protocols,risk,market" }, "description": "Comma-separated sections or 'all'" },
+          { "name": "protocol", "in": "query", "schema": { "type": "string" }, "description": "Filter by protocol slug" },
+          { "name": "timeframe", "in": "query", "schema": { "type": "string", "enum": ["1h", "6h", "24h"], "default": "24h" } },
+          { "name": "top", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15 } },
+          { "name": "compact", "in": "query", "schema": { "type": "string", "enum": ["true", "false"], "default": "false" } }
+        ],
+        "responses": {
+          "200": { "description": "Compressed context JSON", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentContextResponse" } } } },
+          "401": { "description": "API key required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } } },
+          "429": { "description": "Rate limit exceeded" }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "System health check",
+        "tags": ["System"],
+        "responses": { "200": { "description": "Health status" }, "503": { "description": "Unhealthy" } }
+      }
+    },
+    "/api/swaps": {
+      "get": {
+        "summary": "Recent DEX swap events",
+        "tags": ["Data"],
+        "parameters": [
+          { "name": "protocol", "in": "query", "schema": { "type": "string", "enum": ["aerodrome", "uniswap-v3"] } },
+          { "name": "min", "in": "query", "schema": { "type": "integer" }, "description": "Minimum USD amount" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Swap events" } }
+      }
+    },
+    "/api/whales": {
+      "get": {
+        "summary": "Whale-sized flows across protocols",
+        "tags": ["Data"],
+        "parameters": [
+          { "name": "min", "in": "query", "schema": { "type": "integer", "default": 50000 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Whale flow events" } }
+      }
+    },
+    "/api/lending": {
+      "get": {
+        "summary": "Lending protocol events (Seamless + Moonwell)",
+        "tags": ["Data"],
+        "parameters": [
+          { "name": "action", "in": "query", "schema": { "type": "string", "enum": ["deposit", "withdraw", "borrow", "repay", "liquidation"] } },
+          { "name": "min", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } }
+        ],
+        "responses": { "200": { "description": "Lending events" } }
+      }
+    },
+    "/api/risk": {
+      "get": {
+        "summary": "Protocol risk scoring",
+        "tags": ["Risk"],
+        "responses": { "200": { "description": "Risk scores" } }
+      }
+    },
+    "/api/risk-history": {
+      "get": {
+        "summary": "Historical risk scores for a protocol",
+        "tags": ["Risk"],
+        "parameters": [{ "name": "protocol", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Time-series risk scores" } }
+      }
+    },
+    "/api/market": {
+      "get": {
+        "summary": "Token prices and market data",
+        "tags": ["Market"],
+        "responses": { "200": { "description": "Token prices" } }
+      }
+    },
+    "/api/revenue": {
+      "get": {
+        "summary": "Protocol revenue and fees",
+        "tags": ["Market"],
+        "responses": { "200": { "description": "Revenue data" } }
+      }
+    },
+    "/api/gas": {
+      "get": {
+        "summary": "Base L2 gas prices",
+        "tags": ["Market"],
+        "responses": { "200": { "description": "Gas prices" } }
+      }
+    },
+    "/api/mev": {
+      "get": {
+        "summary": "MEV activity (heuristic-based)",
+        "tags": ["MEV"],
+        "responses": { "200": { "description": "MEV events" } }
+      }
+    },
+    "/api/stream": {
+      "get": {
+        "summary": "SSE streaming endpoint",
+        "tags": ["Real-time"],
+        "responses": { "200": { "description": "text/event-stream", "content": { "text/event-stream": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/api/portfolio": {
+      "get": {
+        "summary": "Wallet portfolio balances",
+        "tags": ["Portfolio"],
+        "parameters": [{ "name": "address", "in": "query", "required": true, "schema": { "type": "string" }, "description": "0x wallet address" }],
+        "responses": { "200": { "description": "Portfolio positions" }, "400": { "description": "Invalid address" } }
+      }
+    },
+    "/api/protocols": {
+      "get": {
+        "summary": "List all Base protocols by TVL",
+        "tags": ["Protocols"],
+        "responses": { "200": { "description": "Protocol list" } }
+      }
+    },
+    "/api/protocols/{slug}": {
+      "get": {
+        "summary": "Single protocol detail",
+        "tags": ["Protocols"],
+        "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Protocol detail" } }
+      }
+    },
+    "/api/alerts": {
+      "get": {
+        "summary": "Active alerts",
+        "tags": ["Alerts"],
+        "responses": { "200": { "description": "Alert events" } }
+      }
+    },
+    "/api/admin/api-keys": {
+      "get": {
+        "summary": "List all API keys",
+        "tags": ["Admin"],
+        "security": [{ "AdminAuth": [] }],
+        "responses": { "200": { "description": "API key list" }, "403": { "description": "Forbidden" } }
+      },
+      "post": {
+        "summary": "Create new API key",
+        "tags": ["Admin"],
+        "security": [{ "AdminAuth": [] }],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "tier": { "type": "string", "enum": ["free", "pro", "enterprise"] }, "rateLimit": { "type": "integer" } }, "required": ["name"] } } }
+        },
+        "responses": { "201": { "description": "Created" } }
+      },
+      "delete": {
+        "summary": "Revoke API key",
+        "tags": ["Admin"],
+        "security": [{ "AdminAuth": [] }],
+        "parameters": [{ "name": "id", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Revoked" }, "404": { "description": "Not found" } }
+      }
+    }
+  }
+}

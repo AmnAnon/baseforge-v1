@@ -1,11 +1,12 @@
 // src/lib/monitoring.ts
 // Observability layer — Sentry alerts for data source failures,
-// performance tracking, and structured error reporting.
+// performance tracking, structured error reporting, and transaction tracing.
 //
 // Usage:
 //   monitor.trackDataSourceFailure("envio", error, { route: "/api/whales" })
 //   monitor.trackLatency("defillama.protocols", 230)
 //   monitor.reportAnomaly("high_risk_protocol", { protocol: "xyz", risk: 85 })
+//   monitor.withTransaction("agents.context", async (span) => { ... })
 
 import { logger } from "./logger";
 
@@ -17,6 +18,30 @@ async function getSentry() {
   } catch {
     return null;
   }
+}
+
+/**
+ * Wrap an async function in a Sentry transaction for performance tracing.
+ * Useful for expensive operations like /api/agents/context.
+ *
+ * @example
+ * const result = await monitor.withTransaction("agents.context", async (span) => {
+ *   span?.setData("param_top", 10);
+ *   return await buildContext(params);
+ * });
+ */
+export async function withTransaction<T>(
+  name: string,
+  fn: (span: import("@sentry/nextjs").Span | null) => Promise<T>,
+  tags?: Record<string, string>
+): Promise<T> {
+  const Sentry = await getSentry();
+  if (!Sentry) return fn(null);
+
+  return Sentry.startSpan(
+    { name, op: "baseforge.fn", attributes: tags },
+    async (span) => fn(span)
+  );
 }
 
 export const monitor = {

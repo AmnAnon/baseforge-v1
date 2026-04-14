@@ -8,6 +8,13 @@
       "when": 1775544357437,
       "tag": "0000_military_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776163861885,
+      "tag": "0001_ordinary_siren",
+      "breakpoints": true
     }
   ]
 }

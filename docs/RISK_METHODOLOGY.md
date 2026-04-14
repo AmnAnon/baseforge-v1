@@ -188,7 +188,7 @@ Intent confidence scales with the ratio of flow volume to protocol TVL. Higher f
 
 1. **Audit quality is not assessed** — we count audits but don't evaluate whether they were thorough. A 1-page audit counts the same as a 50-page Trail of Bits review.
 2. **TVL can be manipulated** — recursive borrowing, self-deposits, and bridge loops can inflate TVL without real user activity.
-3. **On-chain data coverage is partial** — the indexer tracks Aerodrome, Uniswap V3, and Seamless. Other protocols get scores based only on DefiLlama metadata.
+3. **On-chain data coverage is partial** — the indexer tracks Aerodrome, Uniswap V3, Seamless, and Moonwell (v1.0). Other protocols get scores based only on DefiLlama metadata. Moonwell Comet markets: USDC, WETH, cbETH, COMP.
 4. **No contract analysis** — we don't read or analyze smart contract code, bytecode, or upgrade patterns.
 5. **Historical data is limited** — risk-history tracks scores over time but doesn't model time-series risk trajectories.
 
