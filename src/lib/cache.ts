@@ -97,7 +97,11 @@ if (CACHE_BACKEND === "upstash" && process.env.UPSTASH_REDIS_URL && process.env.
 
 export const cache = {
   get: <T>(key: string): Promise<T | null> => driver.get<T>(key),
-  getStale: <T>(key: string): Promise<T | null> => (driver as Record<string, unknown>).getStale?.(key) ?? driver.get<T>(key),
+  getStale: <T>(key: string): Promise<T | null> => {
+    const d = driver as unknown as Record<string, unknown>;
+    if (typeof d.getStale === "function") return (d.getStale as (key: string) => Promise<T | null>)(key);
+    return driver.get<T>(key);
+  },
   set: <T>(key: string, value: T, ttl: number): Promise<void> => driver.set<T>(key, value, ttl),
   del: (key: string): Promise<void> => driver.del(key),
   clear: (): Promise<void> => driver.clear(),
@@ -132,7 +136,10 @@ export const cache = {
       return { ...fresh, isStale: false };
     } catch {
       // Check for expired entries via getStale (doesn't delete on expiry)
-      const getStaleFn = (driver as Record<string, unknown>).getStale as ((key: string) => Promise<T | null>) | undefined;
+      const d = driver as unknown as Record<string, unknown>;
+      const getStaleFn = typeof d.getStale === "function"
+        ? (d.getStale as (key: string) => Promise<T | null>)
+        : null;
       const stale = getStaleFn ? await getStaleFn(key) : null;
       if (stale !== null) return { ...stale, isStale: true };
 

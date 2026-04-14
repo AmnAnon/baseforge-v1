@@ -49,12 +49,12 @@ if (typeof globalThis.EventSource === "undefined") {
 
 // AbortSignal.timeout polyfill (Node 20+ has it, but jsdom may not)
 if (!AbortSignal.timeout) {
-  // @ts-expect-error — polyfill
-  AbortSignal.timeout = (ms: number) => {
+  const timeoutFn = (ms: number) => {
     const controller = new AbortController();
     setTimeout(() => controller.abort(new Error("timeout")), ms);
     return controller.signal;
   };
+  Object.defineProperty(AbortSignal, "timeout", { value: timeoutFn, writable: true });
 }
 
 // ── Suppress console noise in tests ─────────────────────────────

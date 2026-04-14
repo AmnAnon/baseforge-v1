@@ -576,11 +576,22 @@ export async function getLendingEvents(query: LendingQuery = {}): Promise<Lendin
     EVENT_SIGNATURES.AAVE_BORROW,
     EVENT_SIGNATURES.AAVE_REPAY,
     EVENT_SIGNATURES.AAVE_LIQUIDATION,
+    // Moonwell Comet events
+    EVENT_SIGNATURES.MOONWELL_SUPPLY,
+    EVENT_SIGNATURES.MOONWELL_WITHDRAW,
+    EVENT_SIGNATURES.MOONWELL_BORROW,
+  ];
+
+  const lendingAddresses = [
+    CONTRACTS.SEAMLESS_POOL,
+    CONTRACTS.MOONWELL_USDC,
+    CONTRACTS.MOONWELL_WETH,
+    CONTRACTS.MOONWELL_CBETH,
   ];
 
   const response = await queryHyperSync({
     fromBlock,
-    addresses: [CONTRACTS.SEAMLESS_POOL],
+    addresses: lendingAddresses,
     topics: [topic0s],
     maxBlocks: 10000,
   });
@@ -599,10 +610,21 @@ export async function getLendingEvents(query: LendingQuery = {}): Promise<Lendin
         [EVENT_SIGNATURES.AAVE_BORROW]: "borrow",
         [EVENT_SIGNATURES.AAVE_REPAY]: "repay",
         [EVENT_SIGNATURES.AAVE_LIQUIDATION]: "liquidation",
+        // Moonwell Comet (Supply/Withdraw)
+        [EVENT_SIGNATURES.MOONWELL_SUPPLY]: "deposit",
+        [EVENT_SIGNATURES.MOONWELL_WITHDRAW]: "withdraw",
+        [EVENT_SIGNATURES.MOONWELL_BORROW]: "borrow",
       };
 
       const action = actionMap[topic0];
       if (!action) continue;
+
+      // Determine protocol from address
+      const logAddr = log.address.toLowerCase();
+      const protocol: LendingEvent["protocol"] =
+        logAddr === CONTRACTS.SEAMLESS_POOL.toLowerCase()
+          ? "seamless"
+          : "moonwell";
 
       const asset = extractAddress(log.topics[1]);
       const user = extractAddress(log.topics[2]);
