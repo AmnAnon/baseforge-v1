@@ -32,7 +32,7 @@ export function RiskRing({ score, size = 48, strokeWidth = 3, showLabel = true }
   const glow = riskGlow(score);
 
   return (
-    <div className="risk-ring inline-flex" style={{ width: size, height: size }}>
+    <div className="risk-ring inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle className="track" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} />
         <motion.circle
@@ -50,7 +50,7 @@ export function RiskRing({ score, size = 48, strokeWidth = 3, showLabel = true }
         />
       </svg>
       {showLabel && (
-        <span className="label" style={{ color }}>{score}</span>
+        <span className="label absolute" style={{ color }}>{score}</span>
       )}
     </div>
   );
