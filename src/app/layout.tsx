@@ -64,8 +64,9 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-black text-white min-h-screen`}>
+      <body className={`${inter.className} bg-[#0a0a0a] text-[#e0e0e0] min-h-screen`}>
         {showDemo && <DemoBanner />}
+        <div id="scanlines" className="scanlines" />
         {children}
       </body>
     </html>

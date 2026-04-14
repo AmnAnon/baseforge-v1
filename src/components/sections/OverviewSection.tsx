@@ -3,7 +3,6 @@
 
 
 import { useState, useMemo } from "react";
-import { Card } from "@tremor/react";
 import { formatCurrency, formatPercentage, freshnessColor, timeAgo } from "@/lib/utils";
 import {
   ArrowUpIcon,
@@ -17,6 +16,8 @@ import {
   LineChart,
   ExternalLink,
 } from "lucide-react";
+import { NeonCard } from "@/components/ui/NeonCard";
+import { RiskRing } from "@/components/ui/RiskRing";
 import BaseNetworkMetrics from "./BaseNetworkMetrics";
 import BaseTVLChart from "@/components/charts/BaseTVLChart";
 import ProtocolSwitcher, { Protocol } from "../ui/ProtocolSwitcher";
@@ -34,6 +35,7 @@ interface MetricCardProps {
   valueSuffix?: string;
   actionLabel?: string;
   actionUrl?: string;
+  glowColor?: string;
 }
 
 // Deep link map for protocols
@@ -116,7 +118,7 @@ const MetricCard = ({
   };
 
   return (
-    <Card className="relative !bg-gradient-to-br !from-gray-900/95 !via-gray-800/90 !to-black/95 border-0 p-5 rounded-2xl shadow-2xl hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] transition-all duration-300 group overflow-hidden before:absolute before:inset-0 before:rounded-2xl before:p-[2px] before:bg-gradient-to-br before:from-emerald-500/40 before:via-transparent before:to-emerald-500/20 before:-z-10 hover:before:from-emerald-500/60 hover:before:to-emerald-500/40 h-full">
+    <NeonCard className="relative !bg-gradient-to-br !from-gray-900/95 !via-gray-800/90 !to-black/95 border-0 p-5 rounded-2xl shadow-2xl hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] transition-all duration-300 group overflow-hidden before:absolute before:inset-0 before:rounded-2xl before:p-[2px] before:bg-gradient-to-br before:from-emerald-500/40 before:via-transparent before:to-emerald-500/20 before:-z-10 hover:before:from-emerald-500/60 hover:before:to-emerald-500/40 h-full">
       <div className="flex flex-col h-full">
         <div className="flex items-start justify-between gap-3 mb-auto">
           <div className="flex-1 min-w-0">
@@ -197,7 +199,7 @@ const MetricCard = ({
           </a>
         )}
       </div>
-    </Card>
+    </NeonCard>
   );
 };
 

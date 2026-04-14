@@ -1,26 +1,330 @@
+/* ───────────────────────────────────────────────────────────
+   BaseForge v1.0 — Cyber-Neon Base Theme
+   Dark cockpit UI with glassmorphism, neon glows, and
+   animated grid background.
+   ─────────────────────────────────────────────────────────── */
+
 @import "tailwindcss";
 
+/* ── CSS Variables ──────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Core palette */
+  --bf-bg-primary: #0a0a0a;
+  --bf-bg-secondary: #111111;
+  --bf-bg-tertiary: #1a1a2e;
+
+  /* Neon accents */
+  --bf-neon-primary: #00d4ff;
+  --bf-neon-secondary: #00ff88;
+  --bf-neon-accent: #7b61ff;
+  --bf-neon-magenta: #ff2d7b;
+  --bf-neon-orange: #ff8c00;
+
+  /* Glass */
+  --bf-glass-bg: rgba(10, 10, 10, 0.7);
+  --bf-glass-border: rgba(255, 255, 255, 0.1);
+  --bf-glass-hover: rgba(255, 255, 255, 0.15);
+
+  /* Text */
+  --bf-text-primary: #e0e0e0;
+  --bf-text-secondary: #888888;
+  --bf-text-muted: #555555;
+
+  /* Status */
+  --bf-status-ok: #00ff88;
+  --bf-status-warn: #ffaa00;
+  --bf-status-danger: #ff2d7b;
+
+  /* Gradients */
+  --bf-gradient-hero: linear-gradient(135deg, #00d4ff 0%, #7b61ff 50%, #ff2d7b 100%);
+  --bf-gradient-card: linear-gradient(180deg, rgba(0, 212, 255, 0.05) 0%, transparent 100%);
+
+  /* Shadows / Glows */
+  --bf-glow-sm: 0 0 10px rgba(0, 212, 255, 0.3);
+  --bf-glow-md: 0 0 20px rgba(0, 212, 255, 0.4);
+  --bf-glow-lg: 0 0 30px rgba(0, 212, 255, 0.5);
+  --bf-glow-hover: 0 0 30px -8px rgba(0, 212, 255, 0.6);
+
+  /* Grid animation */
+  --bf-grid-color: rgba(0, 212, 255, 0.03);
+  --bf-grid-size: 40px;
 }
 
+/* ── Theme Inline ─────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bf-bg-primary);
+  --color-foreground: var(--bf-text-primary);
+  --color-neon-primary: var(--bf-neon-primary);
+  --color-neon-secondary: var(--bf-neon-secondary);
+  --color-neon-accent: var(--bf-neon-accent);
+  --color-neon-magenta: var(--bf-neon-magenta);
+  --font-sans: var(--font-geist-sans), Inter, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Global Reset ──────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bf-bg-primary);
+  color: var(--bf-text-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Animated Grid Background ─────────────────────────── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+  background-size: var(--bf-grid-size) var(--bf-grid-size);
+  animation: grid-pan 20s linear infinite;
+}
+
+@keyframes grid-pan {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(40px, 40px); }
+}
+
+/* ── Subtle Radial Vignette ───────────────────────────── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(ellipse at 50% 0%, rgba(0, 212, 255, 0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 50%, rgba(123, 97, 255, 0.04) 0%, transparent 40%),
+              radial-gradient(ellipse at 20% 80%, rgba(0, 255, 136, 0.03) 0%, transparent 40%);
+  pointer-events: none;
+}
+
+/* ── Glassmorphism Card Base ──────────────────────────── */
+.glass-card {
+  background: var(--bf-glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--bf-glass-border);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  border-color: var(--bf-glass-hover);
+  box-shadow: var(--bf-glow-hover);
+  transform: scale(1.015);
+}
+
+/* ── Neon Glow Text ───────────────────────────────────── */
+.neon-text {
+  color: var(--bf-neon-primary);
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.neon-text-green {
+  color: var(--bf-neon-secondary);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.neon-text-purple {
+  color: var(--bf-neon-accent);
+  text-shadow: 0 0 10px rgba(123, 97, 255, 0.5);
+}
+
+.neon-text-red {
+  color: var(--bf-neon-magenta);
+  text-shadow: 0 0 10px rgba(255, 45, 123, 0.5);
+}
+
+/* ── Neon Border / Glow ───────────────────────────────── */
+.neon-border {
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.15),
+              inset 0 0 15px rgba(0, 212, 255, 0.05);
+}
+
+.neon-glow-sm {
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+}
+
+.neon-glow-md {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+.neon-glow-lg {
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.4);
+}
+
+/* ── Status Indicators ────────────────────────────────── */
+.status-ok {
+  color: var(--bf-status-ok);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+}
+
+.status-warn {
+  color: var(--bf-status-warn);
+  text-shadow: 0 0 8px rgba(255, 170, 0, 0.4);
+}
+
+.status-danger {
+  color: var(--bf-status-danger);
+  text-shadow: 0 0 8px rgba(255, 45, 123, 0.4);
+}
+
+/* ── Scanline / CRT Easter Egg ────────────────────────── */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.15) 2px,
+    rgba(0, 0, 0, 0.15) 4px
+  );
+  transition: opacity 0.5s ease;
+}
+
+.scanlines.active {
+  opacity: 1;
+}
+
+/* ── Scrollbar ────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bf-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 212, 255, 0.5);
+}
+
+/* ── Selection ────────────────────────────────────────── */
+::selection {
+  background: rgba(0, 212, 255, 0.3);
+  color: #fff;
+}
+
+/* ── Reduced Motion ───────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  body::before {
+    animation: none;
+  }
+}
+
+/* ── Utility: Pulse Dot ───────────────────────────────── */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bf-neon-primary);
+  box-shadow: 0 0 6px var(--bf-neon-primary);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 6px var(--bf-neon-primary); }
+  50% { opacity: 0.6; box-shadow: 0 0 12px var(--bf-neon-primary); }
+}
+
+/* ── Utility: Shimmer Skeleton ────────────────────────── */
+.shimmer {
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Radial Risk Ring (SVG circle background) ─────────── */
+.risk-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.risk-ring svg {
+  transform: rotate(-90deg);
+}
+
+.risk-ring .track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.risk-ring .fill {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+              stroke 0.3s ease;
+}
+
+.risk-ring .label {
+  position: absolute;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* ── Terminal-style text ──────────────────────────────── */
+.terminal {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--bf-neon-secondary);
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+}
+
+/* ── Gradient text utility ────────────────────────────── */
+.gradient-text {
+  background: var(--bf-gradient-hero);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

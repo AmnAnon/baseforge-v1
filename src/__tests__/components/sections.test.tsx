@@ -84,6 +84,20 @@ vi.mock("@tremor/react", () => ({
   LineChart: () => <div data-testid="tremor-line-chart" />,
 }));
 
+// Mock NeonCard
+vi.mock("@/components/ui/NeonCard", () => ({
+  NeonCard: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div data-testid="neon-card" className={className}>{children}</div>
+  ),
+}));
+
+// Mock RiskRing
+vi.mock("@/components/ui/RiskRing", () => ({
+  RiskRing: ({ score }: { score: number }) => (
+    <div data-testid="risk-ring" data-score={score}>{score}</div>
+  ),
+}));
+
 // Mock chart components that depend on Tremor
 vi.mock("@/components/charts/BaseTVLChart", () => ({
   default: () => <div data-testid="base-tvl-chart">TVL Chart Mock</div>,
@@ -130,7 +144,7 @@ describe("OverviewSection", () => {
     expect(screen.getByTestId("base-network-metrics")).toHaveTextContent("TVL: 1500000000");
     expect(screen.getByTestId("protocol-switcher")).toHaveTextContent("Aerodrome");
     // Protocol metric cards render values from protocolData
-    const cards = container.querySelectorAll("[data-testid='tremor-card']");
+    const cards = container.querySelectorAll("[data-testid='neon-card']");
     expect(cards.length).toBeGreaterThan(0);
   });
 
