@@ -1,5 +1,5 @@
 // src/app/api/portfolio/route.ts
-// Portfolio tracker — on-chain wallet balances via viem multicall + USD values via CoinGecko.
+// Portfolio Intelligence — on-chain balances via viem multicall + USD values via CoinGecko.
 //
 // SECURITY NOTES:
 // - Read-only: this endpoint only fetches balances via public RPC calls
@@ -8,12 +8,17 @@
 // - Wallet address is only used as a public query parameter
 // - Rate limited to prevent abuse
 //
-// Replaces the old placeholder implementation with real Base chain data.
+// Response fields:
+//   summary: { totalUsdValue, positionCount, nativeBalance, topToken, stablecoinPct, ethDerivativePct, governancePct }
+//   positions: [{ symbol, priceUsd, balance, valueUsd, category, change24h, coingeckoId }]
+//   protocolExposure: [{ protocol: string, valueUsd: number, pct: number }]
+//   riskFlags: { concentrationRisk: boolean, topAssetPct: number, stablecoinHeavy: boolean }
+//   timestamp, isStale
 import { NextResponse } from "next/server";
 import { isAddress } from "viem";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
-import { getWalletBalances } from "@/lib/viem/balances";
+import { getWalletBalances, TRACKED_TOKENS } from "@/lib/viem/balances";
 
 interface PortfolioPosition {
   symbol: string;
@@ -21,6 +26,15 @@ interface PortfolioPosition {
   balance: string;
   valueUsd: number;
   category: string;
+  change24h?: number;
+  coingeckoId: string;
+  allocationPct: number;
+}
+
+interface ProtocolExposure {
+  protocol: string;
+  valueUsd: number;
+  pct: number;
 }
 
 interface PortfolioSummary {
@@ -28,35 +42,52 @@ interface PortfolioSummary {
   positionCount: number;
   nativeBalance: string;
   topToken: string | null;
+  stablecoinPct: number;
+  ethDerivativePct: number;
+  governancePct: number;
+}
+
+interface RiskFlags {
+  concentrationRisk: boolean;
+  topAssetPct: number;
+  stablecoinHeavy: boolean;
 }
 
 interface PortfolioResponse {
   summary: PortfolioSummary;
   positions: PortfolioPosition[];
+  protocolExposure: ProtocolExposure[];
+  riskFlags: RiskFlags;
   timestamp: number;
+  isStale: boolean;
 }
 
-const EMPTY_RESPONSE = {
-  summary: { totalUsdValue: 0, positionCount: 0, nativeBalance: "0", topToken: null },
-  positions: [] as PortfolioPosition[],
+const EMPTY_RESPONSE: PortfolioResponse = {
+  summary: { totalUsdValue: 0, positionCount: 0, nativeBalance: "0", topToken: null, stablecoinPct: 0, ethDerivativePct: 0, governancePct: 0 },
+  positions: [],
+  protocolExposure: [],
+  riskFlags: { concentrationRisk: false, topAssetPct: 0, stablecoinHeavy: false },
   timestamp: Date.now(),
   isStale: true,
 };
 
-// Simple price map from CoinGecko — single batch request
-async function fetchPrices(ids: string[]): Promise<Record<string, number>> {
+// Fetch prices + 24h change from CoinGecko
+async function fetchPricesWithChange(ids: string[]): Promise<Record<string, { usd: number; change24h: number }>> {
   if (ids.length === 0) return {};
   try {
     const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd`,
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd&include_24hr_change=true`,
       { next: { revalidate: 120 } }
     );
     if (!res.ok) return {};
     const data = await res.json();
-    const prices: Record<string, number> = {};
-    for (const [id, val] of Object.entries(data) as [string, { usd: number } | never][]) {
-      if (val && typeof val === "object" && "usd" in val) {
-        prices[id] = val.usd;
+    const prices: Record<string, { usd: number; change24h: number }> = {};
+    for (const [id, val] of Object.entries(data) as [string, { usd?: number; usd_24h_change?: number } | never][]) {
+      if (val && typeof val === "object") {
+        prices[id] = {
+          usd: val.usd ?? 0,
+          change24h: val.usd_24h_change ?? 0,
+        };
       }
     }
     return prices;
@@ -65,14 +96,46 @@ async function fetchPrices(ids: string[]): Promise<Record<string, number>> {
   }
 }
 
-const TOKEN_CATEGORY_MAP: Record<string, string> = {
-  WETH: "Wrapped Native",
-  USDC: "Stablecoin",
-  USDbC: "Stablecoin",
-  cbETH: "Liquid Staking",
-  AERO: "DEX / AMM",
-  DAI: "Stablecoin",
-};
+// Map token categories to protocol exposures
+function computeProtocolExposure(positions: PortfolioPosition[], totalUsd: number): ProtocolExposure[] {
+  const protocolMap = new Map<string, number>();
+
+  for (const p of positions) {
+    // Map tokens to protocols
+    const protocolMap_: Record<string, string> = {
+      AERO: "Aerodrome",
+      COMP: "Compound",
+      WELL: "Moonwell",
+      cbETH: "Coinbase",
+      WSTETH: "Lido",
+      LDO: "Lido",
+      DEGEN: "Degen Ecosystem",
+      BRETT: "Meme Ecosystem",
+      VIRTUAL: "Virtual Protocol",
+      TOSHI: "Toshi Ecosystem",
+    };
+
+    const proto = protocolMap_[p.symbol] || (p.category === "Stablecoin" ? "Stablecoins" : p.category);
+    protocolMap.set(proto, (protocolMap.get(proto) || 0) + p.valueUsd);
+  }
+
+  return Array.from(protocolMap.entries())
+    .map(([protocol, valueUsd]) => ({ protocol, valueUsd, pct: totalUsd > 0 ? (valueUsd / totalUsd) * 100 : 0 }))
+    .sort((a, b) => b.valueUsd - a.valueUsd);
+}
+
+function computeRiskFlags(positions: PortfolioPosition[], totalUsd: number): RiskFlags {
+  const topAsset = positions[0];
+  const topAssetPct = totalUsd > 0 ? (topAsset?.valueUsd / totalUsd) * 100 : 0;
+  const stablecoinTotal = positions.filter((p) => p.category === "Stablecoin").reduce((s, p) => s + p.valueUsd, 0);
+  const stablecoinPct = totalUsd > 0 ? (stablecoinTotal / totalUsd) * 100 : 0;
+
+  return {
+    concentrationRisk: topAssetPct > 70,
+    topAssetPct: Math.round(topAssetPct),
+    stablecoinHeavy: stablecoinPct > 80,
+  };
+}
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
@@ -91,38 +154,43 @@ export async function GET(req: Request) {
     }
 
     const checksumAddress = address.toLowerCase() as typeof address;
-    const cacheKey = `portfolio-${checksumAddress}`;
+    const cacheKey = `portfolio-v2-${checksumAddress}`;
 
     const data = await cache.getWithStaleFallback(cacheKey, CACHE_TTL.TVL_HISTORY, async () => {
       const balances = await getWalletBalances(address);
 
-      // Gather all token IDs for a single CoinGecko price batch
+      // Gather all CoinGecko IDs
       const allCoingeckoIds = balances.tokens.map((t) => t.coingeckoId);
       if (parseFloat(balances.native.formatted) > 0) {
         allCoingeckoIds.unshift("ethereum");
       }
 
-      const prices = await fetchPrices(allCoingeckoIds);
+      const prices = await fetchPricesWithChange(allCoingeckoIds);
 
-      // Get native ETH price (defaults to 0 if fetch failed)
-      const ethPrice = prices["ethereum"] ?? 0;
+      // Token category lookup
+      const tokenCategoryMap = new Map(TRACKED_TOKENS.map((t) => [t.symbol, t.category]));
 
-      // Build portfolio positions
+      // Build positions
       const positions: PortfolioPosition[] = [];
 
-      if (ethPrice > 0 && parseFloat(balances.native.formatted) > 0) {
+      if (parseFloat(balances.native.formatted) > 0) {
+        const ethPrice = prices["ethereum"]?.usd ?? 0;
         const ethValue = parseFloat(balances.native.formatted) * ethPrice;
         positions.push({
           symbol: "ETH",
           priceUsd: ethPrice,
           balance: balances.native.formatted,
           valueUsd: ethValue,
-          category: "Native",
+          category: "ETH Derivative",
+          change24h: prices["ethereum"]?.change24h,
+          coingeckoId: "ethereum",
+          allocationPct: 0, // computed below
         });
       }
 
       for (const token of balances.tokens) {
-        const price = prices[token.coingeckoId] ?? 0;
+        const priceData = prices[token.coingeckoId];
+        const price = priceData?.usd ?? 0;
         const value = parseFloat(token.formatted) * price;
 
         positions.push({
@@ -130,16 +198,32 @@ export async function GET(req: Request) {
           priceUsd: price,
           balance: token.formatted,
           valueUsd: value,
-          category: TOKEN_CATEGORY_MAP[token.symbol] ?? "Other",
+          category: token.category === "stablecoin" ? "Stablecoin"
+            : token.category === "eth-derivative" ? "ETH Derivative"
+            : token.category === "governance" ? "Governance"
+            : token.category === "lending" ? "Lending"
+            : "Other",
+          change24h: priceData?.change24h,
+          coingeckoId: token.coingeckoId,
+          allocationPct: 0,
         });
       }
 
-      // Summary
+      // Sort by USD value descending
+      positions.sort((a, b) => b.valueUsd - a.valueUsd);
+
+      // Compute allocation percentages
       const totalUsdValue = positions.reduce((sum, p) => sum + p.valueUsd, 0);
-      const topToken = positions.reduce(
-        (top, p) => (p.valueUsd > top.valueUsd ? top : p),
-        { valueUsd: 0, symbol: null } as { valueUsd: number; symbol: string | null }
-      ).symbol;
+      for (const p of positions) {
+        p.allocationPct = totalUsdValue > 0 ? (p.valueUsd / totalUsdValue) * 100 : 0;
+      }
+
+      // Category breakdown
+      const stablecoinTotal = positions.filter((p) => p.category === "Stablecoin").reduce((s, p) => s + p.valueUsd, 0);
+      const ethDerivTotal = positions.filter((p) => p.category === "ETH Derivative").reduce((s, p) => s + p.valueUsd, 0);
+      const govTotal = positions.filter((p) => p.category === "Governance").reduce((s, p) => s + p.valueUsd, 0);
+
+      const topToken = positions[0]?.symbol ?? null;
 
       return {
         summary: {
@@ -147,9 +231,15 @@ export async function GET(req: Request) {
           positionCount: positions.length,
           nativeBalance: balances.native.formatted,
           topToken,
+          stablecoinPct: totalUsdValue > 0 ? (stablecoinTotal / totalUsdValue) * 100 : 0,
+          ethDerivativePct: totalUsdValue > 0 ? (ethDerivTotal / totalUsdValue) * 100 : 0,
+          governancePct: totalUsdValue > 0 ? (govTotal / totalUsdValue) * 100 : 0,
         },
         positions,
+        protocolExposure: computeProtocolExposure(positions, totalUsdValue),
+        riskFlags: computeRiskFlags(positions, totalUsdValue),
         timestamp: Date.now(),
+        isStale: false,
       };
     });
 
@@ -160,6 +250,9 @@ export async function GET(req: Request) {
     return NextResponse.json(data, { status: 200, headers });
   } catch (err) {
     console.error("Portfolio API error:", err);
-    return NextResponse.json(EMPTY_RESPONSE, { status: 500 });
+    return NextResponse.json(EMPTY_RESPONSE, { status: 200, headers: { "X-Cache-Status": "ERROR" } });
   }
 }
+
+export const dynamic = "force-dynamic";
+export const revalidate = 30;

@@ -1,278 +1,759 @@
 // src/components/sections/PortfolioSection.tsx
-// Portfolio tracker — paste a wallet address to see real on-chain Base balances via viem.
+// Portfolio Intelligence — self-custody portfolio tracker for Base.
+// Features: multi-address management, protocol exposure, AI summary,
+// concentration warnings, agent JSON export, cyber-neon glassmorphism.
+
 "use client";
 
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
-import { formatCurrency, timeAgo, freshnessColor } from "@/lib/utils";
-import { MetricSkeleton, TableRowSkeleton, Skeleton } from "@/components/ui/Skeleton";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Wallet,
-  AlertTriangle,
+  Plus,
+  X,
+  RefreshCw,
+  TrendingUp,
   TrendingDown,
-  Loader2,
+  AlertTriangle,
+  Shield,
+  PieChart,
+  Copy,
+  Check,
+  RotateCcw,
+  Sparkles,
+  ExternalLink,
+  Clock,
+  Search,
+  BarChart3,
 } from "lucide-react";
+import { MetricSkeleton } from "@/components/ui/Skeleton";
+import { NeonCard } from "@/components/ui/NeonCard";
+import { RiskRing } from "@/components/ui/RiskRing";
+import { CountUp } from "@/components/ui/CountUp";
 
-interface Position {
+// ─── Types ────────────────────────────────────────────────────
+
+interface PortfolioPosition {
   symbol: string;
   priceUsd: number;
   balance: string;
   valueUsd: number;
   category: string;
+  change24h?: number;
+  coingeckoId: string;
+  allocationPct: number;
+}
+
+interface ProtocolExposure {
+  protocol: string;
+  valueUsd: number;
+  pct: number;
+}
+
+interface RiskFlags {
+  concentrationRisk: boolean;
+  topAssetPct: number;
+  stablecoinHeavy: boolean;
+}
+
+interface PortfolioSummary {
+  totalUsdValue: number;
+  positionCount: number;
+  nativeBalance: string;
+  topToken: string | null;
+  stablecoinPct: number;
+  ethDerivativePct: number;
+  governancePct: number;
 }
 
 interface PortfolioResponse {
-  summary: {
-    totalUsdValue: number;
-    positionCount: number;
-    nativeBalance: string;
-    topToken: string | null;
-  };
-  positions: Position[];
+  summary: PortfolioSummary;
+  positions: PortfolioPosition[];
+  protocolExposure: ProtocolExposure[];
+  riskFlags: RiskFlags;
   timestamp: number;
-  isStale?: boolean;
+  isStale: boolean;
 }
 
-export default function PortfolioSection() {
-  const [address, setAddress] = useState("");
-  const [data, setData] = useState<PortfolioResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface SavedWallet {
+  address: string;
+  label?: string;
+  addedAt: number;
+}
 
-  const fetchPortfolio = async () => {
-    const trimmed = address.trim();
-    if (!trimmed) return;
-    if (!/^0x[a-fA-F0-9]{40}$/.test(trimmed)) {
-      setError("Invalid address format. Must be a 0x-prefixed 40-character hex string.");
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/portfolio?address=${trimmed}`);
-      if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error || `HTTP ${res.status}`);
-      }
-      setData(await res.json());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setIsLoading(false);
-    }
+// ─── Constants ────────────────────────────────────────────────
+
+const BASESCAN_ADDR = "https://basescan.org/address";
+
+const QUICK_WALLETS: { label: string; address: string }[] = [
+  { label: "Coinbase 2", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
+  { label: "Aerodrome", address: "0x77777777777112587558404cd7fd36a036b49b23" },
+];
+
+// ─── LocalStorage helpers ─────────────────────────────────────
+
+const STORAGE_KEY = "baseforge_portfolio_wallets";
+
+function loadWallets(): SavedWallet[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWallets(wallets: SavedWallet[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(wallets));
+  } catch {}
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+function formatUSD(v: number): string {
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+  if (v >= 1e3) return `$${(v / 1e3).toFixed(2)}K`;
+  if (v >= 1) return `$${v.toFixed(2)}`;
+  return `$${v.toFixed(4)}`;
+}
+
+function shortAddr(addr: string): string {
+  if (!addr || addr.length < 10) return addr || "—";
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function isValidAddress(addr: string): boolean {
+  return /^0x[a-fA-F0-9]{40}$/.test(addr);
+}
+
+// Compute overall portfolio risk score (0-100)
+function computePortfolioRisk(positions: PortfolioPosition[], riskFlags: RiskFlags): number {
+  let score = 50; // baseline
+
+  // Diversification penalty
+  if (riskFlags.concentrationRisk) score -= 20;
+  if (riskFlags.topAssetPct > 90) score -= 10;
+
+  // Stablecoin bonus (lower risk)
+  if (riskFlags.stablecoinHeavy) score += 15;
+
+  // Position count bonus
+  score += Math.min(10, positions.length * 2);
+
+  return Math.max(0, Math.min(100, score));
+}
+
+function generatePortfolioSummary(positions: PortfolioPosition[], summary: PortfolioSummary, riskFlags: RiskFlags): string {
+  if (positions.length === 0) return "No holdings detected. This wallet appears empty on Base chain.";
+
+  const parts: string[] = [];
+
+  parts.push(`${formatUSD(summary.totalUsdValue)} across ${summary.positionCount} assets`);
+
+  if (riskFlags.concentrationRisk) {
+    parts.push(`⚠ ${summary.topToken} dominates at ${riskFlags.topAssetPct}%`);
+  }
+
+  if (riskFlags.stablecoinHeavy) {
+    parts.push("heavy stablecoin allocation");
+  }
+
+  const gainers = positions.filter((p) => (p.change24h ?? 0) > 0);
+  const losers = positions.filter((p) => (p.change24h ?? 0) < 0);
+
+  if (gainers.length > 0) {
+    const top = gainers.reduce((a, b) => (a.change24h ?? 0) > (b.change24h ?? 0) ? a : b);
+    parts.push(`${top.symbol} +${top.change24h?.toFixed(1)}%`);
+  }
+
+  if (summary.ethDerivativePct > 50) {
+    parts.push("ETH-heavy portfolio");
+  }
+
+  return parts.join(" · ");
+}
+
+// ─── Animated Empty State ─────────────────────────────────────
+
+function PortfolioEmpty() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="flex flex-col items-center justify-center py-20 px-4"
+    >
+      <motion.div
+        animate={{ scale: [1, 1.05, 1] }}
+        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        className="mb-6"
+      >
+        <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+          <rect x="15" y="25" width="50" height="35" rx="6" fill="rgba(0,212,255,0.08)" stroke="var(--bf-neon-primary)" strokeWidth="1.5" />
+          <rect x="22" y="32" width="36" height="3" rx="1.5" fill="rgba(0,212,255,0.3)" />
+          <rect x="22" y="38" width="24" height="3" rx="1.5" fill="rgba(0,212,255,0.2)" />
+          <rect x="22" y="44" width="30" height="3" rx="1.5" fill="rgba(0,212,255,0.15)" />
+          <circle cx="55" cy="52" r="12" fill="rgba(0,212,255,0.08)" stroke="var(--bf-neon-primary)" strokeWidth="1.5" />
+          <motion.path d="M51 52L54 55L59 49" stroke="var(--bf-neon-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1, repeat: Infinity, repeatDelay: 2 }} />
+        </svg>
+      </motion.div>
+      <p className="neon-text font-mono text-sm mb-1">No portfolio data</p>
+      <p className="text-[var(--bf-text-secondary)] text-xs text-center max-w-xs">
+        Enter a Base wallet address to view on-chain holdings tracked via Envio HyperSync
+      </p>
+    </motion.div>
+  );
+}
+
+// ─── AI Summary Terminal ──────────────────────────────────────
+
+function PortfolioSummaryTerminal({ summary, onRegenerate }: { summary: string; onRegenerate: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(summary).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") fetchPortfolio();
-  };
+  return (
+    <NeonCard glowColor="rgba(0,255,136,0.06)" className="!border-[var(--bf-neon-secondary)]/10 !p-3" hoverScale={1}>
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles className="h-3.5 w-3.5 text-[var(--bf-neon-secondary)]" />
+        <span className="text-[10px] text-[var(--bf-neon-secondary)] uppercase tracking-wider font-bold">Portfolio AI</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={onRegenerate} className="p-1 hover:bg-white/5 rounded transition-colors text-[var(--bf-text-muted)] hover:text-[var(--bf-neon-secondary)]" title="Regenerate">
+            <RotateCcw className="h-3 w-3" />
+          </button>
+          <button onClick={handleCopy} className="p-1 hover:bg-white/5 rounded transition-colors text-[var(--bf-text-muted)] hover:text-[var(--bf-text-primary)]" title="Copy">
+            {copied ? <Check className="h-3 w-3 text-[var(--bf-neon-secondary)]" /> : <Copy className="h-3 w-3" />}
+          </button>
+        </div>
+      </div>
+      <div className="terminal text-xs leading-relaxed">
+        <span className="text-[var(--bf-neon-secondary)]/50">$</span> {summary}
+        <motion.span animate={{ opacity: [1, 0, 1] }} transition={{ duration: 1, repeat: Infinity }} className="inline-block w-2 h-4 bg-[var(--bf-neon-secondary)] ml-1 align-middle" />
+      </div>
+    </NeonCard>
+  );
+}
 
-  const quickWallets = [
-    { name: "Coinbase 2", addr: "0x41f38175532598F6fDd4407a9E6c6e43D850098E" },
+// ─── Protocol Exposure Bar Chart ──────────────────────────────
+
+function ProtocolBars({ exposures }: { exposures: ProtocolExposure[] }) {
+  if (exposures.length === 0) return null;
+  const maxVal = Math.max(...exposures.map((e) => e.valueUsd));
+
+  const colors = [
+    "var(--bf-neon-primary)",
+    "var(--bf-neon-secondary)",
+    "var(--bf-neon-accent)",
+    "var(--bf-status-warn)",
+    "var(--bf-neon-magenta)",
+    "var(--bf-neon-orange, #ff8c00)",
   ];
 
   return (
-    <section className="space-y-6" aria-labelledby="portfolio-heading">
-      <div className="flex items-start justify-between">
+    <NeonCard glowColor="rgba(123,97,255,0.06)" className="!p-4" hoverScale={1}>
+      <div className="flex items-center gap-2 mb-3">
+        <BarChart3 className="h-4 w-4 text-[var(--bf-neon-accent)]" />
+        <h3 className="text-xs font-bold" style={{ color: "var(--bf-neon-accent)" }}>Protocol Exposure</h3>
+      </div>
+      <div className="space-y-2">
+        {exposures.slice(0, 8).map((exp, i) => {
+          const barWidth = maxVal > 0 ? (exp.valueUsd / maxVal) * 100 : 0;
+          const color = colors[i % colors.length];
+          return (
+            <div key={exp.protocol} className="group">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] text-[var(--bf-text-secondary)] font-mono">{exp.protocol}</span>
+                <span className="text-[10px] text-[var(--bf-text-muted)] font-mono">{exp.pct.toFixed(1)}%</span>
+              </div>
+              <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${barWidth}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut", delay: i * 0.1 }}
+                  className="h-full rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </NeonCard>
+  );
+}
+
+// ─── Concentration Warnings ───────────────────────────────────
+
+function RiskWarnings({ riskFlags, positions }: { riskFlags: RiskFlags; positions: PortfolioPosition[] }) {
+  const warnings: { icon: React.ComponentType<{ className?: string }>; text: string; color: string }[] = [];
+
+  if (riskFlags.concentrationRisk) {
+    const top = positions[0];
+    warnings.push({
+      icon: AlertTriangle,
+      text: `${top?.symbol} makes up ${riskFlags.topAssetPct}% of portfolio — high concentration`,
+      color: "text-[var(--bf-neon-magenta)]",
+    });
+  }
+
+  if (riskFlags.stablecoinHeavy) {
+    warnings.push({
+      icon: Shield,
+      text: "Portfolio is >80% stablecoins — low growth exposure",
+      color: "text-[var(--bf-status-warn)]",
+    });
+  }
+
+  if (warnings.length === 0) {
+    warnings.push({
+      icon: Shield,
+      text: "Portfolio diversification looks healthy",
+      color: "text-[var(--bf-neon-secondary)]",
+    });
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {warnings.map((w, i) => {
+        const Icon = w.icon;
+        return (
+          <div key={i} className="flex items-center gap-2 p-2 rounded-lg bg-black/30 border border-white/5">
+            <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${w.color}`} />
+            <p className={`text-[10px] font-mono ${w.color}`}>{w.text}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────
+
+export default function PortfolioSection() {
+  const [wallets, setWallets] = useState<SavedWallet[]>([]);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [newAddress, setNewAddress] = useState("");
+  const [data, setData] = useState<PortfolioResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchSymbol, setSearchSymbol] = useState("");
+  const [summarySeed, setSummarySeed] = useState(0);
+  const [agentJsonCopied, setAgentJsonCopied] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load wallets from localStorage on mount
+  useEffect(() => {
+    const loaded = loadWallets();
+    setWallets(loaded);
+    if (loaded.length > 0) {
+      setActiveIdx(0);
+      fetchData(loaded[0].address);
+    }
+  }, []);
+
+  const activeAddress = wallets[activeIdx]?.address ?? "";
+
+  const fetchData = useCallback((addr: string) => {
+    if (!addr || !isValidAddress(addr)) return;
+    setIsLoading(true);
+    setError(null);
+    fetch(`/api/portfolio?address=${addr}`)
+      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
+      .then((d) => { setData(d); setIsLoading(false); setError(null); })
+      .catch((e) => { setError(e.message); setIsLoading(false); });
+  }, []);
+
+  // Auto-refresh every 60s
+  useEffect(() => {
+    if (!activeAddress) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => fetchData(activeAddress), 60000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [activeAddress, fetchData]);
+
+  // Add wallet
+  const handleAddWallet = useCallback(() => {
+    const addr = newAddress.trim();
+    if (!isValidAddress(addr)) return;
+    if (wallets.some((w) => w.address.toLowerCase() === addr.toLowerCase())) return;
+    const next = [...wallets, { address: addr.toLowerCase(), addedAt: Date.now() }];
+    setWallets(next);
+    saveWallets(next);
+    setActiveIdx(next.length - 1);
+    setNewAddress("");
+    fetchData(addr.toLowerCase());
+  }, [newAddress, wallets, fetchData]);
+
+  // Remove wallet
+  const handleRemoveWallet = useCallback((idx: number) => {
+    const next = wallets.filter((_, i) => i !== idx);
+    setWallets(next);
+    saveWallets(next);
+    if (activeIdx >= next.length) setActiveIdx(Math.max(0, next.length - 1));
+    else if (activeIdx > idx) setActiveIdx((a) => a - 1);
+  }, [wallets, activeIdx]);
+
+  // Quick wallet
+  const handleQuickWallet = useCallback((addr: string) => {
+    const lower = addr.toLowerCase();
+    let idx = wallets.findIndex((w) => w.address === lower);
+    if (idx === -1) {
+      const next = [...wallets, { address: lower, label: QUICK_WALLETS.find((q) => q.address === addr)?.label, addedAt: Date.now() }];
+      setWallets(next);
+      saveWallets(next);
+      idx = next.length - 1;
+    }
+    setActiveIdx(idx);
+    fetchData(lower);
+  }, [wallets, fetchData]);
+
+  // AI summary
+  const aiSummary = useMemo(() => {
+    if (!data?.positions || data.positions.length === 0) return null;
+    return generatePortfolioSummary(data.positions, data.summary, data.riskFlags);
+  }, [data?.positions, data?.summary, data?.riskFlags, summarySeed]);
+
+  // Filtered positions
+  const filteredPositions = useMemo(() => {
+    if (!data?.positions) return [];
+    if (!searchSymbol.trim()) return data.positions;
+    const q = searchSymbol.toLowerCase();
+    return data.positions.filter((p) => p.symbol.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+  }, [data?.positions, searchSymbol]);
+
+  // Portfolio risk score
+  const portfolioRiskScore = useMemo(() => {
+    if (!data) return null;
+    return computePortfolioRisk(data.positions, data.riskFlags);
+  }, [data]);
+
+  // Copy as JSON
+  const handleCopyJSON = useCallback(() => {
+    if (!data) return;
+    const payload = {
+      _source: "BaseForge Portfolio Intelligence",
+      _version: "1.0.0-beta.1",
+      _timestamp: new Date().toISOString(),
+      address: activeAddress,
+      summary: data.summary,
+      positions: data.positions,
+      protocolExposure: data.protocolExposure,
+      riskFlags: data.riskFlags,
+    };
+    navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).catch(() => {});
+    setAgentJsonCopied(true);
+    setTimeout(() => setAgentJsonCopied(false), 2000);
+  }, [data, activeAddress]);
+
+  const totalNetWorth = data?.summary.totalUsdValue ?? 0;
+  const assetCount = data?.summary.positionCount ?? 0;
+  const nativeEth = data?.summary.nativeBalance ?? "0";
+
+  return (
+    <section className="space-y-5" aria-labelledby="portfolio-heading">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="portfolio-heading" className="text-2xl font-bold text-white">
-            Portfolio Tracker
+          <h2 id="portfolio-heading" className="text-2xl sm:text-3xl font-bold gradient-text">
+            Portfolio Intelligence
           </h2>
-          <p className="text-sm text-gray-400">
-            Real on-chain Base balances via viem multicall
+          <p className="text-sm text-[var(--bf-text-secondary)] mt-0.5">
+            Self-custody portfolio tracking with on-chain Base holdings
           </p>
         </div>
+        <button onClick={() => fetchData(activeAddress)} disabled={isLoading} className="p-2 bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-primary)]/30 rounded-xl transition-all text-[var(--bf-neon-primary)] disabled:opacity-50 flex-shrink-0" aria-label="Refresh">
+          <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
-      {/* Wallet Input */}
-      <Card className="bg-gray-900/60 border-gray-800 p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <label className="text-xs text-gray-500 mb-1 block">Wallet Address</label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="0x1234...abcd"
-              spellCheck={false}
-              className="w-full bg-black/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors placeholder:text-gray-600"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={fetchPortfolio}
-              disabled={isLoading || !address.trim()}
-              className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Wallet className="h-4 w-4" />
-              )}
-              {isLoading ? "Loading..." : "Track"}
-            </button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Error */}
-      {error && (
-        <Card className="p-4 bg-red-900/20 border-red-500/30 flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-red-400 flex-shrink-0" />
-          <p className="text-red-400 text-sm">{error}</p>
-        </Card>
-      )}
-
-      {/* Loading skeleton */}
-      {isLoading && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Card key={i} className="bg-gray-900/60 border-gray-800 p-4">
-                <MetricSkeleton />
-              </Card>
+      {/* Wallet Management */}
+      <NeonCard glowColor="rgba(0,212,255,0.06)" className="!p-3 sm:!p-4" hoverScale={1}>
+        {/* Saved wallets */}
+        {wallets.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <Wallet className="h-3.5 w-3.5 text-[var(--bf-neon-primary)]" />
+            <span className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider font-bold">Wallets</span>
+            {wallets.map((w, i) => (
+              <div key={w.address} className="relative group/w">
+                <button
+                  onClick={() => { setActiveIdx(i); fetchData(w.address); }}
+                  className={`px-2.5 py-1 text-[10px] font-mono rounded-md transition-all ${
+                    i === activeIdx
+                      ? "bg-[var(--bf-neon-primary)]/20 text-[var(--bf-neon-primary)] border border-[var(--bf-neon-primary)]/40 neon-glow-sm"
+                      : "bg-black/30 text-[var(--bf-text-muted)] border border-white/5 hover:text-[var(--bf-neon-primary)]"
+                  }`}
+                >
+                  {w.label || shortAddr(w.address)}
+                </button>
+                <button
+                  onClick={() => handleRemoveWallet(i)}
+                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--bf-neon-magenta)]/80 text-white opacity-0 group-hover/w:opacity-100 transition-opacity flex items-center justify-center text-[8px] leading-none"
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
-          <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-12 gap-4 px-4 py-3">
-                <Skeleton variant="line" className="col-span-4 w-full" />
-                <Skeleton variant="line" className="col-span-3 w-full" />
-                <Skeleton variant="line" className="col-span-2 w-full" />
-                <Skeleton variant="line" className="col-span-3 w-full" />
-              </div>
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="grid grid-cols-12 gap-4 px-4 py-4 items-center">
-                  <div className="col-span-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-r from-gray-700/50 to-gray-800/50 animate-pulse" />
-                    <div className="space-y-2 flex-1">
-                      <Skeleton variant="line" className="w-16 h-4" />
-                      <Skeleton variant="line" className="w-10 h-3" />
-                    </div>
-                  </div>
-                  <Skeleton variant="line" className="col-span-3 w-full" />
-                  <Skeleton variant="line" className="col-span-2 w-full" />
-                  <Skeleton variant="line" className="col-span-3 w-full" />
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      )}
+        )}
 
-      {/* Results */}
-      {data && !isLoading && (
-        <div className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="bg-gray-900/60 border-gray-800 p-4">
-              <p className="text-xs text-gray-500 mb-1">Total Value</p>
-              <p className="text-xl font-bold text-emerald-400">
-                {formatCurrency(data.summary.totalUsdValue)}
+        {/* Add wallet */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex-1 min-w-[200px] relative">
+            <input
+              type="text"
+              value={newAddress}
+              onChange={(e) => setNewAddress(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddWallet()}
+              placeholder="0x... Base wallet address"
+              className="w-full px-3 py-2 text-xs font-mono bg-black/40 border border-white/10 rounded-lg text-[var(--bf-text-primary)] placeholder:text-[var(--bf-text-muted)] focus:outline-none focus:border-[var(--bf-neon-primary)]/50 focus:ring-1 focus:ring-[var(--bf-neon-primary)]/20 transition-all"
+            />
+          </div>
+          <button
+            onClick={handleAddWallet}
+            disabled={!isValidAddress(newAddress.trim())}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono bg-[var(--bf-neon-primary)]/15 hover:bg-[var(--bf-neon-primary)]/25 border border-[var(--bf-neon-primary)]/30 rounded-lg transition-all text-[var(--bf-neon-primary)] disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Add</span>
+          </button>
+
+          {/* Quick wallets */}
+          <div className="flex items-center gap-1 ml-auto">
+            <span className="text-[10px] text-[var(--bf-text-muted)]">Quick:</span>
+            {QUICK_WALLETS.map((qw) => (
+              <button
+                key={qw.address}
+                onClick={() => handleQuickWallet(qw.address)}
+                className="px-2 py-1 text-[9px] font-mono bg-black/30 border border-white/5 rounded-md text-[var(--bf-text-muted)] hover:text-[var(--bf-neon-primary)] transition-colors"
+              >
+                {qw.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Active address */}
+        {activeAddress && (
+          <div className="flex items-center gap-2 mt-2 text-[10px] text-[var(--bf-text-muted)]">
+            <Search className="h-3 w-3" />
+            <a href={`${BASESCAN_ADDR}/${activeAddress}`} target="_blank" rel="noopener noreferrer" className="font-mono hover:text-[var(--bf-neon-primary)] transition-colors flex items-center gap-0.5">
+              {activeAddress}
+              <ExternalLink className="h-2.5 w-2.5 opacity-50" />
+            </a>
+          </div>
+        )}
+      </NeonCard>
+
+      {(!activeAddress && wallets.length === 0) ? (
+        <PortfolioEmpty />
+      ) : isLoading && !data ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => <NeonCard key={i} hoverScale={1} className="!p-4"><MetricSkeleton /></NeonCard>)}
+        </div>
+      ) : data ? (
+        <>
+          {/* Metric Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <NeonCard glowColor="rgba(0,212,255,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
+              <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider mb-1 font-bold">Net Worth</p>
+              <p className="text-xl sm:text-2xl font-bold font-mono tabular-nums neon-text">
+                <CountUp value={totalNetWorth} prefix="$" />
               </p>
-            </Card>
-            <Card className="bg-gray-900/60 border-gray-800 p-4">
-              <p className="text-xs text-gray-500 mb-1">Positions</p>
-              <p className="text-xl font-bold text-white">
-                {data.summary.positionCount}
+            </NeonCard>
+            <NeonCard glowColor="rgba(123,97,255,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
+              <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider mb-1 font-bold">Assets</p>
+              <p className="text-xl sm:text-2xl font-bold font-mono tabular-nums" style={{ color: "var(--bf-neon-accent)" }}>
+                <CountUp value={assetCount} />
               </p>
-            </Card>
-            <Card className="bg-gray-900/60 border-gray-800 p-4">
-              <p className="text-xs text-gray-500 mb-1">Native Balance</p>
-              <p className="text-xl font-bold text-orange-400">
-                {parseFloat(data.summary.nativeBalance).toFixed(4)} ETH
+            </NeonCard>
+            <NeonCard glowColor="rgba(0,255,136,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
+              <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider mb-1 font-bold">ETH Balance</p>
+              <p className="text-lg sm:text-xl font-bold font-mono tabular-nums status-ok">
+                {parseFloat(nativeEth).toFixed(4)}
               </p>
-            </Card>
-            <Card className="bg-gray-900/60 border-gray-800 p-4">
-              <p className="text-xs text-gray-500 mb-1">Top Asset</p>
-              <p className="text-xl font-bold text-white">
-                {data.summary.topToken ?? "—"}
-              </p>
-            </Card>
+            </NeonCard>
+            <NeonCard glowColor="rgba(255,170,0,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
+              <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider mb-1 font-bold">Risk Score</p>
+              {portfolioRiskScore !== null ? (
+                <div className="flex items-center gap-2">
+                  <RiskRing score={portfolioRiskScore} size={40} strokeWidth={3} />
+                  <span className={`text-lg font-bold font-mono ${
+                    portfolioRiskScore >= 70 ? "status-ok" : portfolioRiskScore >= 40 ? "status-warn" : "status-danger"
+                  }`}>{portfolioRiskScore}</span>
+                </div>
+              ) : (
+                <span className="text-lg font-mono text-[var(--bf-text-muted)]">—</span>
+              )}
+            </NeonCard>
           </div>
 
-          {/* Position List */}
-          {data.positions.length > 0 ? (
-            <Card className="bg-gray-900/60 border-gray-800 overflow-hidden">
-              {/* Header */}
-              <div className="grid grid-cols-12 gap-4 px-4 py-3 text-xs font-medium text-gray-500 uppercase border-b border-gray-800">
-                <div className="col-span-4">Asset</div>
-                <div className="col-span-3 text-right">Balance</div>
-                <div className="col-span-2 text-right">Price</div>
-                <div className="col-span-3 text-right">Value</div>
+          {/* AI Summary */}
+          {aiSummary && <PortfolioSummaryTerminal summary={aiSummary} onRegenerate={() => setSummarySeed((s) => s + 1)} />}
+
+          {/* Agent JSON + Warnings */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* Protocol Exposure */}
+            {data.protocolExposure.length > 0 && <ProtocolBars exposures={data.protocolExposure} />}
+
+            {/* Risk Warnings */}
+            <NeonCard glowColor="rgba(255,45,123,0.06)" className="!p-4" hoverScale={1}>
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="h-4 w-4 text-[var(--bf-neon-magenta)]" />
+                <h3 className="text-xs font-bold" style={{ color: "var(--bf-neon-magenta)" }}>Risk Analysis</h3>
+                <button
+                  onClick={handleCopyJSON}
+                  className="ml-auto flex items-center gap-1 px-2 py-1 text-[9px] font-mono bg-[var(--bf-neon-accent)]/10 hover:bg-[var(--bf-neon-accent)]/20 border border-[var(--bf-neon-accent)]/30 rounded transition-all text-[var(--bf-neon-accent)]"
+                  title="Copy portfolio as JSON for AI agent"
+                >
+                  {agentJsonCopied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Agent JSON</>}
+                </button>
               </div>
+              <RiskWarnings riskFlags={data.riskFlags} positions={data.positions} />
 
-              <div className="divide-y divide-gray-800">
-                {data.positions
-                  .sort((a, b) => b.valueUsd - a.valueUsd)
-                  .map((pos, i) => (
-                    <div
-                      key={`${pos.symbol}-${i}`}
-                      className="grid grid-cols-12 gap-4 px-4 py-4 items-center hover:bg-gray-800/20 transition-colors"
+              {/* Allocation breakdown */}
+              <div className="mt-3 pt-3 border-t border-white/5">
+                <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider font-bold mb-2">Allocation Breakdown</p>
+                <div className="flex items-center gap-3 text-[10px] font-mono">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-[var(--bf-neon-primary)]" />
+                    <span className="text-[var(--bf-text-muted)]">Stable</span>
+                    <span className="text-[var(--bf-text-secondary)]">{data.summary.stablecoinPct.toFixed(0)}%</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-[var(--bf-neon-secondary)]" />
+                    <span className="text-[var(--bf-text-muted)]">ETH</span>
+                    <span className="text-[var(--bf-text-secondary)]">{data.summary.ethDerivativePct.toFixed(0)}%</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-[var(--bf-neon-accent)]" />
+                    <span className="text-[var(--bf-text-muted)]">Gov</span>
+                    <span className="text-[var(--bf-text-secondary)]">{data.summary.governancePct.toFixed(0)}%</span>
+                  </div>
+                </div>
+              </div>
+            </NeonCard>
+          </div>
+
+          {/* Asset Holdings */}
+          <NeonCard className="!p-0 overflow-hidden" hoverScale={1}>
+            {/* Search + filter */}
+            <div className="flex items-center gap-2 p-3 border-b border-white/5 bg-black/20">
+              <Search className="h-3.5 w-3.5 text-[var(--bf-text-muted)]" />
+              <input
+                type="text"
+                value={searchSymbol}
+                onChange={(e) => setSearchSymbol(e.target.value)}
+                placeholder="Filter by symbol or category..."
+                className="flex-1 bg-transparent text-xs font-mono text-[var(--bf-text-primary)] placeholder:text-[var(--bf-text-muted)] focus:outline-none"
+              />
+              <span className="text-[10px] text-[var(--bf-text-muted)] font-mono">{filteredPositions.length} holdings</span>
+            </div>
+
+            {/* Header row */}
+            <div className="hidden sm:grid grid-cols-12 gap-2 px-4 py-2 border-b border-white/5 bg-black/30 text-[10px] text-[var(--bf-text-muted)] uppercase tracking-wider font-bold">
+              <div className="col-span-3">Asset</div>
+              <div className="col-span-2 text-right">Price</div>
+              <div className="col-span-2 text-right">Balance</div>
+              <div className="col-span-2 text-right">Value</div>
+              <div className="col-span-2 text-right">24h</div>
+              <div className="col-span-1 text-right">Alloc</div>
+            </div>
+
+            {/* Rows */}
+            <div className="divide-y divide-white/5 max-h-[500px] overflow-y-auto">
+              <AnimatePresence>
+                {filteredPositions.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <PieChart className="h-8 w-8 text-[var(--bf-text-muted)] mx-auto mb-2" />
+                    <p className="text-sm text-[var(--bf-text-secondary)]">No matching assets</p>
+                  </div>
+                ) : (
+                  filteredPositions.map((p, i) => (
+                    <motion.div
+                      key={p.symbol}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: Math.min(i * 0.03, 0.4) }}
+                      className="grid grid-cols-12 gap-2 px-3 sm:px-4 py-3 hover:bg-white/[0.03] transition-colors group items-center"
                     >
-                      <div className="col-span-4 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-emerald-900/50 text-emerald-400 flex items-center justify-center flex-shrink-0">
-                          <span className="text-xs font-bold">{pos.symbol.slice(0, 2)}</span>
+                      {/* Asset */}
+                      <div className="col-span-5 sm:col-span-3 flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--bf-neon-primary)]/20 to-[var(--bf-neon-accent)]/20 flex items-center justify-center text-[10px] font-bold text-[var(--bf-neon-primary)] flex-shrink-0 border border-white/10">
+                          {p.symbol.slice(0, 2)}
                         </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-white">{pos.symbol}</h3>
-                          <p className="text-xs text-gray-500">{pos.category}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold font-mono text-[var(--bf-text-primary)] truncate">{p.symbol}</p>
+                          <p className="text-[9px] text-[var(--bf-text-muted)] sm:hidden">{p.category}</p>
                         </div>
                       </div>
 
-                      <div className="col-span-3 text-right font-mono text-sm text-gray-300">
-                        {pos.balance.startsWith("0.") ? pos.balance.slice(0, 8) : parseFloat(pos.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      {/* Price */}
+                      <div className="col-span-2 hidden sm:block text-right">
+                        <p className="text-xs font-mono text-[var(--bf-text-secondary)] tabular-nums">{formatUSD(p.priceUsd)}</p>
                       </div>
 
-                      <div className="col-span-2 text-right text-sm text-gray-400">
-                        {pos.priceUsd > 0 ? formatCurrency(pos.priceUsd) : "—"}
-                      </div>
-
-                      <div className="col-span-3 text-right">
-                        <p className={`text-sm font-medium ${pos.valueUsd > 0 ? "text-white" : "text-gray-500"}`}>
-                          {pos.valueUsd > 0 ? formatCurrency(pos.valueUsd) : "—"}
+                      {/* Balance */}
+                      <div className="col-span-3 sm:col-span-2 text-right">
+                        <p className="text-xs font-mono text-[var(--bf-text-secondary)] tabular-nums truncate" title={p.balance}>
+                          {parseFloat(p.balance).toFixed(p.priceUsd > 100 ? 2 : 4)}
                         </p>
-                        {pos.valueUsd < 0.01 && pos.valueUsd > 0 && (
-                          <TrendingDown className="h-3 w-3 text-gray-600 inline ml-1" />
+                      </div>
+
+                      {/* Value */}
+                      <div className="col-span-2 text-right">
+                        <p className="text-sm font-bold font-mono text-white tabular-nums">{formatUSD(p.valueUsd)}</p>
+                      </div>
+
+                      {/* 24h Change */}
+                      <div className="col-span-2 hidden sm:block text-right">
+                        {p.change24h !== undefined && p.change24h !== 0 ? (
+                          <div className={`flex items-center justify-end gap-1 text-xs font-mono tabular-nums ${p.change24h >= 0 ? "status-ok" : "status-danger"}`}>
+                            {p.change24h >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                            {p.change24h >= 0 ? "+" : ""}{p.change24h.toFixed(1)}%
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--bf-text-muted)]">—</span>
                         )}
                       </div>
-                    </div>
-                  ))}
-              </div>
-            </Card>
-          ) : (
-            <Card className="p-8 bg-gray-900/60 border-gray-800 text-center">
-              <p className="text-gray-400">No positions detected for this wallet on Base</p>
-              <p className="text-xs text-gray-600 mt-2">Real on-chain balances are fetched via viem multicall</p>
-            </Card>
-          )}
 
-          {data.timestamp && (
-            <div className={`text-xs text-right ${freshnessColor(data.timestamp)}`}>
-              Last updated {timeAgo(data.timestamp)}
-              {data.isStale && " (stale data)"}
+                      {/* Allocation */}
+                      <div className="col-span-1 text-right">
+                        <p className="text-[10px] font-mono text-[var(--bf-text-muted)]">{p.allocationPct.toFixed(0)}%</p>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </AnimatePresence>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Quick Access Addresses */}
-      <Card className="bg-gray-900/60 border-gray-800 p-4">
-        <p className="text-xs text-gray-500 mb-3">Quick Access</p>
-        <div className="flex flex-wrap gap-2">
-          {quickWallets.map((wallet) => (
-            <button
-              key={wallet.name}
-              onClick={() => {
-                setAddress(wallet.addr);
-              }}
-              className="px-3 py-1.5 bg-black/40 border border-gray-700 hover:border-emerald-500/30 rounded-lg text-xs text-gray-400 hover:text-emerald-400 transition-colors font-mono"
-            >
-              {wallet.name}: {wallet.addr.slice(0, 6)}...{wallet.addr.slice(-4)}
-            </button>
-          ))}
-        </div>
-      </Card>
+            {/* Footer */}
+            {data && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t border-white/5 bg-black/30">
+                <p className="text-[10px] text-[var(--bf-text-muted)]">
+                  Read-only · On-chain via viem multicall · {data.positions.length} assets tracked
+                </p>
+                <div className="flex items-center gap-1 text-[10px] text-[var(--bf-text-muted)]">
+                  <Clock className="h-3 w-3" />
+                  {new Date(data.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+            )}
+          </NeonCard>
+        </>
+      ) : error ? (
+        <NeonCard className="flex flex-col items-center justify-center py-12 !border-[var(--bf-neon-magenta)]/20">
+          <AlertTriangle className="h-6 w-6 text-[var(--bf-neon-magenta)] mb-3" />
+          <p className="status-danger font-medium mb-1">Failed to fetch portfolio</p>
+          <p className="text-xs text-[var(--bf-text-secondary)] mb-4">{error}</p>
+          <button onClick={() => fetchData(activeAddress)} className="px-4 py-2 text-xs bg-[var(--bf-neon-primary)]/10 hover:bg-[var(--bf-neon-primary)]/20 border border-[var(--bf-neon-primary)]/30 rounded-lg transition-colors neon-text font-medium">
+            Retry
+          </button>
+        </NeonCard>
+      ) : null}
     </section>
   );
 }
