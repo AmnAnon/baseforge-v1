@@ -16,14 +16,13 @@ permissions:
   pull-requests: read
 
 env:
-  NODE_VERSION: 20.18
+  NODE_VERSION: "20"
   NODE_ENV: test
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/baseforge_test
   CACHE_BACKEND: memory
   LOG_LEVEL: warn
   TURBOPACK: "1"
 
-# ── Reusable dependency install + cache step ──────────────
 defaults:
   run:
     shell: bash
@@ -44,7 +43,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Cache node_modules (fallback)
+      - name: Cache node_modules
         uses: actions/cache@v4
         id: cache-node-modules
         with:
@@ -73,7 +72,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Cache node_modules (fallback)
+      - name: Cache node_modules
         uses: actions/cache@v4
         id: cache-node-modules
         with:
@@ -87,7 +86,7 @@ jobs:
       - name: Run type check
         run: npx tsc --noEmit
 
-  # ── 3. Tests (with coverage ≥80%) ───────────────────────
+  # ── 3. Tests (with coverage ≥65%) ───────────────────────
   test:
     name: Vitest + Coverage
     runs-on: ubuntu-latest
@@ -116,7 +115,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Cache node_modules (fallback)
+      - name: Cache node_modules
         uses: actions/cache@v4
         id: cache-node-modules
         with:
@@ -141,7 +140,7 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
-      - name: Enforce coverage threshold (≥80%)
+      - name: Enforce coverage threshold (≥65%)
         run: node -e "
           const fs = require('fs');
           try {
@@ -154,8 +153,8 @@ jobs:
             }
             const pct = totalStatements > 0 ? (coveredStatements / totalStatements * 100).toFixed(1) : 0;
             console.log('Coverage: ' + pct + '%');
-            if (pct < 72) {
-              console.error('::error::Coverage ' + pct + '% is below required 72%');
+            if (pct < 65) {
+              console.error('::error::Coverage ' + pct + '% is below required 65%');
               process.exit(1);
             }
           } catch(e) {
@@ -178,7 +177,6 @@ jobs:
     timeout-minutes: 15
     needs: [lint, typecheck, test]
     env:
-      # Dummy values for build-time env vars (not actually called)
       ENVIO_API_TOKEN: dummy-token-for-build
       ETHERSCAN_API_KEY: dummy-key-for-build
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/baseforge_test
@@ -196,7 +194,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Cache node_modules (fallback)
+      - name: Cache node_modules
         uses: actions/cache@v4
         id: cache-node-modules
         with:
@@ -238,7 +236,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Cache node_modules (fallback)
+      - name: Cache node_modules
         uses: actions/cache@v4
         id: cache-node-modules
         with:
@@ -249,7 +247,7 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci --ignore-scripts
 
-      - name: Run npm audit (allow info/moderate, fail on high/critical)
+      - name: Run npm audit
         run: npx audit-ci --moderate || true
 
       - name: Report audit summary

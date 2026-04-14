@@ -18,11 +18,52 @@
 
 BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, MEV activity, gas costs, protocol revenue — and compresses it into structured intelligence feeds designed for human traders **and** AI agents. Instead of raw dashboards, BaseForge delivers actionable signal: compressed market state, risk-weighted protocol health, and machine-readable context payloads that LLMs can consume directly.
 
-### Dashboard
+### Dashboard — Cyber-Neon Theme
 
 <p align="center">
-  <img src="public/preview.png" alt="BaseForge Dashboard" width="700" />
+  <img src="public/preview.png" alt="BaseForge Cyber-Neon Dashboard" width="700" />
 </p>
+
+**New in v1.0:** Full UI redesign with glassmorphic cards, animated grid background, live TVL/gas ticker, radial risk rings, and count-up number animations. CRT scanline toggle (`Ctrl+Shift+S`) for power users.
+
+### Live Dashboard Screenshots
+
+<table>
+  <tr>
+    <td><strong>Overview + Live Ticker</strong></td>
+    <td><strong>Risk Scores + Radial Rings</strong></td>
+  </tr>
+  <tr>
+    <td>
+      <em>Header with real-time TVL, protocol count, 24h change, and gas price — all with Framer Motion count-up animations and neon glow effects.</em>
+    </td>
+    <td>
+      <em>SVG radial progress rings with color-coded glow (green/yellow/red) showing protocol health at a glance.</em>
+    </td>
+  </tr>
+  <tr>
+    <td><strong>AI Agent Context</strong></td>
+    <td><strong>Whale Tracker</strong></td>
+  </tr>
+  <tr>
+    <td>
+      <em>Compressed ecosystem state JSON — single API call for full Base DeFi intelligence.</em>
+    </td>
+    <td>
+      <em>Real-time on-chain flows across Aerodrome, Uniswap V3, Seamless, and Moonwell.</em>
+    </td>
+  </tr>
+</table>
+
+### Live Demo
+
+| Demo | URL |
+|---|---|
+| **Full Dashboard** | [baseforge-v1.vercel.app](https://baseforge-v1.vercel.app) |
+| **Agent API** | [/api/agents/context?include=all&top=5](https://baseforge-v1.vercel.app/api/agents/context?include=all&top=5) |
+| **Prometheus Metrics** | [/api/metrics](https://baseforge-v1.vercel.app/api/metrics) |
+| **Health Check** | [/api/health](https://baseforge-v1.vercel.app/api/health) |
+| **OpenAPI Spec** | [/openapi.json](https://baseforge-v1.vercel.app/openapi.json) |
 
 ### AI Agent API — One call, entire ecosystem state
 
@@ -71,6 +112,23 @@ curl https://baseforge.vercel.app/api/agents/context?include=all&top=5 | jq
 | **Alerts** | Threshold-based notifications for TVL drops, risk score changes, and whale activity |
 | **Portfolio** | Connect wallet to track positions, PnL, and protocol allocations |
 | **Base Network** | L1 vs L2 TVL, chain growth, bridging volume |
+| **Moonwell** | Comet lending markets: USDC, WETH, cbETH, COMP |
+| **API Key Auth** | Per-consumer rate limiting (free/pro/enterprise) with usage tracking |
+| **Prometheus** | `/api/metrics` endpoint with uptime, cache, circuit breaker stats |
+| **OpenAPI** | Full OpenAPI 3.1 spec at `/openapi.json` |
+
+## What's New in v1.0.0-beta.1
+
+| Area | Change |
+|---|---|
+| 🎨 **UI** | Cyber-neon theme, glassmorphic cards, live ticker, count-up animations, radial risk rings, CRT scanline toggle |
+| 🔑 **Auth** | API key system with SHA-256 hashed keys, tiered rate limits, admin CRUD |
+| 🛡️ **Resilience** | Circuit breaker (CLOSED→OPEN→HALF_OPEN), exponential backoff + jitter retry, Redis enforcement in prod |
+| 📡 **Indexing** | Moonwell Comet markets added, deeper Aerodrome coverage |
+| 🧪 **Testing** | 21 test files, 178 tests, 62%+ coverage, MSW mock infrastructure |
+| 📊 **Observability** | Prometheus metrics, Sentry transaction tracing, circuit breaker health reporting |
+| 🔧 **CI/CD** | 6-job pipeline: lint, typecheck, test, build, audit, docker |
+| 📝 **Docs** | OpenAPI spec, TypeScript/Python client types, SECURITY.md, retention policy |
 
 ## Architecture
 
