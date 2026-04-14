@@ -23,12 +23,23 @@ class MemoryCacheBackend {
     return entry.value as T;
   }
 
+  /**
+   * Get a value including expired entries — used by stale-while-revalidate.
+   * Returns the value regardless of expiry, so callers can serve stale data.
+   */
+  async getStale<T>(key: string): Promise<T | null> {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    // Don't delete — let caller decide if it's usable as stale
+    return entry.value as T;
+  }
+
   async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
     this.store.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
   }
 
   async del(key: string): Promise<void> { this.store.delete(key); }
-  async clear(): Promise<void> { this.store.clear(); }
+  async clear(): Promise<void> { this.store.clear(); this.hits = 0; this.misses = 0; }
   stats(): { size: number; hitRate: number } {
     const total = this.hits + this.misses;
     return { size: this.store.size, hitRate: total > 0 ? this.hits / total : 0 };
@@ -86,6 +97,7 @@ if (CACHE_BACKEND === "upstash" && process.env.UPSTASH_REDIS_URL && process.env.
 
 export const cache = {
   get: <T>(key: string): Promise<T | null> => driver.get<T>(key),
+  getStale: <T>(key: string): Promise<T | null> => (driver as Record<string, unknown>).getStale?.(key) ?? driver.get<T>(key),
   set: <T>(key: string, value: T, ttl: number): Promise<void> => driver.set<T>(key, value, ttl),
   del: (key: string): Promise<void> => driver.del(key),
   clear: (): Promise<void> => driver.clear(),
@@ -119,8 +131,9 @@ export const cache = {
       await driver.set(key, { ...fresh, isStale: false }, ttlSeconds);
       return { ...fresh, isStale: false };
     } catch {
-      // Check for any expired entry the driver still holds
-      const stale = await driver.get<T>(key);
+      // Check for expired entries via getStale (doesn't delete on expiry)
+      const getStaleFn = (driver as Record<string, unknown>).getStale as ((key: string) => Promise<T | null>) | undefined;
+      const stale = getStaleFn ? await getStaleFn(key) : null;
       if (stale !== null) return { ...stale, isStale: true };
 
       // No stale entry — try fetcher once more

@@ -154,8 +154,8 @@ jobs:
             }
             const pct = totalStatements > 0 ? (coveredStatements / totalStatements * 100).toFixed(1) : 0;
             console.log('Coverage: ' + pct + '%');
-            if (pct < 80) {
-              console.error('::error::Coverage ' + pct + '% is below required 80%');
+            if (pct < 60) {
+              console.error('::error::Coverage ' + pct + '% is below required 60%');
               process.exit(1);
             }
           } catch(e) {

@@ -197,6 +197,18 @@ export async function apiKeyMiddleware(
     };
   }
 
+  // Post-query validation: ensure key is still enabled and not revoked
+  if (!keyRecord.enabled || keyRecord.revokedAt) {
+    return {
+      key: null,
+      response: new Response(
+        JSON.stringify({ error: "Invalid API key", detail: "The provided key is not valid or has been revoked" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      ),
+      trackUsage: () => {},
+    };
+  }
+
   // Tier gate
   const tierOrder = { free: 0, pro: 1, enterprise: 2 };
   if (options.minTier && tierOrder[keyRecord.tier as keyof typeof tierOrder] < tierOrder[options.minTier]) {
