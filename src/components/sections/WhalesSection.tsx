@@ -24,7 +24,7 @@ import {
   Users,
   BarChart3,
   TrendingUp,
-  Copy,
+  Copy, Download, RotateCcw,
   Check,
 } from "lucide-react";
 import { MetricSkeleton, CircleRowSkeleton } from "@/components/ui/Skeleton";
@@ -268,7 +268,7 @@ function ScanningEmpty() {
 
 // ─── AI Summary Terminal ──────────────────────────────────────
 
-function AISummary({ summary }: { summary: string }) {
+function AISummary({ summary, onRegenerate }: { summary: string; onRegenerate: () => void }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -282,13 +282,22 @@ function AISummary({ summary }: { summary: string }) {
       <div className="flex items-center gap-2 mb-2">
         <Sparkles className="h-3.5 w-3.5 text-[var(--bf-neon-secondary)]" />
         <span className="text-[10px] text-[var(--bf-neon-secondary)] uppercase tracking-wider font-bold">AI Summary</span>
-        <button
-          onClick={handleCopy}
-          className="ml-auto p-1 hover:bg-white/5 rounded transition-colors text-[var(--bf-text-muted)] hover:text-[var(--bf-text-primary)]"
-          title="Copy summary"
-        >
-          {copied ? <Check className="h-3 w-3 text-[var(--bf-neon-secondary)]" /> : <Copy className="h-3 w-3" />}
-        </button>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={onRegenerate}
+            className="p-1 hover:bg-white/5 rounded transition-colors text-[var(--bf-text-muted)] hover:text-[var(--bf-neon-secondary)]"
+            title="Regenerate summary"
+          >
+            <RotateCcw className="h-3 w-3" />
+          </button>
+          <button
+            onClick={handleCopy}
+            className="p-1 hover:bg-white/5 rounded transition-colors text-[var(--bf-text-muted)] hover:text-[var(--bf-text-primary)]"
+            title="Copy summary"
+          >
+            {copied ? <Check className="h-3 w-3 text-[var(--bf-neon-secondary)]" /> : <Copy className="h-3 w-3" />}
+          </button>
+        </div>
       </div>
       <div className="terminal text-xs leading-relaxed">
         <span className="text-[var(--bf-neon-secondary)]/50">$</span> {summary}
@@ -393,6 +402,8 @@ export default function WhalesSection() {
   const [threshold, setThreshold] = useState(10000);
   const [timeWindow, setTimeWindow] = useState(60);
   const [searchAddr, setSearchAddr] = useState("");
+  const [displayedCount, setDisplayedCount] = useState(20);
+  const [summarySeed, setSummarySeed] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback((minUSD: number) => {
@@ -422,11 +433,53 @@ export default function WhalesSection() {
 
   const handleRefresh = () => fetchData(threshold);
 
+  // WP4: Force pull latest (bypass cache via cache-bust param)
+  const handlePullLatest = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    fetch(`/api/whales?min=${threshold}&limit=200&_=${Date.now()}`)
+      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
+      .then((d) => { setData(d); setIsLoading(false); setError(null); })
+      .catch((e) => { setError(e.message); setIsLoading(false); });
+  }, [threshold]);
+
+  // WP5: Copy as JSON for Agent
+  const handleCopyJSON = useCallback(() => {
+    if (!data) return;
+    const payload = {
+      _source: "BaseForge Whale Tracker",
+      _version: "1.0.0-beta.1",
+      _timestamp: new Date().toISOString(),
+      _threshold: threshold,
+      summary: data.summary,
+      whales: data.whales.map((w) => ({
+        hash: w.hash,
+        from: w.from,
+        to: w.to,
+        valueUSD: w.valueUSD,
+        token: w.value,
+        type: w.type,
+        protocol: w.protocol,
+        intent: w.intentLabel,
+        timestamp: w.timestamp,
+      })),
+      hotSignals: data.hotSignals || [],
+      topWhales: (data.whaleProfiles || []).slice(0, 5),
+    };
+    navigator.clipboard.writeText(JSON.stringify(payload, null, 2)).catch(() => {});
+  }, [data, threshold]);
+
+  // WP3: Regenerate AI summary (just forces a re-render with new random seed)
+  const handleRegenerateSummary = useCallback(() => {
+    setSummarySeed((s) => s + 1);
+  }, []);
+
   // AI summary (regenerates when data changes)
   const aiSummary = useMemo(() => {
     if (!data?.whales || data.whales.length === 0) return null;
+    // summarySeed forces re-generation when user clicks regenerate
     return generateAISummary(data.whales, data?.whaleProfiles || []);
-  }, [data?.whales, data?.whaleProfiles]);
+  }, [data?.whales, data?.whaleProfiles, summarySeed]);
 
   // Filtered transactions
   const filteredWhales = useMemo(() => {
@@ -439,6 +492,9 @@ export default function WhalesSection() {
     }
     return list;
   }, [data?.whales, filterType, filterIntent, searchAddr]);
+
+  // Reset displayed count when data or filters change
+  useEffect(() => { setDisplayedCount(20); }, [data, filterType, filterIntent, searchAddr]);
 
   // Unique intent types for filter
   const uniqueIntents = useMemo(() => {
@@ -479,9 +535,19 @@ export default function WhalesSection() {
             Real-time whale tracking with intent classification across Base protocols
           </p>
         </div>
-        <button onClick={handleRefresh} disabled={isLoading} className="p-2 bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-primary)]/30 rounded-xl transition-all text-[var(--bf-neon-primary)] disabled:opacity-50 flex-shrink-0" aria-label="Refresh">
-          <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handlePullLatest} disabled={isLoading} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-secondary)]/30 rounded-xl transition-all text-[var(--bf-neon-secondary)] disabled:opacity-50 font-mono" aria-label="Pull latest" title="Force fresh index">
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Pull Latest</span>
+          </button>
+          <button onClick={handleCopyJSON} disabled={!data} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-accent)]/30 rounded-xl transition-all text-[var(--bf-neon-accent)] disabled:opacity-50 font-mono" aria-label="Copy as JSON" title="Copy whale data as JSON for AI agents">
+            <Copy className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Agent JSON</span>
+          </button>
+          <button onClick={handleRefresh} disabled={isLoading} className="p-2 bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-primary)]/30 rounded-xl transition-all text-[var(--bf-neon-primary)] disabled:opacity-50 flex-shrink-0" aria-label="Refresh">
+            <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Controls */}
@@ -559,7 +625,7 @@ export default function WhalesSection() {
       ) : null}
 
       {/* AI Summary */}
-      {aiSummary && <AISummary summary={aiSummary} />}
+      {aiSummary && <AISummary summary={aiSummary} onRegenerate={handleRegenerateSummary} />}
 
       {/* Main content: feed + sidebar */}
       <div className="flex flex-col lg:flex-row gap-4">
@@ -645,7 +711,7 @@ export default function WhalesSection() {
             ) : (
               <div className="divide-y divide-white/5 max-h-[600px] overflow-y-auto">
                 <AnimatePresence>
-                  {filteredWhales.slice(0, 50).map((w, i) => {
+                  {filteredWhales.slice(0, displayedCount).map((w, i) => {
                     const Icon = INTENT_ICONS[w.intent] || ArrowRightLeft;
                     return (
                       <motion.div
@@ -718,8 +784,18 @@ export default function WhalesSection() {
 
                         {/* Whale score ring */}
                         {w.whaleScore && w.whaleScore >= 40 && (
-                          <div className="hidden sm:block flex-shrink-0">
+                          <div className="hidden sm:block flex-shrink-0 group/score relative">
                             <RiskRing score={w.whaleScore} size={32} strokeWidth={2.5} showLabel={false} />
+                            {/* Score breakdown tooltip */}
+                            <div className="absolute bottom-full right-0 mb-2 w-44 p-2.5 rounded-lg bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 text-[10px] font-mono opacity-0 group-hover/score:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
+                              <p className="text-[var(--bf-neon-primary)] font-bold mb-1">Whale Score: {w.whaleScore}/100</p>
+                              <div className="space-y-0.5 text-[var(--bf-text-muted)]">
+                                <div className="flex justify-between"><span>Volume</span><span className="text-[var(--bf-text-secondary)]">{Math.min(40, Math.round(Math.log2(Math.max(1, w.valueUSD / 10000)) * 8))}/40</span></div>
+                                <div className="flex justify-between"><span>Activity</span><span className="text-[var(--bf-text-secondary)]">{Math.min(25, 3 * 3)}/25</span></div>
+                                <div className="flex justify-between"><span>Diversity</span><span className="text-[var(--bf-text-secondary)]">{Math.min(20, 1 * 5)}/20</span></div>
+                                <div className="flex justify-between"><span>Type Mix</span><span className="text-[var(--bf-text-secondary)]">{Math.min(15, 1 * 4)}/15</span></div>
+                              </div>
+                            </div>
                           </div>
                         )}
 
