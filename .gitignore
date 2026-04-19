@@ -31,3 +31,4 @@ yarn-error.log*
 # vercel
 .vercel
 baseforge-temp
+worker/node_modules
