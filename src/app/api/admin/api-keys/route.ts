@@ -27,10 +27,26 @@ const CreateKeySchema = z.object({
   rateLimit: z.number().int().positive().max(50000).optional(),
 });
 
+// ─── DB connectivity probe ───────────────────────────────────────
+
+async function checkDbConnectivity(): Promise<boolean> {
+  try {
+    await db.execute("SELECT 1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ─── GET — List all API keys ────────────────────────────────────
 
 async function handleGet() {
-  const keys = await db
+  if (!(await checkDbConnectivity())) {
+    return NextResponse.json({ error: "database_unavailable" }, { status: 503 });
+  }
+
+  try {
+    const keys = await db
     .select({
       id: apiKeys.id,
       name: apiKeys.name,
@@ -61,6 +77,10 @@ async function handleGet() {
       usage24h: usageMap.get(k.id) ?? 0,
     })),
   });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "unknown error";
+    return NextResponse.json({ error: "query_failed", detail }, { status: 502 });
+  }
 }
 
 // ─── POST — Create new API key ──────────────────────────────────

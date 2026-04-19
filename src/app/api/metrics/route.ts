@@ -86,8 +86,9 @@ async function buildLocalMetrics(): Promise<string> {
   } catch {
     metric(
       "api_keys_total",
-      -1,
-      "Total API keys in database (unavailable)",
+      0,
+      "Total API keys in database",
+      { error: "db_unavailable" },
     );
   }
 
