@@ -353,6 +353,19 @@ async function runRiskScorer(): Promise<void> {
   }
 }
 
+// ─── Webhook delivery ────────────────────────────────────────────
+async function deliverWebhook(url: string, payload: Record<string, unknown>): Promise<void> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": "BaseForge-Alerts/1.0" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+}
+
 // ─── 3. ALERT EVALUATOR ──────────────────────────────────────────
 async function runAlertEvaluator(): Promise<void> {
   const t0 = Date.now();
@@ -360,7 +373,7 @@ async function runAlertEvaluator(): Promise<void> {
     // Fetch active alert rules from Neon
     const rules = await sql`
       SELECT id, type, protocol, condition, threshold, severity, cooldown_minutes,
-             network
+             network, webhook_url
       FROM alert_rules
       WHERE enabled = true
     ` as Array<{
@@ -372,6 +385,7 @@ async function runAlertEvaluator(): Promise<void> {
       severity: string;
       cooldown_minutes: number;
       network: string | null;
+      webhook_url: string | null;
     }>;
 
     if (!rules.length) return;
@@ -445,6 +459,35 @@ async function runAlertEvaluator(): Promise<void> {
             ${rule.severity}
           )
         `;
+
+        // Update lastTriggered on the rule
+        await sql`
+          UPDATE alert_rules SET last_triggered = NOW() WHERE id = ${rule.id}
+        `.catch(() => { /* non-fatal */ });
+
+        // Deliver webhook if configured
+        if (rule.webhook_url) {
+          await deliverWebhook(rule.webhook_url, {
+            event: "alert_triggered",
+            source: "baseforge",
+            ruleId: rule.id,
+            type: rule.type,
+            protocol: rule.protocol,
+            network: rule.network ?? "Base",
+            severity: rule.severity,
+            message,
+            currentValue,
+            threshold,
+            triggeredAt: new Date().toISOString(),
+          }).catch((err: unknown) => {
+            log("warn", "webhook delivery failed", {
+              source: "alert-evaluator",
+              ruleId: rule.id,
+              webhook_url: rule.webhook_url,
+              error: String(err),
+            });
+          });
+        }
 
         log("warn", "alert triggered", {
           source: "alert-evaluator",

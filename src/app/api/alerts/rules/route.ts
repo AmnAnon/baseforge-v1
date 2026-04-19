@@ -1,8 +1,9 @@
 // src/app/api/alerts/rules/route.ts
 // CRUD operations for alert rules.
-// GET — list all rules (enabled + disabled)
-// POST — create a new alert rule
-// PATCH — toggle or update an existing rule
+// GET    — list all rules (enabled + disabled)
+// POST   — create a new alert rule
+// PATCH  — toggle or update an existing rule
+// DELETE — disable a rule by id (soft delete)
 
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
@@ -29,7 +30,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { type, protocol, network, condition, threshold, severity, cooldownMinutes, enabled } = body;
+    const { type, protocol, network, condition, threshold, severity, cooldownMinutes, enabled, webhookUrl } = body;
 
     if (!ALERT_TYPES.includes(type)) {
       return NextResponse.json({ error: `Invalid alert type: ${type}` }, { status: 400 });
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
         severity,
         cooldownMinutes: cooldownMinutes ?? 60,
         enabled: enabled ?? true,
+        webhookUrl: webhookUrl ?? null,
       })
       .returning();
 
@@ -96,5 +98,31 @@ export async function PATCH(req: Request) {
   } catch (err) {
     console.error("[alerts/rules] PATCH error:", err);
     return NextResponse.json({ error: "Failed to update alert rule" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "id query param is required" }, { status: 400 });
+    }
+
+    const [updated] = await db
+      .update(alertRules)
+      .set({ enabled: false, updatedAt: new Date() })
+      .where(eq(alertRules.id, id))
+      .returning();
+
+    if (!updated) {
+      return NextResponse.json({ error: "Rule not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ rule: updated }, { status: 200 });
+  } catch (err) {
+    console.error("[alerts/rules] DELETE error:", err);
+    return NextResponse.json({ error: "Failed to delete alert rule" }, { status: 500 });
   }
 }

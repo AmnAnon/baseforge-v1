@@ -150,4 +150,5 @@ export const circuitBreakers = {
   etherscan: new CircuitBreaker("etherscan-fallback", { threshold: 5, cooldownMs: 60_000 }),
   defillama: new CircuitBreaker("defillama", { threshold: 3, cooldownMs: 30_000 }),
   coingecko: new CircuitBreaker("coingecko", { threshold: 3, cooldownMs: 30_000 }),
+  eigenphi: new CircuitBreaker("eigenphi", { threshold: 3, cooldownMs: 60_000 }),
 };

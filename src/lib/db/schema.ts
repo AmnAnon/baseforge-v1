@@ -116,6 +116,8 @@ export const alertRules = pgTable(
     severity: severityEnum("severity").notNull(),
     cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
     enabled: boolean("enabled").notNull().default(true),
+    webhookUrl: text("webhook_url"),
+    lastTriggered: timestamp("last_triggered"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

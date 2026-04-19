@@ -1,171 +1,245 @@
 // src/app/api/mev/route.ts
-// MEV activity — Dune Analytics primary (query 3390728), indexer heuristics fallback.
+// MEV activity — EigenPhi Base MEV (primary), Redis cache (fallback).
+//
+// EigenPhi endpoint (no API key required for basic access):
+//   GET https://api.eigenphi.io/ethereum/v1/mev/txs/latest?chain=base&limit=50
+//
+// Response shape:
+//   { events, stats, source, _demo, _notice?, dataNote, timestamp, isStale }
 
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
-import { getLargeSwaps } from "@/lib/data/indexers";
+import { circuitBreakers } from "@/lib/circuit-breaker";
 import { logger } from "@/lib/logger";
+import { Redis } from "@upstash/redis";
+
+// ─── Types ──────────────────────────────────────────────────────
 
 interface MEVEvent {
   txHash: string;
-  type: "likely_arbitrage" | "large_swap" | "possible_sandwich";
+  type: "sandwich" | "arbitrage" | "liquidation";
   protocol: string;
-  amountUSD: number;
-  sender: string;
-  timestamp: number;
-  blockNumber: number;
+  extracted: number;     // USD profit / extracted value
+  attacker: string;
+  victim: string | null;
+  timestamp: number;     // ms
 }
 
-// ─── Dune Analytics fetch ───────────────────────────────────────
+interface MEVStats {
+  total: number;
+  sandwichCount: number;
+  arbitrageCount: number;
+  liquidationCount: number;
+  totalExtractedUSD: number;
+  avgExtractedUSD: number;
+}
 
-async function fetchDuneMEV(): Promise<{ events: MEVEvent[]; source: string } | null> {
-  const apiKey = process.env.DUNE_API_KEY;
-  if (!apiKey) return null;
+// ─── Redis (optional) ─────────────────────────────────────────────
 
+let _redis: Redis | null = null;
+function getRedis(): Redis | null {
+  if (_redis) return _redis;
+  const url   = process.env.UPSTASH_REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_TOKEN;
+  if (!url || !token) return null;
+  _redis = new Redis({ url, token });
+  return _redis;
+}
+
+// ─── EigenPhi field mapping ───────────────────────────────────────
+
+type EigenPhiMevType = string; // "Sandwich" | "Arbitrage" | "Liquidation" | ...
+
+interface EigenPhiTx {
+  tx_hash?: string;
+  mevType?: EigenPhiMevType;
+  profit_usd?: number;
+  timestamp?: number;
+  protocol?: string;
+  attackerAddress?: string;
+  victimAddress?: string;
+  // some responses use alternate casings
+  txHash?: string;
+  mev_type?: string;
+  profitUsd?: number;
+  attacker_address?: string;
+  victim_address?: string;
+}
+
+function normalizeType(raw: string | undefined): MEVEvent["type"] {
+  const lower = (raw ?? "").toLowerCase();
+  if (lower.includes("sandwich")) return "sandwich";
+  if (lower.includes("liquidat")) return "liquidation";
+  return "arbitrage"; // default for arb, front-run, etc.
+}
+
+function mapEigenPhiTx(tx: EigenPhiTx): MEVEvent {
+  const txHash   = tx.tx_hash   ?? tx.txHash   ?? "";
+  const mevType  = tx.mevType   ?? tx.mev_type  ?? "";
+  const profit   = tx.profit_usd ?? tx.profitUsd ?? 0;
+  const ts       = tx.timestamp ?? 0;
+  const protocol = tx.protocol  ?? "unknown";
+  const attacker = tx.attackerAddress ?? tx.attacker_address ?? "";
+  const victim   = tx.victimAddress   ?? tx.victim_address   ?? null;
+
+  return {
+    txHash,
+    type:      normalizeType(mevType),
+    protocol:  protocol || "unknown",
+    extracted: typeof profit === "number" ? profit : parseFloat(String(profit)) || 0,
+    attacker:  attacker ? attacker.slice(0, 10) + "…" : "unknown",
+    victim:    victim ? victim.slice(0, 10) + "…" : null,
+    // EigenPhi returns Unix seconds; convert to ms
+    timestamp: ts > 1e12 ? ts : ts * 1000,
+  };
+}
+
+// ─── Primary: EigenPhi ────────────────────────────────────────────
+
+async function fetchEigenPhi(): Promise<MEVEvent[]> {
+  const res = await fetch(
+    "https://api.eigenphi.io/ethereum/v1/mev/txs/latest?chain=base&limit=50",
+    {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(10_000),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) throw new Error(`EigenPhi HTTP ${res.status}`);
+
+  const json = await res.json();
+
+  // EigenPhi wraps results in a data/txs/list key depending on version
+  const rows: EigenPhiTx[] =
+    Array.isArray(json)               ? json :
+    Array.isArray(json.data)          ? json.data :
+    Array.isArray(json.txs)           ? json.txs :
+    Array.isArray(json.result)        ? json.result :
+    Array.isArray(json.mevTransactions) ? json.mevTransactions :
+    [];
+
+  if (rows.length === 0) throw new Error("EigenPhi returned empty result set");
+
+  return rows.map(mapEigenPhiTx);
+}
+
+// ─── Fallback: Redis cache ─────────────────────────────────────────
+
+async function fetchFromRedisCache(): Promise<MEVEvent[] | null> {
   try {
-    const res = await fetch(
-      "https://api.dune.com/api/v1/query/3390728/results?limit=50",
-      {
-        headers: { "x-dune-api-key": apiKey },
-        signal: AbortSignal.timeout(10_000),
-        cache: "no-store",
-      }
-    );
-    if (!res.ok) return null;
-    const json = await res.json();
-    const rows: Array<Record<string, unknown>> = json?.result?.rows || [];
-    if (rows.length === 0) return null;
-
-    const events: MEVEvent[] = rows.map((row) => ({
-      txHash: String(row.tx_hash || row.txHash || ""),
-      type: (row.mev_type === "arbitrage"
-        ? "likely_arbitrage"
-        : row.mev_type === "sandwich"
-        ? "possible_sandwich"
-        : "large_swap") as MEVEvent["type"],
-      protocol: String(row.protocol || row.dex || "unknown"),
-      amountUSD: Number(row.profit_usd ?? row.amount_usd ?? 0),
-      sender: String(row.searcher_address || row.sender || "").slice(0, 10),
-      timestamp: row.block_time
-        ? Math.floor(new Date(String(row.block_time)).getTime() / 1000)
-        : Math.floor(Date.now() / 1000),
-      blockNumber: Number(row.block_number || 0),
-    }));
-
-    return { events, source: "dune-analytics" };
+    const client = getRedis();
+    if (!client) return null;
+    const raw = await client.get<string | MEVEvent[]>("mev:recent");
+    if (!raw) return null;
+    const parsed: MEVEvent[] = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
   } catch {
     return null;
   }
 }
 
-// ─── Demo fallback ──────────────────────────────────────────────
+// ─── Stats computation ────────────────────────────────────────────
 
-function getDemoMEV(): { events: MEVEvent[]; demo: boolean; source: string } {
-  const now = Math.floor(Date.now() / 1000);
+function computeStats(events: MEVEvent[]): MEVStats {
+  const sandwich    = events.filter((e) => e.type === "sandwich").length;
+  const arbitrage   = events.filter((e) => e.type === "arbitrage").length;
+  const liquidation = events.filter((e) => e.type === "liquidation").length;
+  const totalExtracted = events.reduce((s, e) => s + e.extracted, 0);
   return {
-    demo: true,
-    source: "demo",
-    events: [
-      { txHash: "0xdemo1", type: "likely_arbitrage", protocol: "Aerodrome", amountUSD: 142000, sender: "0xarb1...", timestamp: now - 120, blockNumber: 99999 },
-      { txHash: "0xdemo2", type: "possible_sandwich", protocol: "Uniswap V3", amountUSD: 87000, sender: "0xsand...", timestamp: now - 300, blockNumber: 99998 },
-      { txHash: "0xdemo3", type: "large_swap", protocol: "Aerodrome", amountUSD: 305000, sender: "0xwhal...", timestamp: now - 600, blockNumber: 99990 },
-    ],
+    total:            events.length,
+    sandwichCount:    sandwich,
+    arbitrageCount:   arbitrage,
+    liquidationCount: liquidation,
+    totalExtractedUSD:  Math.round(totalExtracted),
+    avgExtractedUSD:    events.length > 0 ? Math.round(totalExtracted / events.length) : 0,
   };
 }
+
+// ─── Route handler ────────────────────────────────────────────────
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getOrFetch("mev-v3", CACHE_TTL.WHALE_TX, async () => {
-      // Primary: Dune Analytics
-      const duneResult = await fetchDuneMEV();
-      if (duneResult) {
-        const arb = duneResult.events.filter((e) => e.type === "likely_arbitrage").length;
-        const sandwich = duneResult.events.filter((e) => e.type === "possible_sandwich").length;
-        const extracted = duneResult.events
-          .filter((e) => e.type !== "large_swap")
-          .reduce((s, e) => s + e.amountUSD, 0);
+    const data = await cache.getOrFetch("mev-eigenphi-v1", CACHE_TTL.WHALE_TX, async () => {
+      // ── 1. Try EigenPhi via circuit breaker ──
+      let events: MEVEvent[] | null = null;
+      let source = "eigenphi";
+      let notice: string | undefined;
+
+      try {
+        events = await circuitBreakers.eigenphi.execute(() => fetchEigenPhi());
+      } catch (err) {
+        logger.warn("EigenPhi fetch failed, trying Redis cache", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // ── 2. Fallback: Redis cache ──
+      if (!events) {
+        events = await fetchFromRedisCache();
+        if (events) {
+          source = "redis-cache";
+          notice = "Live MEV data temporarily unavailable — showing last known data";
+        }
+      }
+
+      // ── 3. Empty state ──
+      if (!events || events.length === 0) {
         return {
-          events: duneResult.events.slice(0, 30),
-          stats: {
-            total24h: duneResult.events.length,
-            arbitrageCount: arb,
-            sandwichCount: sandwich,
-            largeSwapCount: duneResult.events.filter((e) => e.type === "large_swap").length,
-            estimatedExtractedUSD: Math.round(extracted),
-            avgSwapSize: duneResult.events.length > 0
-              ? Math.round(duneResult.events.reduce((s, e) => s + e.amountUSD, 0) / duneResult.events.length)
-              : 0,
-          },
-          source: duneResult.source,
-          demo: false,
-          dataNote: "Live MEV data from Dune Analytics.",
+          events: [],
+          stats: computeStats([]),
+          source: "none",
+          _demo: false,
+          _notice: "MEV data temporarily unavailable",
+          dataNote: "EigenPhi data unavailable. Will retry automatically.",
           timestamp: Date.now(),
-          isStale: false,
+          isStale: true,
         };
       }
 
-      // Secondary: indexer heuristics
-      const swapResult = await getLargeSwaps({ minAmountUSD: 50_000, limit: 100 });
-      const swaps = swapResult.swaps;
-
-      const events: MEVEvent[] = [];
-      const blockGroups = new Map<number, typeof swaps>();
-      for (const swap of swaps) {
-        if (!blockGroups.has(swap.blockNumber)) blockGroups.set(swap.blockNumber, []);
-        blockGroups.get(swap.blockNumber)!.push(swap);
-      }
-      for (const swap of swaps) {
-        const sameBlock = blockGroups.get(swap.blockNumber) || [];
-        if (sameBlock.length >= 2 && swap.amountUSD >= 100_000) {
-          events.push({ txHash: swap.txHash, type: "likely_arbitrage", protocol: swap.protocol, amountUSD: swap.amountUSD, sender: swap.sender.slice(0, 10), timestamp: swap.timestamp, blockNumber: swap.blockNumber });
-        } else if (sameBlock.length >= 3 || swaps.some((s) => s.txHash !== swap.txHash && Math.abs(s.blockNumber - swap.blockNumber) <= 1 && s.sender === swap.sender)) {
-          events.push({ txHash: swap.txHash, type: "possible_sandwich", protocol: swap.protocol, amountUSD: swap.amountUSD, sender: swap.sender.slice(0, 10), timestamp: swap.timestamp, blockNumber: swap.blockNumber });
-        } else if (swap.amountUSD >= 50_000) {
-          events.push({ txHash: swap.txHash, type: "large_swap", protocol: swap.protocol, amountUSD: swap.amountUSD, sender: swap.sender.slice(0, 10), timestamp: swap.timestamp, blockNumber: swap.blockNumber });
-        }
-      }
-      const unique = Array.from(new Map(events.map((e) => [e.txHash, e])).values()).sort((a, b) => b.amountUSD - a.amountUSD);
-      const arbCount = unique.filter((e) => e.type === "likely_arbitrage").length;
-      const sandwichCount = unique.filter((e) => e.type === "possible_sandwich").length;
-      const totalExtracted = unique.filter((e) => e.type !== "large_swap").reduce((s, e) => s + e.amountUSD * 0.003, 0);
+      const sorted = events.sort((a, b) => b.extracted - a.extracted);
 
       return {
-        events: unique.slice(0, 30),
-        stats: {
-          total24h: unique.length,
-          arbitrageCount: arbCount,
-          sandwichCount: sandwichCount,
-          largeSwapCount: unique.filter((e) => e.type === "large_swap").length,
-          estimatedExtractedUSD: Math.round(totalExtracted),
-          avgSwapSize: unique.length > 0 ? Math.round(unique.reduce((s, e) => s + e.amountUSD, 0) / unique.length) : 0,
-        },
-        source: swapResult.source,
-        demo: false,
-        dataNote: "MEV classification uses heuristics. Set DUNE_API_KEY for labeled data.",
+        events: sorted.slice(0, 30),
+        stats:  computeStats(sorted),
+        source,
+        _demo:  false,
+        ...(notice ? { _notice: notice } : {}),
+        dataNote: source === "eigenphi"
+          ? "Live MEV data from EigenPhi Base indexer."
+          : "Showing cached MEV data — EigenPhi temporarily unreachable.",
         timestamp: Date.now(),
-        isStale: false,
+        isStale: source !== "eigenphi",
       };
     });
 
     return NextResponse.json(data, {
-      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Data-Source": data.source || "indexer" },
+      headers: {
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=120",
+        "X-Data-Source": (data as { source?: string }).source ?? "unknown",
+      },
     });
   } catch (err) {
     logger.error("MEV API error", { error: err instanceof Error ? err.message : "unknown" });
-    const demo = getDemoMEV();
     return NextResponse.json(
       {
-        ...demo,
-        stats: { total24h: demo.events.length, arbitrageCount: 1, sandwichCount: 1, largeSwapCount: 1, estimatedExtractedUSD: 690, avgSwapSize: 178000 },
-        dataNote: "Live data unavailable. Add DUNE_API_KEY for real MEV data.",
+        events: [],
+        stats: computeStats([]),
+        source: "none",
+        _demo: false,
+        _notice: "MEV data temporarily unavailable",
+        dataNote: "EigenPhi data unavailable. Will retry automatically.",
         timestamp: Date.now(),
         isStale: true,
       },
-      { status: 200 }
+      { status: 200, headers: { "X-Cache-Status": "ERROR" } }
     );
   }
 }
+
+export const dynamic = "force-dynamic";
+export const revalidate = 60;

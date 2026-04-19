@@ -1,7 +1,7 @@
 // src/components/sections/MEVSection.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Zap,
   RefreshCw,
@@ -10,82 +10,91 @@ import {
   Layers,
   BarChart3,
   Clock,
+  Droplets,
+  Info,
 } from "lucide-react";
 import { MetricSkeleton, TableRowSkeleton } from "@/components/ui/Skeleton";
 
+// ─── Types ────────────────────────────────────────────────────────
+
 interface MEVEvent {
   txHash: string;
-  type: "likely_arbitrage" | "large_swap" | "possible_sandwich";
+  type: "sandwich" | "arbitrage" | "liquidation";
   protocol: string;
-  amountUSD: number;
-  sender: string;
-  timestamp: number;
-  blockNumber: number;
+  extracted: number;
+  attacker: string;
+  victim: string | null;
+  timestamp: number; // ms
 }
 
 interface MEVStats {
-  total24h: number;
-  arbitrageCount: number;
+  total: number;
   sandwichCount: number;
-  largeSwapCount: number;
-  estimatedExtractedUSD: number;
-  avgSwapSize: number;
+  arbitrageCount: number;
+  liquidationCount: number;
+  totalExtractedUSD: number;
+  avgExtractedUSD: number;
 }
 
 interface MEVResponse {
   events: MEVEvent[];
   stats: MEVStats;
   source: string;
+  _demo: boolean;
+  _notice?: string;
   dataNote: string;
   timestamp: number;
   isStale: boolean;
 }
 
+// ─── Helpers ───────────────────────────────────────────────────────
+
 function formatUSD(n: number): string {
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
   if (n >= 1e3) return `$${(n / 1e3).toFixed(1)}K`;
   return `$${n.toFixed(0)}`;
 }
 
-function timeSince(ts: number): string {
-  const diff = Math.floor((Date.now() / 1000) - ts);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+function timeSince(tsMs: number): string {
+  const diff = Math.floor((Date.now() - tsMs) / 1000);
+  if (diff < 60)    return `${diff}s ago`;
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; color: string; bgColor: string; icon: typeof Zap }> = {
-  likely_arbitrage: { label: "Likely Arb", color: "text-yellow-400", bgColor: "bg-yellow-900/30", icon: Zap },
-  possible_sandwich: { label: "Poss. Sandwich", color: "text-red-400", bgColor: "bg-red-900/30", icon: Layers },
-  large_swap: { label: "Large Swap", color: "text-blue-400", bgColor: "bg-blue-900/30", icon: ArrowRightLeft },
+const TYPE_CONFIG: Record<MEVEvent["type"], { label: string; color: string; bgColor: string; icon: typeof Zap }> = {
+  arbitrage:   { label: "Arbitrage",  color: "text-yellow-400", bgColor: "bg-yellow-900/30", icon: Zap },
+  sandwich:    { label: "Sandwich",   color: "text-red-400",    bgColor: "bg-red-900/30",    icon: Layers },
+  liquidation: { label: "Liquidation",color: "text-purple-400", bgColor: "bg-purple-900/30", icon: Droplets },
 };
 
-export default function MEVSection() {
-  const [data, setData] = useState<MEVResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// ─── Component ─────────────────────────────────────────────────────
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/mev")
-      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
-      .then((d) => { if (!cancelled) { setData(d); setIsLoading(false); } })
-      .catch((e) => { if (!cancelled) { setError(e.message); setIsLoading(false); } });
-    return () => { cancelled = true; };
+export default function MEVSection() {
+  const [data, setData]         = useState<MEVResponse | null>(null);
+  const [isLoading, setLoading] = useState(true);
+  const [error, setError]       = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/mev");
+      if (!r.ok) throw new Error(`API error: ${r.status}`);
+      setData(await r.json());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const handleRefresh = () => {
-    setIsLoading(true);
-    setError(null);
-    fetch("/api/mev")
-      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
-      .then((d) => { setData(d); setIsLoading(false); })
-      .catch((e) => { setError(e.message); setIsLoading(false); });
-  };
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   return (
     <section className="space-y-5" aria-labelledby="mev-heading">
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id="mev-heading" className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
@@ -93,20 +102,35 @@ export default function MEVSection() {
             MEV Activity
           </h2>
           <p className="text-sm text-gray-400 mt-0.5">
-            Large swaps & MEV-like patterns on Base
+            Real-time MEV on Base via EigenPhi
           </p>
         </div>
-        <button onClick={handleRefresh} disabled={isLoading} className="p-2 bg-emerald-900/30 border border-emerald-500/20 rounded-xl hover:bg-emerald-800/50 transition-colors disabled:opacity-50 flex-shrink-0" aria-label="Refresh">
+        <button
+          onClick={fetchData}
+          disabled={isLoading}
+          className="p-2 bg-emerald-900/30 border border-emerald-500/20 rounded-xl hover:bg-emerald-800/50 transition-colors disabled:opacity-50 flex-shrink-0"
+          aria-label="Refresh"
+        >
           <RefreshCw className={`h-5 w-5 text-emerald-400 ${isLoading ? "animate-spin" : ""}`} />
         </button>
       </div>
 
-      {/* Loading */}
+      {/* Stale / notice banner */}
+      {data?._notice && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-yellow-900/20 border border-yellow-500/30 rounded-xl text-xs text-yellow-300">
+          <Info className="h-4 w-4 flex-shrink-0" />
+          {data._notice}
+        </div>
+      )}
+
+      {/* Loading skeleton */}
       {isLoading && !data && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4"><MetricSkeleton /></div>
+              <div key={i} className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+                <MetricSkeleton />
+              </div>
             ))}
           </div>
           <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
@@ -115,36 +139,38 @@ export default function MEVSection() {
         </div>
       )}
 
-      {/* Error */}
+      {/* Fetch error */}
       {error && !data && (
         <div className="flex flex-col items-center justify-center p-8 bg-gray-900/50 rounded-2xl border border-red-500/20">
           <AlertTriangle className="h-6 w-6 text-red-400 mb-3" />
           <p className="text-red-400 font-medium mb-1">MEV data unavailable</p>
           <p className="text-sm text-gray-500 mb-4">{error}</p>
-          <button onClick={handleRefresh} className="px-4 py-2 text-sm bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-500/30 rounded-lg transition-colors">Retry</button>
+          <button onClick={fetchData} className="px-4 py-2 text-sm bg-emerald-900/40 hover:bg-emerald-800/60 border border-emerald-500/30 rounded-lg transition-colors">
+            Retry
+          </button>
         </div>
       )}
 
-      {/* Data loaded */}
+      {/* Data */}
       {data && (
         <>
-          {/* Stats cards */}
+          {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-3 sm:p-4">
-              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Events Detected</p>
-              <p className="text-xl sm:text-2xl font-bold text-white tabular-nums">{data.stats.total24h}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">MEV Txs</p>
+              <p className="text-xl sm:text-2xl font-bold text-white tabular-nums">{data.stats.total}</p>
             </div>
             <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-3 sm:p-4">
-              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Likely Arbitrage</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Arbitrage</p>
               <p className="text-xl sm:text-2xl font-bold text-yellow-400 tabular-nums">{data.stats.arbitrageCount}</p>
             </div>
             <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-3 sm:p-4">
-              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Poss. Sandwich</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Sandwich</p>
               <p className="text-xl sm:text-2xl font-bold text-red-400 tabular-nums">{data.stats.sandwichCount}</p>
             </div>
             <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-3 sm:p-4">
-              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Est. Extracted</p>
-              <p className="text-xl sm:text-2xl font-bold text-emerald-400 tabular-nums">{formatUSD(data.stats.estimatedExtractedUSD)}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider mb-1">Extracted</p>
+              <p className="text-xl sm:text-2xl font-bold text-emerald-400 tabular-nums">{formatUSD(data.stats.totalExtractedUSD)}</p>
             </div>
           </div>
 
@@ -153,27 +179,34 @@ export default function MEVSection() {
             {data.events.length === 0 ? (
               <div className="p-12 text-center">
                 <BarChart3 className="h-10 w-10 text-gray-700 mx-auto mb-3" />
-                <p className="text-gray-400 font-medium">No large swaps detected recently</p>
-                <p className="text-xs text-gray-600 mt-1">Swaps above $50K will appear here when they occur</p>
+                <p className="text-gray-400 font-medium">No MEV activity detected in the last hour on Base</p>
+                <p className="text-xs text-gray-600 mt-1">
+                  {data._notice
+                    ? "EigenPhi data source is temporarily unreachable."
+                    : "MEV events will appear here when detected by EigenPhi."}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[500px]">
+                <table className="w-full min-w-[520px]">
                   <thead>
                     <tr className="border-b border-gray-800">
                       <th className="py-2.5 px-3 text-left text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Type</th>
                       <th className="py-2.5 px-3 text-left text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Protocol</th>
-                      <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Amount</th>
-                      <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden sm:table-cell">When</th>
-                      <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden md:table-cell">Block</th>
+                      <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Extracted</th>
+                      <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden sm:table-cell">Attacker</th>
+                      <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden md:table-cell">When</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.events.map((event) => {
-                      const cfg = TYPE_CONFIG[event.type] || TYPE_CONFIG.large_swap;
+                    {data.events.map((event, i) => {
+                      const cfg  = TYPE_CONFIG[event.type] ?? TYPE_CONFIG.arbitrage;
                       const Icon = cfg.icon;
+                      const txUrl = event.txHash && event.txHash.length > 10
+                        ? `https://basescan.org/tx/${event.txHash}`
+                        : null;
                       return (
-                        <tr key={event.txHash} className="border-b border-gray-800/40 hover:bg-gray-800/20 transition-colors">
+                        <tr key={event.txHash || i} className="border-b border-gray-800/40 hover:bg-gray-800/20 transition-colors">
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-2">
                               <div className={`p-1.5 rounded-lg ${cfg.bgColor}`}>
@@ -186,13 +219,26 @@ export default function MEVSection() {
                             <span className="text-sm text-white capitalize">{event.protocol}</span>
                           </td>
                           <td className="py-3 px-3 text-right">
-                            <span className="text-sm font-bold text-white tabular-nums">{formatUSD(event.amountUSD)}</span>
+                            {txUrl ? (
+                              <a
+                                href={txUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm font-bold text-emerald-400 hover:text-emerald-300 tabular-nums"
+                              >
+                                {formatUSD(event.extracted)}
+                              </a>
+                            ) : (
+                              <span className="text-sm font-bold text-white tabular-nums">{formatUSD(event.extracted)}</span>
+                            )}
                           </td>
                           <td className="py-3 px-3 text-right hidden sm:table-cell">
-                            <span className="text-xs text-gray-500 tabular-nums">{timeSince(event.timestamp)}</span>
+                            <span className="text-xs text-gray-500 font-mono">{event.attacker}</span>
                           </td>
                           <td className="py-3 px-3 text-right hidden md:table-cell">
-                            <span className="text-xs text-gray-600 tabular-nums">{event.blockNumber.toLocaleString()}</span>
+                            <span className="text-xs text-gray-500 tabular-nums">
+                              {event.timestamp ? timeSince(event.timestamp) : "—"}
+                            </span>
                           </td>
                         </tr>
                       );
@@ -204,15 +250,25 @@ export default function MEVSection() {
 
             {/* Footer */}
             <div className="flex items-center justify-between px-3 py-2 border-t border-gray-800/50 bg-gray-950/30">
-              <p className="text-[10px] text-gray-600 max-w-xs truncate">
-                {data.dataNote}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] text-gray-600 max-w-xs truncate">{data.dataNote}</p>
+                {data.isStale && (
+                  <span className="text-[10px] text-yellow-500/70 border border-yellow-500/20 rounded px-1">STALE</span>
+                )}
+              </div>
               <div className="flex items-center gap-1 text-[10px] text-gray-600">
                 <Clock className="h-3 w-3" />
                 {new Date(data.timestamp).toLocaleTimeString()}
               </div>
             </div>
           </div>
+
+          {/* Liquidation sub-stat if any */}
+          {data.stats.liquidationCount > 0 && (
+            <p className="text-xs text-purple-400/70 text-right">
+              +{data.stats.liquidationCount} liquidation{data.stats.liquidationCount !== 1 ? "s" : ""} detected
+            </p>
+          )}
         </>
       )}
     </section>
