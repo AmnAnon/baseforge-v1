@@ -141,26 +141,7 @@ jobs:
         run: npm run test:coverage
 
       - name: Enforce coverage threshold (≥65%)
-        run: node -e "
-          const fs = require('fs');
-          try {
-            const report = JSON.parse(fs.readFileSync('coverage/coverage-final.json', 'utf8'));
-            const files = Object.values(report);
-            let totalStatements = 0, coveredStatements = 0;
-            for (const f of files) {
-              totalStatements += f.statementMap ? Object.keys(f.statementMap).length : 0;
-              coveredStatements += f.s ? Object.values(f.s).filter(v => v > 0).length : 0;
-            }
-            const pct = totalStatements > 0 ? (coveredStatements / totalStatements * 100).toFixed(1) : 0;
-            console.log('Coverage: ' + pct + '%');
-            if (pct < 65) {
-              console.error('::error::Coverage ' + pct + '% is below required 65%');
-              process.exit(1);
-            }
-          } catch(e) {
-            console.warn('Coverage report not found — skipping threshold check');
-          }
-        "
+        run: node scripts/check-coverage.js 65
 
       - name: Upload coverage report
         if: always()
