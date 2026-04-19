@@ -327,23 +327,72 @@ async function buildProtocolSection(
   return { protocols, totalTvl, totalProtocols: filtered.length, yields, allEvaluated: evaluated };
 }
 
+// ─── Per-tier top-protocol limits ────────────────────────────────────────
+
+const TOP_LIMITS: Record<string, number> = {
+  public: 5,
+  free: 20,
+  pro: 50,
+  enterprise: 50,
+};
+
+// ─── IP rate limiter for public (unauthenticated) requests ───────────────
+
+const publicRateLimiter = new RateLimiter({ windowMs: 60_000, maxRequests: 10 });
+
 // ─── GET ─────────────────────────────────────────────────────────────────
 
 export async function GET(req: Request) {
-  // API key auth (required for agent context)
-  const authResult = await apiKeyMiddleware(req, {
-    required: true,
-    endpoint: "/api/agents/context",
-  });
-  if (authResult.response) return authResult.response;
+  // ── Tiered auth ─────────────────────────────────────────────
+  let tier = "public";
+  let rateLimitLimit = 10;
+  let rateLimitRemaining = 0;
+  let rateLimitResetAt = Date.now() + 60_000;
 
-  const keyInfo = authResult.key
-    ? { tier: authResult.key.tier, rateLimit: authResult.key.rateLimit }
-    : null;
+  const providedKey = req.headers.get("x-api-key");
 
-  // Secondary rate limiter (IP-based, production only)
-  const rateResponse = await rateLimiterMiddleware(agentRateLimiter)(req);
-  if (rateResponse) return rateResponse;
+  if (!providedKey) {
+    // Public tier — IP rate limited, no key required
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+    const result = publicRateLimiter.check(`public:${ip}`);
+    rateLimitLimit = 10;
+    rateLimitRemaining = result.remaining ?? 0;
+    rateLimitResetAt = result.retryAfter ? Date.now() + result.retryAfter * 1000 : Date.now() + 60_000;
+
+    if (!result.allowed) {
+      return Response.json(
+        {
+          error: "rate_limit_exceeded",
+          hint: "Get a free API key at /api/admin/api-keys for higher limits",
+          retryAfter: result.retryAfter,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(result.retryAfter ?? 60),
+            "X-RateLimit-Limit": "10",
+            "X-RateLimit-Remaining": "0",
+          },
+        },
+      );
+    }
+  } else {
+    // Keyed tier — validate from DB
+    const authResult = await apiKeyMiddleware(req, {
+      required: true,
+      endpoint: "/api/agents/context",
+    });
+    if (authResult.response) return authResult.response;
+
+    tier = authResult.key?.tier ?? "free";
+    rateLimitLimit = authResult.key?.rateLimit ?? 100;
+
+    // Secondary IP-based limiter still applies in production
+    const rateResponse = await rateLimiterMiddleware(agentRateLimiter)(req);
+    if (rateResponse) return rateResponse;
+  }
+
+  const topLimitForTier = TOP_LIMITS[tier] ?? TOP_LIMITS.free;
 
   const end = timing("agents.context");
 
@@ -360,20 +409,23 @@ export async function GET(req: Request) {
     const sections = parseInclude(params.include);
     const isCompact = params.compact === "true";
 
-    // Cache key based on normalized params
-    const cacheKey = `agent-ctx-v2:${params.include}:${params.protocol || "all"}:${params.timeframe}:${params.top}:${params.compact}`;
+    // Clamp `top` to the tier's maximum
+    const top = Math.min(params.top, topLimitForTier);
+
+    // Cache key includes tier so public/free/pro get separate cached payloads
+    const cacheKey = `agent-ctx-v3:${tier}:${params.include}:${params.protocol || "all"}:${params.timeframe}:${top}:${params.compact}`;
     const cached = await cache.get<Record<string, unknown>>(cacheKey);
     if (cached) {
       end();
       return NextResponse.json(cached, {
-        headers: responseHeaders("HIT", "cache", keyInfo),
+        headers: responseHeaders("HIT", "cache", tier, rateLimitLimit, rateLimitRemaining, rateLimitResetAt),
       });
     }
 
     // ── Build response in parallel ──────────────────────────
 
     const { protocols, totalTvl, totalProtocols, allEvaluated } =
-      await buildProtocolSection(params.top, params.protocol);
+      await buildProtocolSection(top, params.protocol);
 
     // Parallel data fetches for optional sections
     const [whaleResult, lendingResult, gasResult, indexerHealth] = await Promise.allSettled([
@@ -406,11 +458,17 @@ export async function GET(req: Request) {
       _chainId: 8453,
       _source: healthData?.activeProvider || "defillama",
       _latencyMs: 0, // filled at end
+      _tier: tier,
+      _rateLimit: {
+        limit: rateLimitLimit,
+        remaining: rateLimitRemaining,
+        resetAt: new Date(rateLimitResetAt).toISOString(),
+      },
       _params: {
         include: Array.from(sections),
         protocol: params.protocol || null,
         timeframe: params.timeframe,
-        top: params.top,
+        top,
       },
     };
 
@@ -557,7 +615,7 @@ export async function GET(req: Request) {
     await cache.set(cacheKey, response, 120);
 
     return NextResponse.json(response, {
-      headers: responseHeaders("MISS", healthData?.activeProvider || "defillama", keyInfo),
+      headers: responseHeaders("MISS", healthData?.activeProvider || "defillama", tier, rateLimitLimit, rateLimitRemaining, rateLimitResetAt),
     });
   } catch (err) {
     end();
@@ -575,7 +633,7 @@ export async function GET(req: Request) {
         risk: { avgHealth: 0, highRiskCount: 0, anomalies: [] },
         _stale: true,
       },
-      { status: 200, headers: responseHeaders("ERROR", "none", keyInfo) }
+      { status: 200, headers: responseHeaders("ERROR", "none", tier, rateLimitLimit, rateLimitRemaining, rateLimitResetAt) }
     );
   }
 }
@@ -585,9 +643,12 @@ export async function GET(req: Request) {
 function responseHeaders(
   cacheStatus: string,
   source: string,
-  key?: { tier: string; rateLimit: number } | null
+  tier: string,
+  rateLimitLimit: number,
+  rateLimitRemaining: number,
+  rateLimitResetAt: number,
 ): Record<string, string> {
-  const headers: Record<string, string> = {
+  return {
     "Content-Type": "application/json",
     "X-Content-Type": "baseforge.agent.context.v2",
     "X-Data-Source": source,
@@ -597,12 +658,11 @@ function responseHeaders(
       : "public, max-age=0, stale-while-revalidate=300",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "X-RateLimit-Tier": tier,
+    "X-RateLimit-Limit": String(rateLimitLimit),
+    "X-RateLimit-Remaining": String(rateLimitRemaining),
+    "X-RateLimit-Reset": new Date(rateLimitResetAt).toISOString(),
   };
-  if (key) {
-    headers["X-RateLimit-Tier"] = key.tier;
-    headers["X-RateLimit-Limit"] = String(key.rateLimit);
-  }
-  return headers;
 }
 
 function getMostCommonCategory(protocols: Array<{ cat: string }>): string {

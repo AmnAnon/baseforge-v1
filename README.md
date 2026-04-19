@@ -67,14 +67,23 @@ BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, ME
 
 ### AI Agent API — One call, entire ecosystem state
 
+No API key required for basic access (5 protocols, 10 req/min). Use a free key for higher limits.
+
 ```bash
-curl https://baseforge.vercel.app/api/agents/context?include=all&top=5 | jq
+# Public — no auth required (returns top 5 protocols)
+curl "https://baseforge-v1.vercel.app/api/agents/context?include=all&top=5" | jq
+
+# With API key — higher limits (top 20 free, top 50 pro/enterprise)
+curl "https://baseforge-v1.vercel.app/api/agents/context?include=all&top=20" \
+  -H "X-API-Key: your_key_here" | jq
 ```
 
 ```jsonc
 {
   "_v": "2.0",
   "_chain": "base",
+  "_tier": "public",           // "public" | "free" | "pro" | "enterprise"
+  "_rateLimit": { "limit": 10, "remaining": 9, "resetAt": "2025-01-01T00:01:00Z" },
   "_source": "envio-hypersync",
   "market": { "totalTvl": 8200000000, "protocols": 340, "avgHealth": 68 },
   "protocols": [
