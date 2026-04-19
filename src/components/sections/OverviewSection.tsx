@@ -17,11 +17,11 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { NeonCard } from "@/components/ui/NeonCard";
-import { RiskRing } from "@/components/ui/RiskRing";
 import BaseNetworkMetrics from "./BaseNetworkMetrics";
 import BaseTVLChart from "@/components/charts/BaseTVLChart";
 import ProtocolSwitcher, { Protocol } from "../ui/ProtocolSwitcher";
 import { MetricSkeleton } from "@/components/ui/Skeleton";
+import { useProtocolDetail } from "@/hooks/useSWRData";
 
 interface MetricCardProps {
   title: string;
@@ -36,6 +36,8 @@ interface MetricCardProps {
   actionLabel?: string;
   actionUrl?: string;
   glowColor?: string;
+  /** When true, renders "N/A" instead of "—" and hides the change row entirely */
+  notApplicable?: boolean;
 }
 
 // Deep link map for protocols
@@ -100,6 +102,7 @@ const MetricCard = ({
   valueSuffix = "",
   actionLabel,
   actionUrl,
+  notApplicable = false,
 }: MetricCardProps) => {
   const isPositive = change !== null && change > 0;
   const hasChange = change !== null && change !== 0;
@@ -112,6 +115,7 @@ const MetricCard = ({
       : "text-red-400";
 
   const formatValue = (val: number | null) => {
+    if (notApplicable) return "N/A";
     if (val === null) return "—";
     if (format === "percentage") return `${val.toFixed(2)}%`;
     return formatCurrency(val);
@@ -169,11 +173,7 @@ const MetricCard = ({
                     </div>
                   )}
 
-                  {change === null && !isLoading && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      No change data
-                    </div>
-                  )}
+                  {/* Intentionally no fallback text — "—" in value is sufficient */}
                 </>
               )}
             </div>
@@ -206,14 +206,37 @@ const MetricCard = ({
 export default function OverviewSection({ data, isLoading }: OverviewSectionProps) {
   const [selectedProtocol, setSelectedProtocol] = useState<Protocol>(
     data?.protocols?.[0] || {
-      id: "seamless",
+      id: "seamless-protocol",
       name: "Seamless Protocol",
       logo: "https://coin-images.coingecko.com/coins/images/33480/large/Seamless_Logo_Black_Transparent.png",
       tvl: 0,
     }
   );
 
-  const protocolData = data?.protocolData?.[selectedProtocol.id] || {};
+  // Fetch per-protocol detail (fees, token price, utilization) from the detail endpoint
+  const { data: detailResponse, isLoading: detailLoading } =
+    useProtocolDetail(selectedProtocol?.id ?? null);
+
+  // Merge: detail endpoint wins over analytics protocolData fallback
+  const analyticsData = data?.protocolData?.[selectedProtocol.id] || {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const detail: any = (detailResponse as any)?.protocol ?? {};
+
+  const protocolData = {
+    tvl:              detail.tvl              ?? analyticsData.tvl             ?? null,
+    tvlChange:        detail.tvlChange24h     ?? analyticsData.tvlChange       ?? null,
+    totalBorrow:      detail.totalBorrow      ?? analyticsData.totalBorrow     ?? null,
+    feesAnnualized:   detail.feesAnnualized   ?? analyticsData.feesAnnualized  ?? null,
+    revenueAnnualized:detail.revenueAnnualized?? analyticsData.revenueAnnualized?? null,
+    tokenPrice:       detail.tokenPrice       ?? analyticsData.tokenPrice      ?? null,
+    utilization:      detail.utilization      ?? analyticsData.utilization     ?? null,
+    category:         detail.category         ?? null,
+  };
+
+  const isLendingProtocol = ["seamless-protocol", "moonwell", "aave-v3", "compound-v3", "sonne-finance"]
+    .some(s => selectedProtocol.id?.includes(s));
+
+  const cardLoading = isLoading || detailLoading;
 
   const protocolAction = useMemo(
     () => getProtocolAction(selectedProtocol.name),
@@ -263,9 +286,9 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         <div role="listitem">
           <MetricCard
             title="Total Value Locked"
-            value={protocolData.tvl || null}
-            change={protocolData.tvlChange || null}
-            isLoading={isLoading}
+            value={protocolData.tvl}
+            change={protocolData.tvlChange}
+            isLoading={cardLoading}
             icon={BarChart3}
             tooltipText="Total capital deposited in the protocol"
             actionLabel={protocolAction?.label}
@@ -276,22 +299,21 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         <div role="listitem">
           <MetricCard
             title="Total Borrowed"
-            value={protocolData.totalBorrow || null}
+            value={protocolData.totalBorrow}
             change={null}
-            isLoading={isLoading}
+            isLoading={cardLoading}
             icon={Wallet}
             tooltipText="Total amount borrowed from the protocol"
-            actionLabel={protocolAction?.label}
-            actionUrl={protocolAction?.url}
+            notApplicable={!isLendingProtocol}
           />
         </div>
 
         <div role="listitem">
           <MetricCard
             title="Fees (Annualized)"
-            value={protocolData.feesAnnualized || null}
+            value={protocolData.feesAnnualized}
             change={null}
-            isLoading={isLoading}
+            isLoading={cardLoading}
             icon={TrendingUp}
             tooltipText="Estimated yearly fees generated"
           />
@@ -300,9 +322,9 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         <div role="listitem">
           <MetricCard
             title="Revenue (Annualized)"
-            value={protocolData.revenueAnnualized || null}
+            value={protocolData.revenueAnnualized}
             change={null}
-            isLoading={isLoading}
+            isLoading={cardLoading}
             icon={DollarSign}
             tooltipText="Estimated yearly revenue"
           />
@@ -311,9 +333,9 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         <div role="listitem">
           <MetricCard
             title="Token Price"
-            value={protocolData.tokenPrice || null}
+            value={protocolData.tokenPrice}
             change={null}
-            isLoading={isLoading}
+            isLoading={cardLoading}
             icon={Coins}
             tooltipText="Live token price"
           />
@@ -322,12 +344,13 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         <div role="listitem">
           <MetricCard
             title="Utilization Rate"
-            value={protocolData.utilization || null}
+            value={protocolData.utilization}
             change={null}
-            isLoading={isLoading}
+            isLoading={cardLoading}
             icon={LineChart}
             tooltipText="Percentage of supply currently borrowed"
             format="percentage"
+            notApplicable={!isLendingProtocol}
           />
         </div>
       </div>

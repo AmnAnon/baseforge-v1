@@ -1,5 +1,11 @@
 import { defiLlamaService } from './defillama.service';
 
+// Case-insensitive Base TVL lookup
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getBaseTvl(p: any): number {
+  return p.chainTvls?.['Base'] ?? p.chainTvls?.['base'] ?? p.chainTvls?.['BASE'] ?? 0;
+}
+
 class BaseProtocolsService {
   async getDashboardAnalytics() {
     try {
@@ -11,8 +17,9 @@ class BaseProtocolsService {
 
       const topProtocols = protocols.slice(0, 20);
 
-      const totalTvl = topProtocols.reduce((sum: number, p: { chainTvls: Record<string, number> }) => sum + (p.chainTvls.Base || 0), 0);
-      const avgChange = topProtocols.reduce((sum: number, p: { change_1d?: number }) => sum + (p.change_1d || 0), 0) / topProtocols.length;
+      const totalTvl = topProtocols.reduce((sum: number, p: unknown) => sum + getBaseTvl(p), 0);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const avgChange = topProtocols.reduce((sum: number, p: any) => sum + (p.change_1d || 0), 0) / (topProtocols.length || 1);
 
       const avgApy = allYields.length > 0
         ? allYields.reduce((sum: number, pool: { apy?: number }) => sum + (pool.apy || 0), 0) / allYields.length
@@ -25,10 +32,11 @@ class BaseProtocolsService {
         change24h: avgChange,
       };
 
-      const protocolDetails = topProtocols.map(p => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const protocolDetails = topProtocols.map((p: any) => ({
         id: p.slug,
         name: p.name,
-        tvl: p.chainTvls.Base,
+        tvl: getBaseTvl(p),
       }));
 
       return {

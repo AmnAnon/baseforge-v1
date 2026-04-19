@@ -129,21 +129,21 @@ export async function GET(req: Request) {
     // Filter + rank base protocols
     // Use protocol.chains array (case-sensitive "Base") and exclude CEX + Chain categories
     const EXCLUDED_CATEGORIES = new Set(["CEX", "Chain"]);
+    // Case-insensitive Base TVL lookup
+    const getBaseTvl = (p: RawProtocol): number =>
+      p.chainTvls?.["Base"] ?? p.chainTvls?.["base"] ?? p.chainTvls?.["BASE"] ?? p.chainTvlsBase ?? 0;
+
     const baseProtos = rawProtocols
       .filter((p: RawProtocol) =>
         p.chains?.includes("Base") === true &&
         !EXCLUDED_CATEGORIES.has(p.category || "")
       )
-      .sort((a: RawProtocol, b: RawProtocol) => {
-        const aTvl = a.chainTvls?.Base ?? a.chainTvlsBase ?? 0;
-        const bTvl = b.chainTvls?.Base ?? b.chainTvlsBase ?? 0;
-        return bTvl - aTvl;
-      })
+      .sort((a: RawProtocol, b: RawProtocol) => getBaseTvl(b) - getBaseTvl(a))
       .slice(0, 20)
       .map((p: RawProtocol) => ({
         ...p,
         // Normalise chainTvlsBase so calculateProtocolScore always has a number
-        chainTvlsBase: p.chainTvls?.Base ?? p.chainTvlsBase ?? 0,
+        chainTvlsBase: getBaseTvl(p),
       }));
 
     const aggregated: AggregatedProtocol[] = baseProtos.map(p => {

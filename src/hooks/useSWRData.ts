@@ -14,7 +14,7 @@ const fetcher = async (url: string) => {
 };
 
 // Base hook
-export function useApiData<T>(key: string, config?: SWRConfiguration) {
+export function useApiData<T>(key: string | null, config?: SWRConfiguration) {
   return useSWR<T>(key, fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 5_000,
@@ -50,4 +50,11 @@ export function useRevenue(config?: SWRConfiguration) {
 
 export function useMEV(config?: SWRConfiguration) {
   return useApiData("/api/mev", config);
+}
+
+export function useProtocolDetail(slug: string | null | undefined, config?: SWRConfiguration) {
+  return useApiData(
+    slug ? `/api/protocols/${encodeURIComponent(slug)}` : null,
+    { revalidateOnFocus: false, dedupingInterval: 30_000, ...config }
+  );
 }

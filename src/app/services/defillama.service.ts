@@ -3,6 +3,17 @@
 const DEFILLAMA_BASE_URL = "https://api.llama.fi";
 const EXCLUDED_CATEGORIES = new Set(["CEX", "Chain"]);
 
+// Case-insensitive Base TVL lookup — DefiLlama is inconsistent about capitalisation
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getBaseTvl(p: any): number {
+  return (
+    p.chainTvls?.["Base"] ??
+    p.chainTvls?.["base"] ??
+    p.chainTvls?.["BASE"] ??
+    0
+  );
+}
+
 class DefiLlamaService {
   async getBaseProtocols() {
     try {
@@ -16,9 +27,7 @@ class DefiLlamaService {
           p.chains?.includes("Base") === true &&
           !EXCLUDED_CATEGORIES.has(p.category || "")
         )
-        .sort((a: { chainTvls?: Record<string, number> }, b: { chainTvls?: Record<string, number> }) =>
-          (b.chainTvls?.["Base"] || 0) - (a.chainTvls?.["Base"] || 0)
-        );
+        .sort((a: unknown, b: unknown) => getBaseTvl(b) - getBaseTvl(a));
     } catch (error) {
       console.error("DefiLlamaService getBaseProtocols Error:", error);
       return [];

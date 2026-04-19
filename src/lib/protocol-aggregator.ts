@@ -213,6 +213,16 @@ const INDEXER_PROTOCOLS = new Set([
   "uniswap-v3",
 ]);
 
+// Case-insensitive Base TVL lookup — DefiLlama key capitalisation varies by protocol
+function getBaseTvl(p: { chainTvls?: Record<string, number> }): number {
+  return (
+    p.chainTvls?.["Base"] ??
+    p.chainTvls?.["base"] ??
+    p.chainTvls?.["BASE"] ??
+    0
+  );
+}
+
 export async function aggregateProtocols(): Promise<AggregateResult> {
   const cached = await cache.get<AggregateResult>("protocol-aggregator-v2");
   if (cached) return cached;
@@ -236,11 +246,11 @@ export async function aggregateProtocols(): Promise<AggregateResult> {
   const baseProtocols = allProtocols
     .filter(
       (p: { chainTvls?: Record<string, number>; category?: string }) =>
-        (p.chainTvls?.Base || 0) > 100_000 && !excludedCategories.includes(p.category || "")
+        getBaseTvl(p) > 100_000 && !excludedCategories.includes(p.category || "")
     )
     .sort(
-      (a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
-        (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0)
+      (a: { chainTvls?: Record<string, number> }, b: { chainTvls?: Record<string, number> }) =>
+        getBaseTvl(b) - getBaseTvl(a)
     );
 
   // Fetch on-chain metrics for top protocols (in parallel, with error tolerance)
@@ -273,7 +283,7 @@ export async function aggregateProtocols(): Promise<AggregateResult> {
       audits?: number; audit_links?: string[]; oracles?: string[]; forkedFrom?: string[];
       logo?: string; apyMean30d?: number;
     }) => {
-      const tvl = p.chainTvls.Base || 0;
+      const tvl = getBaseTvl(p);
       const slug = p.slug || p.name.toLowerCase().replace(/ /g, "-");
       const dominanceScore = totalBaseTvl > 0 ? (tvl / totalBaseTvl) * 100 : 0;
 
