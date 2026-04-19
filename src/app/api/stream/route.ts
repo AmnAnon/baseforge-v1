@@ -20,31 +20,44 @@ async function getAnalytics() {
     ]);
 
     const protocols = await protocolsRes.json();
-    const tvlData = await tvlRes.json();
+    const tvlData: { date: number; tvl: number }[] = await tvlRes.json();
+
+    // Case-insensitive Base TVL helper
+    const getBaseTvl = (p: { chainTvls?: Record<string, number> }): number =>
+      p.chainTvls?.["Base"] ?? p.chainTvls?.["base"] ?? p.chainTvls?.["BASE"] ?? 0;
+
     const STREAM_EXCLUDED = new Set(["CEX", "Chain"]);
     const baseProtos = protocols
       .filter((p: { chains?: string[]; chainTvls?: Record<string, number>; category?: string }) =>
         p.chains?.includes("Base") === true &&
         !STREAM_EXCLUDED.has(p.category || "")
       )
-      .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
-        (b.chainTvls?.Base || 0) - (a.chainTvls?.Base || 0)
+      .sort((a: { chainTvls?: Record<string, number> }, b: { chainTvls?: Record<string, number> }) =>
+        getBaseTvl(b) - getBaseTvl(a)
       )
       .slice(0, 20);
     const totalTvl = baseProtos.reduce(
-      (sum: number, p: { chainTvls: Record<string, number> }) => sum + (p.chainTvls.Base || 0), 0
+      (sum: number, p: { chainTvls?: Record<string, number> }) => sum + getBaseTvl(p), 0
     );
 
+    // Compute real 24h TVL change from historical data
+    let change24h = 0;
+    if (tvlData.length >= 2) {
+      const latest = tvlData[tvlData.length - 1].tvl;
+      const prev = tvlData[tvlData.length - 2].tvl;
+      change24h = prev > 0 ? Math.round(((latest - prev) / prev) * 10000) / 100 : 0;
+    }
+
     return {
-      baseMetrics: { totalTvl, totalProtocols: baseProtos.length, avgApy: 0, change24h: 0 },
+      baseMetrics: { totalTvl, totalProtocols: baseProtos.length, avgApy: 0, change24h },
       tvlHistory: tvlData.slice(-60).map((d: { date: number; tvl: number }) => ({
         date: new Date(d.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         tvl: d.tvl,
       })),
-      protocols: baseProtos.map((p: { name: string; slug?: string; logo?: string; chainTvls: Record<string, number>; change_1d?: number; category?: string }) => ({
+      protocols: baseProtos.map((p: { name: string; slug?: string; logo?: string; chainTvls?: Record<string, number>; change_1d?: number; category?: string }) => ({
         id: p.slug || p.name.toLowerCase().replace(/ /g, "-"),
         name: p.name,
-        tvl: p.chainTvls.Base || 0,
+        tvl: getBaseTvl(p),
         change24h: p.change_1d || 0,
         logo: p.logo || `https://icons.llamao.fi/icons/protocols/${(p.slug || p.name.toLowerCase().replace(/ /g, "-"))}`,
         category: p.category || "",

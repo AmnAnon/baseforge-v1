@@ -77,23 +77,24 @@ export async function GET(req: Request) {
           if (EXCLUDED.has(cat)) return false;            // Exclude CEX/Chain/Bridge
           return true;
         })
-        .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
-          (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0)
+        .sort((a: { chainTvls?: Record<string, number> }, b: { chainTvls?: Record<string, number> }) =>
+          (b.chainTvls?.["Base"] ?? b.chainTvls?.["base"] ?? 0) - (a.chainTvls?.["Base"] ?? a.chainTvls?.["base"] ?? 0)
         )
         .slice(0, 20);
 
       const totalTvl = baseProtos.reduce(
-        (sum: number, p: { chainTvls: Record<string, number> }) => sum + (p.chainTvls.Base || 0),
+        (sum: number, p: { chainTvls?: Record<string, number> }) =>
+          sum + (p.chainTvls?.["Base"] ?? p.chainTvls?.["base"] ?? p.chainTvls?.["BASE"] ?? 0),
         0
       );
 
       const enriched = baseProtos.map((p: {
-        name: string; slug?: string; logo?: string; chainTvls: Record<string, number>;
+        name: string; slug?: string; logo?: string; chainTvls?: Record<string, number>;
         change_1d?: number; change_7d?: number; category?: string;
       }) => ({
         id: p.slug || p.name.toLowerCase().replace(/ /g, "-"),
         name: p.name,
-        tvl: p.chainTvls.Base || 0,
+        tvl: p.chainTvls?.["Base"] ?? p.chainTvls?.["base"] ?? p.chainTvls?.["BASE"] ?? 0,
         change_1d: p.change_1d || 0,
         change_7d: p.change_7d || 0,
         category: p.category || "DeFi",
@@ -139,9 +140,16 @@ export async function GET(req: Request) {
           totalTvl,
           totalProtocols: enriched.length,
           avgApy: Math.round(avgApy * 100) / 100,
-          change24h: enriched.length > 0
-            ? enriched.reduce((s: number, p: { change_1d?: number }) => s + (p.change_1d || 0), 0) / enriched.length
-            : 0,
+          change24h: (() => {
+            if (tvlHistory.length >= 2) {
+              const latest = tvlHistory[tvlHistory.length - 1].tvl;
+              const prev = tvlHistory[tvlHistory.length - 2].tvl;
+              return prev > 0 ? Math.round(((latest - prev) / prev) * 10000) / 100 : 0;
+            }
+            return enriched.length > 0
+              ? Math.round(enriched.reduce((s: number, p: { change_1d?: number }) => s + (p.change_1d || 0), 0) / enriched.length * 100) / 100
+              : 0;
+          })(),
         },
         tvlHistory: tvlHistory.slice(-90).map((d: { date: number; tvl: number }) => ({
           date: new Date(d.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),

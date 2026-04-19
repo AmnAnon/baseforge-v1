@@ -20,7 +20,7 @@ export default function BaseNetworkMetrics({ data, isLoading }: BaseMetricsProps
       label: "Base TVL",
       value: data?.totalTvl ? `$${(data.totalTvl / 1e9).toFixed(2)}B` : "Loading...",
       icon: DollarSign,
-      change: data?.change24h || null,
+      change: data?.change24h ?? null,
     },
     {
       label: "Protocols",
