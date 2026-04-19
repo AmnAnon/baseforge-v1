@@ -15,10 +15,28 @@
 //   riskFlags: { concentrationRisk: boolean, topAssetPct: number, stablecoinHeavy: boolean }
 //   timestamp, isStale
 import { NextResponse } from "next/server";
-import { isAddress } from "viem";
+import { z } from "zod";
+import { Redis } from "@upstash/redis";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { getWalletBalances, TRACKED_TOKENS } from "@/lib/viem/balances";
+import { basePublicClient } from "@/lib/viem/client";
+
+// ─── Address validation ───────────────────────────────────────────
+const AddressSchema = z.object({
+  address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid EVM address"),
+});
+
+// ─── Upstash Redis (optional — falls back gracefully) ─────────────
+let _redis: Redis | null = null;
+function getRedis(): Redis | null {
+  if (_redis) return _redis;
+  const url   = process.env.UPSTASH_REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_TOKEN;
+  if (!url || !token) return null;
+  _redis = new Redis({ url, token });
+  return _redis;
+}
 
 interface PortfolioPosition {
   symbol: string;
@@ -71,9 +89,33 @@ const EMPTY_RESPONSE: PortfolioResponse = {
   isStale: true,
 };
 
-// Fetch prices + 24h change from CoinGecko
+// Fetch prices: Redis cache first ("baseforge:prices" set by worker), CoinGecko fallback
 async function fetchPricesWithChange(ids: string[]): Promise<Record<string, { usd: number; change24h: number }>> {
   if (ids.length === 0) return {};
+
+  // 1. Try Redis — worker stores full CoinGecko simple/price response
+  try {
+    const client = getRedis();
+    if (client) {
+      const raw = await client.get<string | Record<string, unknown>>("baseforge:prices");
+      if (raw) {
+        const parsed: Record<string, { usd?: number; usd_24h_change?: number }> =
+          typeof raw === "string" ? JSON.parse(raw) : raw as Record<string, { usd?: number; usd_24h_change?: number }>;
+        const result: Record<string, { usd: number; change24h: number }> = {};
+        let hits = 0;
+        for (const id of ids) {
+          if (parsed[id]?.usd !== undefined) {
+            result[id] = { usd: parsed[id].usd ?? 0, change24h: parsed[id].usd_24h_change ?? 0 };
+            hits++;
+          }
+        }
+        // Accept partial cache hit if we got at least half the IDs
+        if (hits >= Math.ceil(ids.length / 2)) return result;
+      }
+    }
+  } catch { /* fall through to direct fetch */ }
+
+  // 2. Direct CoinGecko call
   try {
     const res = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(",")}&vs_currencies=usd&include_24hr_change=true`,
@@ -82,12 +124,9 @@ async function fetchPricesWithChange(ids: string[]): Promise<Record<string, { us
     if (!res.ok) return {};
     const data = await res.json();
     const prices: Record<string, { usd: number; change24h: number }> = {};
-    for (const [id, val] of Object.entries(data) as [string, { usd?: number; usd_24h_change?: number } | never][]) {
+    for (const [id, val] of Object.entries(data) as [string, { usd?: number; usd_24h_change?: number }][]) {
       if (val && typeof val === "object") {
-        prices[id] = {
-          usd: val.usd ?? 0,
-          change24h: val.usd_24h_change ?? 0,
-        };
+        prices[id] = { usd: val.usd ?? 0, change24h: val.usd_24h_change ?? 0 };
       }
     }
     return prices;
@@ -143,21 +182,22 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
-    const address = url.searchParams.get("address");
-
-    if (!address) {
-      return NextResponse.json({ error: "Missing address parameter" }, { status: 400 });
+    const parsed = AddressSchema.safeParse({ address: url.searchParams.get("address") });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid address" },
+        { status: 400 },
+      );
     }
-
-    if (!isAddress(address)) {
-      return NextResponse.json({ error: "Invalid address format" }, { status: 400 });
-    }
-
+    const { address } = parsed.data;
     const checksumAddress = address.toLowerCase() as typeof address;
     const cacheKey = `portfolio-v2-${checksumAddress}`;
 
     const data = await cache.getWithStaleFallback(cacheKey, CACHE_TTL.TVL_HISTORY, async () => {
-      const balances = await getWalletBalances(address);
+      const [balances, blockNumber] = await Promise.all([
+        getWalletBalances(address as `0x${string}`),
+        basePublicClient.getBlockNumber().catch(() => BigInt(0)),
+      ]);
 
       // Gather all CoinGecko IDs
       const allCoingeckoIds = balances.tokens.map((t) => t.coingeckoId);
@@ -226,6 +266,7 @@ export async function GET(req: Request) {
       const topToken = positions[0]?.symbol ?? null;
 
       return {
+        address,
         summary: {
           totalUsdValue,
           positionCount: positions.length,
@@ -238,6 +279,8 @@ export async function GET(req: Request) {
         positions,
         protocolExposure: computeProtocolExposure(positions, totalUsdValue),
         riskFlags: computeRiskFlags(positions, totalUsdValue),
+        _source: "viem-multicall",
+        _block: blockNumber.toString(),
         timestamp: Date.now(),
         isStale: false,
       };

@@ -348,6 +348,23 @@ export default function PortfolioSection() {
   // Stable ref so handleWalletConnected can call fetchData before it's defined
   const fetchDataRef = useRef<(addr: string) => void>(() => {});
 
+  // Basename resolution — show human-readable name when available
+  const [basename, setBasename] = useState<string | null>(null);
+
+  useEffect(() => {
+    const addr = wallets[activeIdx]?.address;
+    if (!addr) { setBasename(null); return; }
+    let cancelled = false;
+    fetch(`https://api.basename.io/v1/resolve/${addr}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (!cancelled && json?.name) setBasename(json.name as string);
+        else if (!cancelled) setBasename(null);
+      })
+      .catch(() => { if (!cancelled) setBasename(null); });
+    return () => { cancelled = true; };
+  }, [wallets, activeIdx]);
+
   // Called by WalletConnectButton when the connected address changes
   const handleWalletConnected = useCallback((connectedAddress: string | null) => {
     if (!connectedAddress) return;
@@ -564,7 +581,7 @@ export default function PortfolioSection() {
           </div>
         </div>
 
-        {/* Active address */}
+        {/* Active address + Basename */}
         {activeAddress && (
           <div className="flex items-center gap-2 mt-2 text-[10px] text-[var(--bf-text-muted)]">
             <Search className="h-3 w-3" />
@@ -572,6 +589,11 @@ export default function PortfolioSection() {
               {activeAddress}
               <ExternalLink className="h-2.5 w-2.5 opacity-50" />
             </a>
+            {basename && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[var(--bf-neon-primary)]/10 text-[var(--bf-neon-primary)] border border-[var(--bf-neon-primary)]/20 text-[9px] font-medium">
+                {basename}
+              </span>
+            )}
           </div>
         )}
       </NeonCard>
