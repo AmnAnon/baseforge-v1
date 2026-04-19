@@ -90,10 +90,12 @@ body::before {
   position: fixed;
   inset: 0;
   z-index: -2;
+  /* Offset by half-grid so no line sits flush at viewport top/left edge */
   background:
     linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
   background-size: var(--bf-grid-size) var(--bf-grid-size);
+  background-position: 20px 20px;
   animation: grid-pan 20s linear infinite;
 }
 

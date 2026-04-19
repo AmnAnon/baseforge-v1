@@ -21,12 +21,16 @@ async function getAnalytics() {
 
     const protocols = await protocolsRes.json();
     const tvlData = await tvlRes.json();
+    const STREAM_EXCLUDED = new Set(["CEX", "Chain"]);
     const baseProtos = protocols
-      .filter((p: { chainTvls?: Record<string, number> }) => (p.chainTvls?.Base || 0) > 0)
-      .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
-        (b.chainTvls.Base || 0) - (a.chainTvls.Base || 0)
+      .filter((p: { chains?: string[]; chainTvls?: Record<string, number>; category?: string }) =>
+        p.chains?.includes("Base") === true &&
+        !STREAM_EXCLUDED.has(p.category || "")
       )
-      .slice(0, 10);
+      .sort((a: { chainTvls: Record<string, number> }, b: { chainTvls: Record<string, number> }) =>
+        (b.chainTvls?.Base || 0) - (a.chainTvls?.Base || 0)
+      )
+      .slice(0, 20);
     const totalTvl = baseProtos.reduce(
       (sum: number, p: { chainTvls: Record<string, number> }) => sum + (p.chainTvls.Base || 0), 0
     );

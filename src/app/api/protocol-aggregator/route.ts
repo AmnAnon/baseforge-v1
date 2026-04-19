@@ -2,8 +2,8 @@
 /**
  * Protocol Aggregator API
  * Merges DefiLlama + on-chain data into unified protocol profiles.
- * Returns Top 10 Base protocols with complete metrics.
- * 
+ * Returns Top 20 Base protocols with complete metrics.
+ *
  * Cache: 5 min (in-memory, swappable to Upstash later)
  */
 import { NextResponse } from "next/server";
@@ -32,7 +32,9 @@ interface RawProtocol {
   symbol?: string;
   category: string;
   tvl: number;
-  chainTvlsBase: number;
+  chainTvlsBase: number;           // mapped field (may be 0 for older responses)
+  chainTvls?: Record<string, number>; // real API field: { Base: number, ... }
+  chains?: string[];               // real API field: ["Base", ...]
   change_1d: number;
   change_7d: number;
   audits?: number;
@@ -125,10 +127,24 @@ export async function GET(req: Request) {
     const totalBaseTvl = tvlHistory.length > 0 ? tvlHistory[tvlHistory.length - 1].tvl : 0;
 
     // Filter + rank base protocols
+    // Use protocol.chains array (case-sensitive "Base") and exclude CEX + Chain categories
+    const EXCLUDED_CATEGORIES = new Set(["CEX", "Chain"]);
     const baseProtos = rawProtocols
-      .filter(p => p.chainTvlsBase > 500_000)
-      .sort((a, b) => b.chainTvlsBase - a.chainTvlsBase)
-      .slice(0, 10);
+      .filter((p: RawProtocol) =>
+        p.chains?.includes("Base") === true &&
+        !EXCLUDED_CATEGORIES.has(p.category || "")
+      )
+      .sort((a: RawProtocol, b: RawProtocol) => {
+        const aTvl = a.chainTvls?.Base ?? a.chainTvlsBase ?? 0;
+        const bTvl = b.chainTvls?.Base ?? b.chainTvlsBase ?? 0;
+        return bTvl - aTvl;
+      })
+      .slice(0, 20)
+      .map((p: RawProtocol) => ({
+        ...p,
+        // Normalise chainTvlsBase so calculateProtocolScore always has a number
+        chainTvlsBase: p.chainTvls?.Base ?? p.chainTvlsBase ?? 0,
+      }));
 
     const aggregated: AggregatedProtocol[] = baseProtos.map(p => {
       const { score, riskFactors, warning } = calculateProtocolScore(p, totalBaseTvl);

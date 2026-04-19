@@ -1,7 +1,7 @@
 // src/app/services/defillama.service.ts
 
 const DEFILLAMA_BASE_URL = "https://api.llama.fi";
-const EXCLUDED_CATEGORIES = new Set(['CEX', 'Chain', 'Bridge']);
+const EXCLUDED_CATEGORIES = new Set(["CEX", "Chain"]);
 
 class DefiLlamaService {
   async getBaseProtocols() {
@@ -10,10 +10,15 @@ class DefiLlamaService {
       if (!response.ok) throw new Error("Failed to fetch protocols");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allProtocols: any[] = await response.json();
-      
-      return allProtocols.filter(p => 
-        p.chainTvls["Base"] && !EXCLUDED_CATEGORIES.has(p.category)
-      );
+
+      return allProtocols
+        .filter((p: { chains?: string[]; category?: string }) =>
+          p.chains?.includes("Base") === true &&
+          !EXCLUDED_CATEGORIES.has(p.category || "")
+        )
+        .sort((a: { chainTvls?: Record<string, number> }, b: { chainTvls?: Record<string, number> }) =>
+          (b.chainTvls?.["Base"] || 0) - (a.chainTvls?.["Base"] || 0)
+        );
     } catch (error) {
       console.error("DefiLlamaService getBaseProtocols Error:", error);
       return [];

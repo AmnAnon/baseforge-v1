@@ -9,7 +9,7 @@ class BaseProtocolsService {
         defiLlamaService.getBaseYieldPools()
       ]);
 
-      const topProtocols = protocols.slice(0, 10);
+      const topProtocols = protocols.slice(0, 20);
 
       const totalTvl = topProtocols.reduce((sum: number, p: { chainTvls: Record<string, number> }) => sum + (p.chainTvls.Base || 0), 0);
       const avgChange = topProtocols.reduce((sum: number, p: { change_1d?: number }) => sum + (p.change_1d || 0), 0) / topProtocols.length;
