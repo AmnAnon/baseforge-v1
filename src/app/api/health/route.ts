@@ -10,7 +10,7 @@ import { circuitBreakers } from "@/lib/circuit-breaker";
 
 interface HealthStatus {
   status: "ok" | "degraded" | "unhealthy";
-  checks: Record<string, { status: "ok" | "error"; latency?: number; detail?: string }>;
+  checks: Record<string, { status: "ok" | "error" | "unreachable"; latency?: number; detail?: string }>;
   circuitBreakers?: Record<string, { state: string; failures: number; cooldownMs: number }>;
   uptimeSeconds: number;
   timestamp: number;
@@ -106,14 +106,47 @@ export async function GET() {
     checks.indexer = { status: "error", detail: "Health check failed" };
   }
 
+  // Check Railway worker
+  const workerUrl = process.env.WORKER_URL?.replace(/\/$/, "");
+  let workerUnreachable = false;
+  if (workerUrl) {
+    try {
+      const start = Date.now();
+      const res = await fetch(`${workerUrl}/health`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(2_000),
+      });
+      const latency = Date.now() - start;
+      if (res.ok) {
+        checks.worker = { status: "ok", latency, detail: "railway worker healthy" };
+      } else {
+        workerUnreachable = true;
+        checks.worker = { status: "unreachable", latency, detail: `HTTP ${res.status}` };
+      }
+    } catch (e: unknown) {
+      workerUnreachable = true;
+      checks.worker = {
+        status: "unreachable",
+        detail: e instanceof Error ? e.message : "timeout or network error",
+      };
+    }
+  } else {
+    workerUnreachable = true;
+    checks.worker = { status: "unreachable", detail: "WORKER_URL not configured" };
+  }
+
   // Determine overall status
-  const errors = Object.values(checks).filter((c) => c.status === "error");
+  // Worker unreachable → degraded (background jobs unavailable, but app still serves).
+  // Other check errors → degraded at 1 error, unhealthy at 2+.
+  const hardErrors = Object.entries(checks)
+    .filter(([key, c]) => key !== "worker" && c.status === "error")
+    .length;
   const status: HealthStatus["status"] =
-    errors.length === 0
-      ? "ok"
-      : errors.length < 2
+    hardErrors >= 2
+      ? "unhealthy"
+      : hardErrors === 1 || workerUnreachable
         ? "degraded"
-        : "unhealthy";
+        : "ok";
 
   // Circuit breaker status
   const cbStatus: HealthStatus["circuitBreakers"] = {};
@@ -136,7 +169,7 @@ export async function GET() {
 
   const responseStatus = status === "ok" || status === "degraded" ? 200 : 503;
 
-  logger.info("Health check", { status, errors: errors.length });
+  logger.info("Health check", { status, errors: hardErrors, workerUnreachable });
 
   return NextResponse.json(result, { status: responseStatus });
 }
