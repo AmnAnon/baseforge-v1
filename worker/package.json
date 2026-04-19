@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "tsx worker/index.ts",
-    "dev": "tsx watch worker/index.ts"
+    "start": "tsx index.ts",
+    "dev": "tsx watch index.ts"
   },
   "dependencies": {
     "tsx": "^4.0.0",

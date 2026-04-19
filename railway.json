@@ -1,4 +1,4 @@
 {
   "build": { "builder": "DOCKERFILE", "dockerfilePath": "worker/Dockerfile" },
-  "deploy": { "startCommand": "npm start", "restartPolicyType": "ON_FAILURE" }
+  "deploy": { "restartPolicyType": "ON_FAILURE" }
 }
