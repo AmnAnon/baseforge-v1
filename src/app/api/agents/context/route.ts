@@ -17,7 +17,8 @@ import { cache, CACHE_TTL } from "@/lib/cache";
 import { RateLimiter, rateLimiterMiddleware } from "@/lib/rate-limit";
 import { apiKeyMiddleware } from "@/lib/api-key";
 import { logger, timing } from "@/lib/logger";
-import { getLargeSwaps, getWhaleFlows, getLendingActivity, getIndexerHealth } from "@/lib/data/indexers";
+import { getWhaleFlows, getLendingActivity, getIndexerHealth } from "@/lib/data/indexers";
+import { computeIntentSignals, type IntentProtocol } from "@/lib/intent-engine";
 
 // ─── Agent-specific rate limiter (20 req/min — more generous for bots) ──
 
@@ -171,81 +172,6 @@ async function fetchGasData(): Promise<{
   } catch {
     return { baseFeeGwei: 0.001, congestion: "low", estTxCostUSD: 0.001 };
   }
-}
-
-// ─── Intent Detection ───────────────────────────────────────────────────
-
-interface IntentSignal {
-  signal: string;
-  protocol: string;
-  confidence: number; // 0-1
-  evidence: string;
-  actionable: string;
-}
-
-function detectIntents(
-  protocols: Array<{ id: string; name: string; c1d: number; c7d: number; tvl: number; apy: number; level: string }>,
-  whaleFlows: Array<{ protocol: string; type: string; amountUSD: number }>,
-): IntentSignal[] {
-  const signals: IntentSignal[] = [];
-
-  // Accumulation detection: high inflows + rising TVL
-  for (const p of protocols.slice(0, 10)) {
-    const inflows = whaleFlows
-      .filter((f) => f.protocol === p.id && (f.type === "deposit" || f.type === "liquidity_add"))
-      .reduce((s, f) => s + f.amountUSD, 0);
-    const outflows = whaleFlows
-      .filter((f) => f.protocol === p.id && (f.type === "withdraw" || f.type === "liquidity_remove"))
-      .reduce((s, f) => s + f.amountUSD, 0);
-
-    if (inflows > 100_000 && inflows > outflows * 2 && p.c1d > 0) {
-      signals.push({
-        signal: "accumulation",
-        protocol: p.id,
-        confidence: clamp(0.3 + (inflows / (p.tvl || 1)) * 5, 0, 0.9),
-        evidence: `$${Math.round(inflows).toLocaleString()} net inflows, TVL +${p.c1d}% 24h`,
-        actionable: `Whales depositing into ${p.name}. TVL trend confirms.`,
-      });
-    }
-
-    if (outflows > 100_000 && outflows > inflows * 2 && p.c1d < -2) {
-      signals.push({
-        signal: "distribution",
-        protocol: p.id,
-        confidence: clamp(0.3 + (outflows / (p.tvl || 1)) * 5, 0, 0.9),
-        evidence: `$${Math.round(outflows).toLocaleString()} net outflows, TVL ${p.c1d}% 24h`,
-        actionable: `Smart money leaving ${p.name}. Consider reducing exposure.`,
-      });
-    }
-  }
-
-  // Yield rotation: APY spike + TVL growth
-  for (const p of protocols) {
-    if (p.apy > 20 && p.c7d > 10 && p.level === "low") {
-      signals.push({
-        signal: "yield_rotation",
-        protocol: p.id,
-        confidence: 0.5,
-        evidence: `APY ${p.apy}% + TVL +${p.c7d}% 7d, low risk`,
-        actionable: `${p.name} attracting yield seekers. Sustainable if audit status is good.`,
-      });
-    }
-  }
-
-  // Risk escalation
-  for (const p of protocols) {
-    if (p.c7d < -20 && p.level === "high") {
-      signals.push({
-        signal: "risk_escalation",
-        protocol: p.id,
-        confidence: 0.7,
-        evidence: `TVL ${p.c7d}% 7d with high risk score`,
-        actionable: `${p.name} losing TVL rapidly with high risk. Avoid or exit.`,
-      });
-    }
-  }
-
-  return signals.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
 }
 
 // ─── Build context sections ─────────────────────────────────────────────
@@ -597,8 +523,16 @@ export async function GET(req: Request) {
 
     // ── Intent signals ──────────────────────────────────────
 
-    if (sections.has("intent") && whaleData) {
-      const intents = detectIntents(allEvaluated, whaleData.flows);
+    if (sections.has("intent")) {
+      const intentProtos: IntentProtocol[] = allEvaluated.map((p) => ({
+        id: p.id,
+        name: p.name,
+        c1d: p.c1d,
+        c7d: p.c7d,
+        tvl: p.tvl,
+        level: p.level,
+      }));
+      const intents = await computeIntentSignals(intentProtos);
       if (intents.length > 0) {
         response.intents = intents;
       }
