@@ -3,6 +3,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import DemoBanner from "@/components/DemoBanner";
+import WagmiProvider from "@/components/providers/WagmiProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -65,9 +66,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-[#0a0a0a] text-[#e0e0e0] min-h-screen`}>
-        {showDemo && <DemoBanner />}
-        <div id="scanlines" className="scanlines" />
-        {children}
+        <WagmiProvider>
+          {showDemo && <DemoBanner />}
+          <div id="scanlines" className="scanlines" />
+          {children}
+        </WagmiProvider>
       </body>
     </html>
   );

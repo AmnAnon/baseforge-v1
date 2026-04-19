@@ -30,6 +30,7 @@ import { MetricSkeleton } from "@/components/ui/Skeleton";
 import { NeonCard } from "@/components/ui/NeonCard";
 import { RiskRing } from "@/components/ui/RiskRing";
 import { CountUp } from "@/components/ui/CountUp";
+import WalletConnectButton from "@/components/ui/WalletConnectButton";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -344,6 +345,27 @@ export default function PortfolioSection() {
   const [summarySeed, setSummarySeed] = useState(0);
   const [agentJsonCopied, setAgentJsonCopied] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Stable ref so handleWalletConnected can call fetchData before it's defined
+  const fetchDataRef = useRef<(addr: string) => void>(() => {});
+
+  // Called by WalletConnectButton when the connected address changes
+  const handleWalletConnected = useCallback((connectedAddress: string | null) => {
+    if (!connectedAddress) return;
+    const lower = connectedAddress.toLowerCase();
+    setWallets((prev) => {
+      if (prev.some((w) => w.address === lower)) {
+        const idx = prev.findIndex((w) => w.address === lower);
+        setActiveIdx(idx);
+        fetchDataRef.current(lower);
+        return prev;
+      }
+      const next = [...prev, { address: lower, label: "My Wallet", addedAt: Date.now() }];
+      saveWallets(next);
+      setActiveIdx(next.length - 1);
+      fetchDataRef.current(lower);
+      return next;
+    });
+  }, []);
 
   // Load wallets from localStorage on mount
   useEffect(() => {
@@ -366,6 +388,9 @@ export default function PortfolioSection() {
       .then((d) => { setData(d); setIsLoading(false); setError(null); })
       .catch((e) => { setError(e.message); setIsLoading(false); });
   }, []);
+
+  // Keep ref in sync with latest fetchData
+  useEffect(() => { fetchDataRef.current = fetchData; }, [fetchData]);
 
   // Auto-refresh every 60s
   useEffect(() => {
@@ -465,9 +490,12 @@ export default function PortfolioSection() {
             Self-custody portfolio tracking with on-chain Base holdings
           </p>
         </div>
-        <button onClick={() => fetchData(activeAddress)} disabled={isLoading} className="p-2 bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-primary)]/30 rounded-xl transition-all text-[var(--bf-neon-primary)] disabled:opacity-50 flex-shrink-0" aria-label="Refresh">
-          <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <WalletConnectButton onAddressChange={handleWalletConnected} />
+          <button onClick={() => fetchData(activeAddress)} disabled={isLoading} className="p-2 bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-primary)]/30 rounded-xl transition-all text-[var(--bf-neon-primary)] disabled:opacity-50" aria-label="Refresh">
+            <RefreshCw className={`h-5 w-5 ${isLoading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Wallet Management */}
