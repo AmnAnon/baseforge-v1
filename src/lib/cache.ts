@@ -122,7 +122,7 @@ export const cache = {
     key: string,
     ttlMs: number,
     fetcher: () => Promise<T>
-  ): Promise<T & { isStale: boolean }> => {
+  ): Promise<T & { isStale: boolean; _stale?: boolean; _staleAge?: number }> => {
     const ttlSeconds = Math.round(ttlMs / 1000);
 
     // Try fresh cache first
@@ -138,10 +138,13 @@ export const cache = {
       // Check for expired entries via getStale (doesn't delete on expiry)
       const d = driver as unknown as Record<string, unknown>;
       const getStaleFn = typeof d.getStale === "function"
-        ? (d.getStale as (key: string) => Promise<T | null>)
+        ? (d.getStale as (key: string) => Promise<(T & { _expiresAt?: number }) | null>)
         : null;
       const stale = getStaleFn ? await getStaleFn(key) : null;
-      if (stale !== null) return { ...stale, isStale: true };
+      if (stale !== null) {
+        const staleAge = stale._expiresAt ? Date.now() - stale._expiresAt + ttlMs : ttlMs;
+        return { ...stale, isStale: true, _stale: true, _staleAge: Math.max(0, staleAge) };
+      }
 
       // No stale entry — try fetcher once more
       try {

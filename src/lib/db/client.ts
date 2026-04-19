@@ -16,7 +16,12 @@ export function getDb(): DbClient {
   if (!url) {
     throw new Error("DATABASE_URL is required. Set it in .env.local or your deployment environment.");
   }
-  _db = drizzle(neon(url));
+  // Append PgBouncer params for Neon serverless — prevents connection exhaustion
+  // under concurrent serverless invocations.
+  const pooledUrl = url.includes("pgbouncer=true")
+    ? url
+    : `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true&connection_limit=1`;
+  _db = drizzle(neon(pooledUrl));
   return _db;
 }
 

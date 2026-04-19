@@ -318,6 +318,20 @@ export async function GET(req: Request) {
       },
     });
   } catch {
+    // Try to serve stale cached data before returning empty
+    const stale = await (await import("@/lib/cache")).cache.getStale<ReturnType<typeof EMPTY_WHALES>>("idx:whales:10000");
+    if (stale && "whales" in stale) {
+      return NextResponse.json(
+        { ...stale, isStale: true },
+        {
+          status: 200,
+          headers: {
+            "Cache-Control": "public, max-age=0, stale-while-revalidate=120",
+            "X-Data-Source": "stale-cache",
+          },
+        }
+      );
+    }
     return NextResponse.json(
       { ...EMPTY_WHALES(), isStale: true },
       {
