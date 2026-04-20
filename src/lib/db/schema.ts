@@ -1,7 +1,7 @@
 // src/lib/db/schema.ts
 // Drizzle ORM schema definitions for BaseForge Analytics
 
-import { pgTable, text, integer, numeric, timestamp, boolean, jsonb, uuid, index, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, timestamp, boolean, jsonb, uuid, bigint, index, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
 
 // ─── enums ────────────────────────────────────────────────────────
 export const severityEnum = pgEnum("severity", ["critical", "warning", "info"]);
@@ -232,6 +232,51 @@ export type AlertRule = typeof alertRules.$inferSelect;
 export type NewAlertRule = typeof alertRules.$inferInsert;
 export type AlertEvent = typeof alertEvents.$inferSelect;
 export type NewAlertEvent = typeof alertEvents.$inferInsert;
+
+// ─── whale_events ─────────────────────────────────────────────────
+export const whaleEvents = pgTable(
+  "whale_events",
+  {
+    id:              uuid("id").defaultRandom().primaryKey(),
+    protocol:        text("protocol").notNull(),
+    action:          text("action").notNull(),   // 'swap' | 'deposit' | 'withdraw' | 'borrow' | 'repay' | 'liquidation'
+    usdValue:        numeric("usd_value", { precision: 20, scale: 2 }).notNull(),
+    wallet:          text("wallet").notNull(),
+    blockNumber:     bigint("block_number", { mode: "number" }),
+    txHash:          text("tx_hash").notNull(),
+    netFlowDirection: text("net_flow_direction").notNull(), // 'in' | 'out'
+    timestamp:       timestamp("timestamp", { withTimezone: true }).notNull(),
+    source:          text("source").notNull().default("envio"), // 'envio' | 'etherscan'
+  },
+  (table) => ({
+    whaleProtocolTsIdx: index("whale_events_protocol_ts_idx").on(table.protocol, table.timestamp),
+    whaleTxHashIdx:     uniqueIndex("whale_events_tx_hash_uidx").on(table.txHash),
+    whaleTimestampIdx:  index("whale_events_timestamp_idx").on(table.timestamp),
+  })
+);
+
+// ─── risk_snapshots ───────────────────────────────────────────────
+export const riskSnapshots = pgTable(
+  "risk_snapshots",
+  {
+    id:        uuid("id").defaultRandom().primaryKey(),
+    protocol:  text("protocol").notNull(),
+    score:     integer("score").notNull(),
+    health:    integer("health").notNull(),
+    tvl:       numeric("tvl", { precision: 20, scale: 2 }).notNull().default("0"),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    riskProtocolTsIdx: index("risk_snapshots_protocol_ts_idx").on(table.protocol, table.timestamp),
+    riskTimestampIdx:  index("risk_snapshots_timestamp_idx").on(table.timestamp),
+  })
+);
+
+// ─── Type exports (continued) ─────────────────────────────────────
+export type WhaleEvent    = typeof whaleEvents.$inferSelect;
+export type NewWhaleEvent = typeof whaleEvents.$inferInsert;
+export type RiskSnapshot    = typeof riskSnapshots.$inferSelect;
+export type NewRiskSnapshot = typeof riskSnapshots.$inferInsert;
 export type Protocol = typeof protocols.$inferSelect;
 export type NewProtocol = typeof protocols.$inferInsert;
 export type HistoricalTvl = typeof historicalTvl.$inferSelect;

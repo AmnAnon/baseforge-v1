@@ -318,25 +318,25 @@ async function runRiskScorer(): Promise<void> {
     const scores = protocols.map((p) => {
       const { score, riskFactors } = calculateHealthScore({
         name: p.name,
-        audits: 0, // not cached in warmer — scoring still useful for TVL/volatility signals
+        audits: 0,
         tvl: p.tvl,
         tvlChange24h: p.tvlChange24h,
         tvlChange7d: p.tvlChange7d,
         category: p.category,
         oracles: [],
       });
-      return { protocol: p.id, name: p.name, score, health: score, riskFactors };
+      return { protocol: p.id, name: p.name, tvl: p.tvl, score, health: score, riskFactors };
     });
 
     // Store aggregate in Redis
     await redis.set("risk:scores", JSON.stringify(scores), { ex: 300 });
 
-    // Persist each snapshot to Neon
+    // Persist each snapshot to Neon (with TVL)
     for (const s of scores) {
       try {
         await sql`
-          INSERT INTO risk_snapshots (protocol, score, health, risk_factors, timestamp)
-          VALUES (${s.protocol}, ${s.score}, ${s.health}, ${JSON.stringify(s.riskFactors)}, NOW())
+          INSERT INTO risk_snapshots (protocol, score, health, tvl, timestamp)
+          VALUES (${s.protocol}, ${s.score}, ${s.health}, ${s.tvl}, NOW())
         `;
       } catch (err) {
         log("warn", "risk snapshot insert failed", { source: "risk-scorer", protocol: s.protocol, error: String(err) });
@@ -350,6 +350,131 @@ async function runRiskScorer(): Promise<void> {
     });
   } catch (err) {
     log("error", "risk scorer failed", { source: "risk-scorer", error: String(err) });
+  }
+}
+
+// ─── Whale event type for incoming API data ───────────────────────
+interface CachedWhaleEvent {
+  txHash: string;
+  blockNumber?: number;
+  amountUSD?: number;
+  protocol?: string;
+  sender?: string;
+  receiver?: string;
+  token?: string;
+  eventType?: string;   // 'swap' | 'deposit' | 'withdraw' | 'borrow' | 'repay' | 'liquidation'
+  timestamp?: number;   // unix seconds
+}
+
+// ─── 2b. WHALE EVENT PERSISTER ────────────────────────────────────
+// Fetches whale events (EigenPhi or Redis cache), upserts into whale_events,
+// then computes per-protocol 24h net flows → Redis for the intent engine.
+async function runWhaleEventPersister(): Promise<void> {
+  const t0 = Date.now();
+  try {
+    let events: CachedWhaleEvent[] = [];
+
+    // Try Redis cache first
+    try {
+      const raw = await redis.get<string | CachedWhaleEvent[]>("baseforge:whales");
+      if (raw) {
+        const parsed: CachedWhaleEvent[] = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (Array.isArray(parsed) && parsed.length > 0) events = parsed;
+      }
+    } catch { /* fall through */ }
+
+    // Fall back to EigenPhi
+    if (events.length === 0) {
+      try {
+        const res = await timedFetch(
+          "https://api.eigenphi.io/ethereum/v1/mev/txs/latest?chain=base&limit=100",
+          "eigenphi-whales"
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const rows: Record<string, unknown>[] =
+            Array.isArray(json) ? json :
+            Array.isArray(json.data) ? json.data :
+            Array.isArray(json.txs) ? json.txs : [];
+          events = rows.map((r) => ({
+            txHash:      String(r.tx_hash ?? r.txHash ?? ""),
+            blockNumber: r.blockNumber ? Number(r.blockNumber) : undefined,
+            amountUSD:   Number(r.profit_usd ?? r.profitUsd ?? 0),
+            protocol:    String(r.protocol ?? "unknown"),
+            sender:      String(r.attackerAddress ?? r.attacker_address ?? ""),
+            receiver:    String(r.victimAddress ?? r.victim_address ?? ""),
+            eventType:   "swap",
+            timestamp:   r.timestamp ? Number(r.timestamp) : Math.floor(Date.now() / 1000),
+          })).filter((e) => e.txHash.length > 10);
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    if (events.length === 0) {
+      log("debug", "whale persister: no events to persist", { source: "whale-persister" });
+      return;
+    }
+
+    // Upsert each event
+    let inserted = 0;
+    for (const ev of events) {
+      if (!ev.txHash) continue;
+      const usdValue = Math.abs(ev.amountUSD ?? 0);
+      const protocol = ev.protocol ?? "unknown";
+      const action   = ev.eventType ?? "swap";
+      const wallet   = ev.sender ?? "unknown";
+      const tsMs     = (ev.timestamp ?? 0) > 1e12 ? (ev.timestamp ?? 0) : (ev.timestamp ?? 0) * 1000;
+      const tsDate   = tsMs > 0 ? new Date(tsMs).toISOString() : new Date().toISOString();
+      const direction = "in"; // EigenPhi profit flows are positive/in for MEV searcher
+
+      try {
+        await sql`
+          INSERT INTO whale_events
+            (protocol, action, usd_value, wallet, block_number, tx_hash, net_flow_direction, timestamp, source)
+          VALUES (
+            ${protocol}, ${action}, ${usdValue}, ${wallet},
+            ${ev.blockNumber ?? null}, ${ev.txHash}, ${direction},
+            ${tsDate}::timestamptz, 'eigenphi'
+          )
+          ON CONFLICT (tx_hash) DO NOTHING
+        `;
+        inserted++;
+      } catch (err) {
+        if (!String(err).includes("unique") && !String(err).includes("duplicate")) {
+          log("warn", "whale event insert failed", { source: "whale-persister", txHash: ev.txHash, error: String(err) });
+        }
+      }
+    }
+
+    log("info", "whale events persisted", { source: "whale-persister", inserted, total: events.length });
+
+    // Compute per-protocol 24h net flows → Redis
+    try {
+      const flows = await sql`
+        SELECT
+          protocol,
+          SUM(CASE WHEN net_flow_direction = 'in' THEN usd_value ELSE -usd_value END) AS net_flow,
+          COUNT(*) FILTER (WHERE usd_value > 100000 AND net_flow_direction = 'in')    AS whale_buys,
+          COUNT(*) FILTER (WHERE usd_value > 100000 AND net_flow_direction = 'out')   AS whale_sells
+        FROM whale_events
+        WHERE timestamp > NOW() - INTERVAL '24 hours'
+        GROUP BY protocol
+      ` as Array<{ protocol: string; net_flow: string; whale_buys: string; whale_sells: string }>;
+
+      for (const row of flows) {
+        const netFlowUsd = parseFloat(row.net_flow);
+        await redis.set(`whale:netflow:${row.protocol}`,  JSON.stringify({ netFlowUsd }),                                        { ex: 300 });
+        await redis.set(`whale:count:${row.protocol}:24h`, JSON.stringify({ buys: parseInt(row.whale_buys, 10), sells: parseInt(row.whale_sells, 10) }), { ex: 300 });
+      }
+
+      log("info", "whale net flows written to Redis", { source: "whale-persister", protocols: flows.length });
+    } catch (err) {
+      log("warn", "whale net flow computation failed", { source: "whale-persister", error: String(err) });
+    }
+
+    log("info", "whale persister complete", { source: "whale-persister", latencyMs: Date.now() - t0 });
+  } catch (err) {
+    log("error", "whale persister failed", { source: "whale-persister", error: String(err) });
   }
 }
 
@@ -655,6 +780,9 @@ async function main(): Promise<void> {
 
   // Risk scorer every 5 minutes
   scheduleLoop(runRiskScorer, 5 * 60_000, "risk-scorer");
+
+  // Whale event persister every 5 minutes (after cache warmer has data)
+  scheduleLoop(runWhaleEventPersister, 5 * 60_000, "whale-persister");
 
   // Alert evaluator every 60s
   scheduleLoop(runAlertEvaluator, 60_000, "alert-evaluator");
