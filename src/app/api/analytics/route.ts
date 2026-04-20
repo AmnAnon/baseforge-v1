@@ -5,6 +5,7 @@ import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { AnalyticsResponseSchema } from "@/lib/zod/schemas";
 import { logger } from "@/lib/logger";
+import { calculate24hChange } from "@/lib/utils";
 
 // Categories to exclude — not native DeFi protocols
 const EXCLUDED = new Set([
@@ -135,21 +136,20 @@ export async function GET(req: Request) {
         ? apyValues.reduce((s, a) => s + a, 0) / apyValues.length
         : 0;
 
+      // Use calculate24hChange with actual timestamps for accurate 24h delta.
+      // tvlHistory entries have Unix timestamps in seconds (d.date).
+      const tvlSeries = (tvlHistory as Array<{ date: number; tvl: number }>)
+        .map(d => ({ value: d.tvl, ts: d.date }));
+      const change24h = calculate24hChange(tvlSeries) ?? 0;
+
       return {
         baseMetrics: {
           totalTvl,
           totalProtocols: enriched.length,
           avgApy: Math.round(avgApy * 100) / 100,
-          change24h: (() => {
-            if (tvlHistory.length >= 2) {
-              const latest = tvlHistory[tvlHistory.length - 1].tvl;
-              const prev = tvlHistory[tvlHistory.length - 2].tvl;
-              return prev > 0 ? Math.round(((latest - prev) / prev) * 10000) / 100 : 0;
-            }
-            return enriched.length > 0
-              ? Math.round(enriched.reduce((s: number, p: { change_1d?: number }) => s + (p.change_1d || 0), 0) / enriched.length * 100) / 100
-              : 0;
-          })(),
+          change24h,
+          _source: "defillama",
+          _updatedAt: Date.now(),
         },
         tvlHistory: tvlHistory.slice(-90).map((d: { date: number; tvl: number }) => ({
           date: new Date(d.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -158,6 +158,8 @@ export async function GET(req: Request) {
         protocols: enriched,
         protocolData,
         timestamp: Date.now(),
+        _dataSource: "defillama",
+        _confidence: "high",
       };
     });
 

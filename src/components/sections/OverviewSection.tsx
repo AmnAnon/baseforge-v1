@@ -3,7 +3,7 @@
 
 
 import { useState, useMemo } from "react";
-import { formatCurrency, formatPercentage, freshnessColor, timeAgo } from "@/lib/utils";
+import { formatCurrency, formatPercentage, freshnessColor, timeAgo, dataConfidence } from "@/lib/utils";
 import {
   ArrowUpIcon,
   ArrowDownIcon,
@@ -15,6 +15,9 @@ import {
   Coins,
   LineChart,
   ExternalLink,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { NeonCard } from "@/components/ui/NeonCard";
 import BaseNetworkMetrics from "./BaseNetworkMetrics";
@@ -86,6 +89,8 @@ interface OverviewSectionProps {
       };
     };
     timestamp?: number;
+    _dataSource?: string;
+    _confidence?: string;
   } | null;
   isLoading: boolean;
 }
@@ -243,6 +248,17 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
     [selectedProtocol.name]
   );
 
+  const confidence = useMemo(() =>
+    data
+      ? dataConfidence({
+          source: (data as Record<string, unknown>)._dataSource as string ?? "defillama",
+          ageMs: data.timestamp ? Date.now() - data.timestamp : Infinity,
+          isStale: false,
+        })
+      : "low",
+    [data]
+  );
+
   return (
     <section className="space-y-6" aria-labelledby="overview-heading">
       {/* Header */}
@@ -260,8 +276,39 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
         )}
       </div>
 
+      {/* Data health banner */}
+      {!isLoading && (
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border ${
+          confidence === "high"
+            ? "bg-emerald-900/20 border-emerald-500/30 text-emerald-400"
+            : confidence === "medium"
+            ? "bg-yellow-900/20 border-yellow-500/30 text-yellow-400"
+            : "bg-red-900/20 border-red-500/30 text-red-400"
+        }`}>
+          {confidence === "high"
+            ? <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+            : confidence === "medium"
+            ? <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+            : <XCircle className="h-3.5 w-3.5 flex-shrink-0" />}
+          <span>
+            {confidence === "high"
+              ? "Data live — sourced from DefiLlama (TVL methodology aligned)"
+              : confidence === "medium"
+              ? "Serving cached data — DefiLlama may be slow"
+              : "Data unavailable — showing last known values"}
+          </span>
+          <span className="ml-auto text-gray-500">
+            Source: {(data as Record<string, unknown> | null)?._dataSource as string ?? "defillama"}
+          </span>
+        </div>
+      )}
+
       {/* Base Network Metrics */}
-      <BaseNetworkMetrics data={data?.baseMetrics || null} isLoading={isLoading} />
+      <BaseNetworkMetrics data={data?.baseMetrics ? {
+        ...data.baseMetrics,
+        _source: (data as Record<string, unknown>)._dataSource as string | undefined,
+        _updatedAt: data.timestamp,
+      } : null} isLoading={isLoading} />
 
       {/* Base TVL Chart */}
         <BaseTVLChart />
