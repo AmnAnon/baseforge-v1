@@ -214,6 +214,13 @@ async function runCacheWarmer(): Promise<void> {
   const t0 = Date.now();
   const updatedKeys: string[] = [];
 
+  // Collected data for stream:latest assembly
+  let streamProtocols: Array<{ id: string; name: string; tvl: number; change24h: number; logo: string; category: string }> = [];
+  let streamTvlHistory: Array<{ date: string; tvl: number }> = [];
+  let streamTotalTvl = 0;
+  let streamChange24h = 0;
+  let streamPrices: Record<string, { usd: number; usd_24h_change?: number }> = {};
+
   // --- DefiLlama protocols ---
   try {
     const res = await timedFetch("https://api.llama.fi/protocols", "defillama-protocols");
@@ -237,6 +244,17 @@ async function runCacheWarmer(): Promise<void> {
         }));
       await redis.set("baseforge:protocols", JSON.stringify(base20), { ex: 60 });
       updatedKeys.push("protocols");
+
+      // Capture for stream:latest
+      streamTotalTvl = base20.reduce((s, p) => s + p.tvl, 0);
+      streamProtocols = base20.map((p) => ({
+        id:       p.id,
+        name:     p.name,
+        tvl:      p.tvl,
+        change24h: p.tvlChange24h,
+        logo:     p.logo ?? `https://icons.llamao.fi/icons/protocols/${p.id}`,
+        category: p.category,
+      }));
     }
   } catch {
     // already logged in timedFetch
@@ -246,9 +264,20 @@ async function runCacheWarmer(): Promise<void> {
   try {
     const res = await timedFetch("https://api.llama.fi/v2/historicalChainTvl/Base", "defillama-tvl");
     if (res.ok) {
-      const raw = await res.json();
+      const raw: Array<{ date: number; tvl: number }> = await res.json();
       await redis.set("baseforge:tvl_history", JSON.stringify(raw), { ex: 300 });
       updatedKeys.push("tvl_history");
+
+      // Compute 24h change + build chart array for stream:latest
+      if (raw.length >= 2) {
+        const latest = raw[raw.length - 1].tvl;
+        const prev   = raw[raw.length - 2].tvl;
+        streamChange24h = prev > 0 ? Math.round(((latest - prev) / prev) * 10000) / 100 : 0;
+      }
+      streamTvlHistory = raw.slice(-60).map((d) => ({
+        date: new Date(d.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        tvl:  d.tvl,
+      }));
     }
   } catch { /* logged */ }
 
@@ -267,9 +296,10 @@ async function runCacheWarmer(): Promise<void> {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${BASE_TOKEN_IDS}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`;
     const res = await timedFetch(url, "coingecko-prices");
     if (res.ok) {
-      const raw = await res.json();
+      const raw: Record<string, { usd: number; usd_24h_change?: number }> = await res.json();
       await redis.set("baseforge:prices", JSON.stringify(raw), { ex: 30 });
       updatedKeys.push("prices");
+      streamPrices = raw;
     }
   } catch { /* logged */ }
 
@@ -279,6 +309,36 @@ async function runCacheWarmer(): Promise<void> {
       await redis.publish("baseforge:update", JSON.stringify({ ts: Date.now(), keys: updatedKeys }));
     } catch (err) {
       log("warn", "Redis publish failed", { source: "cache-warmer", error: String(err) });
+    }
+  }
+
+  // Write stream:latest + increment stream:version so SSE connections can fan-out
+  // without each making upstream API calls.
+  if (streamProtocols.length > 0) {
+    try {
+      const streamPayload = {
+        analytics: {
+          baseMetrics: {
+            totalTvl:       streamTotalTvl,
+            totalProtocols: streamProtocols.length,
+            avgApy:         0,
+            change24h:      streamChange24h,
+          },
+          tvlHistory:   streamTvlHistory,
+          protocols:    streamProtocols,
+          protocolData: {},
+          timestamp:    Date.now(),
+        },
+        prices:    streamPrices,
+        whales:    [],
+        timestamp: Date.now(),
+        _source:   "worker",
+      };
+      await redis.set("stream:latest", JSON.stringify(streamPayload), { ex: 120 });
+      await redis.incr("stream:version");
+      log("debug", "stream:latest published", { source: "cache-warmer" });
+    } catch (err) {
+      log("warn", "stream:latest write failed", { source: "cache-warmer", error: String(err) });
     }
   }
 
