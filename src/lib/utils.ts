@@ -89,6 +89,20 @@ export function calculate24hChange(
 }
 
 /**
+ * Compact USD formatter — avoids raw numbers like "$467260000".
+ * Token prices < $1000 use two decimal places; larger values use compact notation.
+ */
+export function formatUsdCompact(value: number | undefined | null): string {
+  if (value === undefined || value === null || isNaN(value)) return "—";
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000)     return `$${(value / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000)         return `$${(value / 1_000).toFixed(1)}K`;
+  if (abs >= 1)             return `$${value.toFixed(2)}`;
+  return `$${value.toFixed(4)}`;
+}
+
+/**
  * Data confidence level based on source quality and data freshness.
  * Returns "high" | "medium" | "low".
  */

@@ -6,6 +6,7 @@
 
 import { Card } from "@tremor/react";
 import { Network, DollarSign, TrendingUp, Database } from "lucide-react";
+import { useMemo } from "react";
 import { timeAgo, freshnessColor, dataConfidence } from "@/lib/utils";
 
 interface BaseMetricsProps {
@@ -32,9 +33,11 @@ export default function BaseNetworkMetrics({ data, isLoading }: BaseMetricsProps
   const source = data?._source ?? "defillama";
   const updatedAt = data?._updatedAt ?? null;
   const ageMs = updatedAt ? Date.now() - updatedAt : null;
-  const confidence = data
-    ? dataConfidence({ source, ageMs: ageMs ?? Infinity, isStale: false })
-    : "low";
+  const confidence = useMemo(
+    () => data ? dataConfidence({ source, ageMs: ageMs ?? Infinity, isStale: false }) : "low",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data]
+  );
 
   const metrics = [
     {

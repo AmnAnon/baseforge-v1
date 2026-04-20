@@ -70,6 +70,12 @@ export default function RevenueDashboard() {
     ? [...data.protocols].sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0))
     : [];
 
+  const sortedTabLabel: Record<typeof sortBy, string> = {
+    fees24h: "FEES 24H",
+    revenue24h: "REVENUE",
+    feesAnnualized: "ANNUALIZED",
+  };
+
   return (
     <section className="space-y-5" aria-labelledby="revenue-heading">
       <div className="flex items-start justify-between gap-3">
@@ -159,11 +165,11 @@ export default function RevenueDashboard() {
               <table className="w-full min-w-[420px]">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    <th className="py-2.5 px-3 text-center text-[10px] sm:text-xs text-gray-500 font-medium uppercase w-10">#</th>
+                    <th className="py-2.5 px-3 text-center text-[10px] sm:text-xs text-gray-500 font-medium uppercase w-10 flex-shrink-0">#</th>
                     <th className="py-2.5 px-3 text-left text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Protocol</th>
-                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase">Fees 24h</th>
-                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden sm:table-cell">Revenue 24h</th>
-                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden md:table-cell">Annualized</th>
+                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase min-w-[90px] flex-shrink-0">{sortedTabLabel[sortBy]}</th>
+                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden sm:table-cell min-w-[90px] flex-shrink-0">Revenue 24h</th>
+                    <th className="py-2.5 px-3 text-right text-[10px] sm:text-xs text-gray-500 font-medium uppercase hidden md:table-cell min-w-[90px] flex-shrink-0">Annualized</th>
                   </tr>
                 </thead>
                 <tbody>

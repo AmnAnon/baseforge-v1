@@ -9,6 +9,12 @@ import { logger } from "@/lib/logger";
 
 const EXCLUDED_CATEGORIES = new Set(["Chain", "CEX", "Bridge", "Risk Curators"]);
 
+const ALLOWED_CATEGORIES = new Set([
+  "Dexs", "Lending", "Liquid Staking", "Bridge", "Yield",
+  "CDP", "RWA", "Derivatives", "Options", "Perpetuals",
+  "Algo-Stables", "Yield Aggregator", "Insurance",
+]);
+
 const EMPTY_REVENUE = () => ({
   protocols: [],
   aggregate: { totalFees24h: 0, totalFeesAnnualized: 0, protocolCount: 0, timestamp: Date.now() },
@@ -48,8 +54,9 @@ export async function GET(req: Request) {
 
       const protocols = rawProtocols
         .filter((p) => {
-          if (!p.total24h || p.total24h <= 0) return false;
+          if (!p.total24h || p.total24h < 100) return false;          // < $100/day is noise
           if (EXCLUDED_CATEGORIES.has(p.category || "")) return false;
+          if (!ALLOWED_CATEGORIES.has(p.category || "")) return false; // block non-DeFi
           return true;
         })
         .sort((a, b) => (b.total24h || 0) - (a.total24h || 0))
