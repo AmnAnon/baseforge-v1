@@ -24,10 +24,10 @@ interface BaseMetricsProps {
 const CONFIDENCE_COLORS = {
   high:   "text-emerald-400 bg-emerald-900/30 border-emerald-500/30",
   medium: "text-yellow-400 bg-yellow-900/30 border-yellow-500/30",
-  low:    "text-red-400 bg-red-900/30 border-red-500/30",
+  low:    "text-amber-400 bg-amber-900/30 border-amber-500/30",
 };
 
-const CONFIDENCE_LABELS = { high: "Live", medium: "Cached", low: "Stale" };
+const CONFIDENCE_LABELS = { high: "● Live", medium: "● Cached", low: "⚠ Stale" };
 
 export default function BaseNetworkMetrics({ data, isLoading }: BaseMetricsProps) {
   const source = data?._source ?? "defillama";
@@ -67,9 +67,14 @@ export default function BaseNetworkMetrics({ data, isLoading }: BaseMetricsProps
     <div className="space-y-2">
       {/* Data source + freshness bar */}
       <div className="flex items-center justify-between text-[10px] text-gray-500">
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1.5">
           <Database className="h-3 w-3" />
-          Source: <span className="text-gray-400 font-medium ml-0.5">{source}</span>
+          <span>Source:</span>
+          <span className="text-gray-400 font-medium">{source}</span>
+          <span aria-hidden="true">·</span>
+          <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase ${CONFIDENCE_COLORS[confidence]}`}>
+            {CONFIDENCE_LABELS[confidence]}
+          </span>
         </span>
         <span className="flex items-center gap-2">
           {updatedAt && (
@@ -77,9 +82,6 @@ export default function BaseNetworkMetrics({ data, isLoading }: BaseMetricsProps
               {timeAgo(updatedAt)}
             </span>
           )}
-          <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase ${CONFIDENCE_COLORS[confidence]}`}>
-            {CONFIDENCE_LABELS[confidence]}
-          </span>
         </span>
       </div>
 

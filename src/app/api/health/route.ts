@@ -51,6 +51,18 @@ async function checkDatabase(): Promise<{ status: "ok" | "error"; latency?: numb
 }
 
 export async function GET() {
+  try {
+    return await runHealthChecks();
+  } catch (e: unknown) {
+    logger.error("Health endpoint crashed", { error: e instanceof Error ? e.message : "unknown" });
+    return NextResponse.json(
+      { status: "degraded", checks: { system: { status: "error", detail: "health check crashed" } }, timestamp: Date.now() },
+      { status: 200 }
+    );
+  }
+}
+
+async function runHealthChecks() {
   const checks: HealthStatus["checks"] = {};
 
   // Check upstream APIs

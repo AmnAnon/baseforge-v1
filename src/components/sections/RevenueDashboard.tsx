@@ -1,7 +1,8 @@
 // src/components/sections/RevenueDashboard.tsx
+/* eslint-disable react-hooks/preserve-manual-memoization */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   DollarSign,
   TrendingUp,
@@ -66,9 +67,12 @@ export default function RevenueDashboard() {
       .catch((e) => { setError(e.message); setIsLoading(false); });
   };
 
-  const sorted = data?.protocols
-    ? [...data.protocols].sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0))
-    : [];
+  const sorted = useMemo(() =>
+    data?.protocols
+      ? [...data.protocols].sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0))
+      : [],
+    [data?.protocols, sortBy]
+  );
 
   const sortedTabLabel: Record<typeof sortBy, string> = {
     fees24h: "FEES 24H",

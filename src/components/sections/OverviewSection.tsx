@@ -299,8 +299,9 @@ export default function OverviewSection({ data, isLoading }: OverviewSectionProp
               ? "Serving cached data — DefiLlama may be slow"
               : "Data unavailable — showing last known values"}
           </span>
-          <span className="ml-auto text-gray-500">
-            Source: {(data as Record<string, unknown> | null)?._dataSource as string ?? "defillama"}
+          <span className="ml-auto flex items-center gap-1 text-gray-500">
+            <span>Source:</span>
+            <span className="text-gray-400">{(data as Record<string, unknown> | null)?._dataSource as string ?? "defillama"}</span>
           </span>
         </div>
       )}
