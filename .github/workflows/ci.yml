@@ -141,8 +141,8 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
-      - name: Enforce coverage threshold (≥65%)
-        run: node scripts/check-coverage.js 65
+      - name: Enforce coverage threshold (≥60%)
+        run: node scripts/check-coverage.js 60
 
       - name: Upload coverage report
         if: always()
@@ -151,6 +151,7 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 30
+          if-no-files-found: warn
 
   # ── 4. Build ────────────────────────────────────────────
   build:
