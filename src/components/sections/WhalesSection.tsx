@@ -2,6 +2,7 @@
 // Smart Money Cockpit — the best whale tracker on Base.
 // Features: intent classification, whale scores, smart labels,
 // hot signals, AI summary, animated scanning empty state.
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization */
 
 "use client";
 

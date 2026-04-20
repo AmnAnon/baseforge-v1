@@ -153,7 +153,7 @@ describe("Shared circuit breakers", () => {
 
   it("all start in closed state", async () => {
     const { circuitBreakers } = await import("@/lib/circuit-breaker");
-    for (const [name, cb] of Object.entries(circuitBreakers)) {
+    for (const [_name, cb] of Object.entries(circuitBreakers)) {
       expect(cb.state).toBe("closed");
     }
   });

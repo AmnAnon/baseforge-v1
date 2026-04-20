@@ -107,7 +107,7 @@ describe("Contracts Registry", () => {
 
   it("has valid event signatures", async () => {
     const { EVENT_SIGNATURES } = await import("@/lib/data/indexers/contracts");
-    for (const [name, sig] of Object.entries(EVENT_SIGNATURES)) {
+    for (const [_name, sig] of Object.entries(EVENT_SIGNATURES)) {
       expect(sig).toMatch(/^0x[a-fA-F0-9]{64}$/);
     }
   });

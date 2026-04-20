@@ -13,7 +13,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { cache, CACHE_TTL } from "@/lib/cache";
+import { cache } from "@/lib/cache";
 import { RateLimiter, rateLimiterMiddleware } from "@/lib/rate-limit";
 import { apiKeyMiddleware } from "@/lib/api-key";
 import { logger, timing } from "@/lib/logger";
@@ -235,11 +235,9 @@ async function buildProtocolSection(
 
   // TVL trend
   const recent30 = tvlHistory.slice(-30).map((d) => d.tvl);
-  let tvlTrend = "flat";
   let tvlTrendPct = 0;
   if (recent30.length >= 2) {
     tvlTrendPct = r2(((recent30[recent30.length - 1] - recent30[0]) / (recent30[0] || 1)) * 100);
-    tvlTrend = tvlTrendPct > 5 ? "up" : tvlTrendPct < -5 ? "down" : "flat";
   }
 
   const protocols = topN.map((p) => ({

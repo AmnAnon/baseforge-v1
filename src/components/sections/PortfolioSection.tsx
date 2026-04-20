@@ -2,6 +2,7 @@
 // Portfolio Intelligence — self-custody portfolio tracker for Base.
 // Features: multi-address management, protocol exposure, AI summary,
 // concentration warnings, agent JSON export, cyber-neon glassmorphism.
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization */
 
 "use client";
 
@@ -384,6 +385,16 @@ export default function PortfolioSection() {
     });
   }, []);
 
+  const fetchData = useCallback((addr: string) => {
+    if (!addr || !isValidAddress(addr)) return;
+    setIsLoading(true);
+    setError(null);
+    fetch(`/api/portfolio?address=${addr}`)
+      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
+      .then((d) => { setData(d); setIsLoading(false); setError(null); })
+      .catch((e) => { setError(e.message); setIsLoading(false); });
+  }, []);
+
   // Load wallets from localStorage on mount
   useEffect(() => {
     const loaded = loadWallets();
@@ -395,16 +406,6 @@ export default function PortfolioSection() {
   }, []);
 
   const activeAddress = wallets[activeIdx]?.address ?? "";
-
-  const fetchData = useCallback((addr: string) => {
-    if (!addr || !isValidAddress(addr)) return;
-    setIsLoading(true);
-    setError(null);
-    fetch(`/api/portfolio?address=${addr}`)
-      .then((r) => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); })
-      .then((d) => { setData(d); setIsLoading(false); setError(null); })
-      .catch((e) => { setError(e.message); setIsLoading(false); });
-  }, []);
 
   // Keep ref in sync with latest fetchData
   useEffect(() => { fetchDataRef.current = fetchData; }, [fetchData]);

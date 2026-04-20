@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { apiKeys, apiKeyUsage } from "@/lib/db/schema";
-import { eq, isNull, desc, count } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { createApiKeyInDb } from "@/lib/api-key";
 import { z } from "zod";
 

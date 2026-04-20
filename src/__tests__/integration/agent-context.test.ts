@@ -277,7 +277,9 @@ describe("/api/agents/context", () => {
   it("includes rate limit headers for API key users", async () => {
     const { GET } = await import("@/app/api/agents/context/route");
 
-    const req = new Request("http://localhost/api/agents/context?include=market");
+    const req = new Request("http://localhost/api/agents/context?include=market", {
+      headers: { "x-api-key": "test-key-123" },
+    });
     const res = await GET(req);
 
     expect(res.headers.get("X-RateLimit-Tier")).toBe("free");

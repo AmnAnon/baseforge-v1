@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mock cache module before importing the route ────────────────────
 
-const mockCacheStore = new Map<string, { value: unknown; expiresAt: number }>();
+const _mockCacheStore = new Map<string, { value: unknown; expiresAt: number }>();
 
 const mockCache = {
   getWithStaleFallback: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 // Sample valid DefiLlama protocol data
-const MOCK_PROTOCOLS = [
+const _MOCK_PROTOCOLS = [
   {
     name: "Aerodrome",
     slug: "aerodrome",

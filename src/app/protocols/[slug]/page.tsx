@@ -77,18 +77,25 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
-    const all: Array<{ slug?: string; chains?: string[]; chainTvls?: Record<string, number> }> =
-      await res.json();
+    const all: unknown[] = await res.json();
 
     const EXCLUDED = new Set(["CEX", "Chain"]);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const getBase = (p: any) => p.chainTvls?.Base ?? p.chainTvls?.base ?? 0;
 
-    return all
-      .filter((p: any) => p.chains?.includes("Base") && !EXCLUDED.has(p.category ?? ""))
-      .sort((a: any, b: any) => getBase(b) - getBase(a))
+    type LlamaProtocol = {
+      slug?: string;
+      id?: string;
+      chains?: string[];
+      category?: string;
+      chainTvls?: Record<string, number>;
+    };
+
+    const getBase = (p: LlamaProtocol) => p.chainTvls?.Base ?? p.chainTvls?.base ?? 0;
+
+    return (all as LlamaProtocol[])
+      .filter((p) => p.chains?.includes("Base") && !EXCLUDED.has(p.category ?? ""))
+      .sort((a, b) => getBase(b) - getBase(a))
       .slice(0, 20)
-      .map((p: any) => ({ slug: p.slug ?? p.id ?? "" }))
+      .map((p) => ({ slug: p.slug ?? p.id ?? "" }))
       .filter((p) => p.slug !== "");
   } catch {
     return [];

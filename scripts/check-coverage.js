@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // scripts/check-coverage.js
 // Called by CI to enforce coverage threshold.
 // Usage: node scripts/check-coverage.js [threshold=65]

@@ -2,7 +2,7 @@
 // Integration tests for the indexer abstraction layer.
 // Tests the unified service, fallback logic, caching, and type contracts.
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the cache module
 vi.mock("@/lib/cache", () => {
@@ -176,7 +176,7 @@ describe("Contract Addresses", () => {
     const { EVENT_SIGNATURES } = await import("@/lib/data/indexers/contracts");
 
     // All should be 0x-prefixed 64-char hex strings (32 bytes)
-    for (const [name, sig] of Object.entries(EVENT_SIGNATURES)) {
+    for (const [_name, sig] of Object.entries(EVENT_SIGNATURES)) {
       expect(sig).toMatch(/^0x[0-9a-f]{64}$/i);
     }
   });

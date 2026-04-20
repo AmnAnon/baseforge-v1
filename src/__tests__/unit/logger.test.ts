@@ -8,8 +8,9 @@ describe("Logger", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.resetModules();
 
-    const { logger } = await import("@/lib/logger");
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const { logger } = await import("@/lib/logger");
 
     logger.info("structured test", { metric: 42 });
 
