@@ -1,9 +1,13 @@
 // src/app/protocols/[slug]/page.tsx
-// Async Server Component — fetches data at request time (or build time for static params).
+// Async Server Component — ISR with 60s revalidation.
+// generateStaticParams pre-renders top 20 Base protocols at build time;
+// all other slugs are generated on first request (dynamicParams = true).
 
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProtocolDetailClient } from "./ProtocolDetailClient";
+
+// ─── Types ─────────────────────────────────────────────────────
 
 interface ProtocolData {
   id: string;
@@ -56,6 +60,20 @@ interface DetailResponse {
   timestamp: number;
 }
 
+type LlamaProtocol = {
+  slug?: string;
+  id?: string;
+  chains?: string[];
+  category?: string;
+  chainTvls?: Record<string, number>;
+};
+
+function getBaseTvl(p: LlamaProtocol): number {
+  return p.chainTvls?.Base ?? p.chainTvls?.base ?? 0;
+}
+
+// ─── Data fetcher ──────────────────────────────────────────────
+
 async function fetchProtocol(slug: string): Promise<DetailResponse | null> {
   try {
     const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
@@ -70,37 +88,39 @@ async function fetchProtocol(slug: string): Promise<DetailResponse | null> {
 }
 
 // ─── generateStaticParams — pre-render top 20 Base protocols ──
+// MUST NOT throw — Vercel build crashes if this rejects.
+// Returns [] on any network error; ISR covers the rest via dynamicParams.
 
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
   try {
+    // Do NOT use next.revalidate here — the 10MB protocols response exceeds
+    // Next.js fetch cache limits (2MB). cache:'no-store' avoids the warning.
     const res = await fetch("https://api.llama.fi/protocols", {
-      next: { revalidate: 3600 },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) return [];
-    const all: unknown[] = await res.json();
+    const all: LlamaProtocol[] = await res.json();
 
     const EXCLUDED = new Set(["CEX", "Chain"]);
-
-    type LlamaProtocol = {
-      slug?: string;
-      id?: string;
-      chains?: string[];
-      category?: string;
-      chainTvls?: Record<string, number>;
-    };
-
-    const getBase = (p: LlamaProtocol) => p.chainTvls?.Base ?? p.chainTvls?.base ?? 0;
-
-    return (all as LlamaProtocol[])
+    return all
       .filter((p) => p.chains?.includes("Base") && !EXCLUDED.has(p.category ?? ""))
-      .sort((a, b) => getBase(b) - getBase(a))
+      .sort((a, b) => getBaseTvl(b) - getBaseTvl(a))
       .slice(0, 20)
       .map((p) => ({ slug: p.slug ?? p.id ?? "" }))
       .filter((p) => p.slug !== "");
   } catch {
+    // Build MUST NOT fail if DefiLlama is unreachable.
+    // Pages will be generated on-demand via dynamicParams = true.
     return [];
   }
 }
+
+// Allow non-pre-rendered slugs to be generated on first request (ISR)
+export const dynamicParams = true;
+
+// ISR: revalidate pre-rendered pages every 60s
+export const revalidate = 60;
 
 // ─── Metadata ─────────────────────────────────────────────────
 
@@ -139,5 +159,3 @@ export default async function ProtocolDetailPage(
   if (!data?.protocol) notFound();
   return <ProtocolDetailClient data={data} />;
 }
-
-export const dynamic = "force-dynamic";
