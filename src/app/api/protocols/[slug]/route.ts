@@ -1,9 +1,25 @@
 // src/app/api/protocols/[slug]/route.ts
 // Protocol detail — TVL, health score, fees/revenue (DefiLlama), token price (CoinGecko),
 // utilization rate (Moonwell Ponder for lending protocols).
+// DB-augmented: risk snapshots + whale activity from Neon/Drizzle.
 
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
+import { Redis } from "@upstash/redis";
+import { db } from "@/lib/db/client";
+import { riskSnapshots, whaleEvents } from "@/lib/db/schema";
+import { desc, eq } from "drizzle-orm";
+
+// ─── Redis singleton ──────────────────────────────────────────────
+let _redis: Redis | null = null;
+function getRedis(): Redis | null {
+  if (_redis) return _redis;
+  const url = process.env.UPSTASH_REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_TOKEN;
+  if (!url || !token) return null;
+  _redis = new Redis({ url, token });
+  return _redis;
+}
 
 // ─── Case-insensitive Base TVL ──────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,6 +166,73 @@ async function fetchUtilization(slug: string, baseTvl: number): Promise<number |
   // Note: replace with protocol-specific subgraph data if available
 }
 
+// ─── DB helpers ───────────────────────────────────────────────
+
+async function fetchRiskSnapshots(protocol: string) {
+  if (!process.env.DATABASE_URL) return [];
+  try {
+    const rows = await db
+      .select()
+      .from(riskSnapshots)
+      .where(eq(riskSnapshots.protocol, protocol))
+      .orderBy(desc(riskSnapshots.timestamp))
+      .limit(168);
+    return rows.reverse().map((r) => {
+      const ts = r.timestamp instanceof Date ? r.timestamp.getTime() : new Date(r.timestamp).getTime();
+      return {
+        date: new Date(ts).toISOString(),
+        healthScore: r.health ?? r.score,
+        tvl: parseFloat(String(r.tvl ?? 0)),
+        timestamp: ts,
+      };
+    });
+  } catch (err) {
+    console.warn("[protocol-api] risk snapshot query failed:", err);
+    return [];
+  }
+}
+
+async function fetchWhaleActivity(protocol: string) {
+  if (!process.env.DATABASE_URL) return [];
+  try {
+    const rows = await db
+      .select()
+      .from(whaleEvents)
+      .where(eq(whaleEvents.protocol, protocol))
+      .orderBy(desc(whaleEvents.timestamp))
+      .limit(10);
+    return rows.map((r) => ({
+      txHash: r.txHash,
+      action: r.action,
+      usdValue: parseFloat(String(r.usdValue)),
+      wallet: r.wallet,
+      netFlowDirection: r.netFlowDirection,
+      timestamp: r.timestamp instanceof Date ? r.timestamp.getTime() : new Date(r.timestamp).getTime(),
+    }));
+  } catch (err) {
+    console.warn("[protocol-api] whale activity query failed:", err);
+    return [];
+  }
+}
+
+async function fetchPriceFromRedis(slug: string): Promise<number | null> {
+  try {
+    const redis = getRedis();
+    if (!redis) return null;
+    const raw = await redis.get<string | Record<string, unknown>>("baseforge:prices");
+    if (!raw) return null;
+    const prices = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const cgId = SLUG_TO_CG[slug];
+    if (!cgId) return null;
+    const entry = prices[cgId];
+    if (typeof entry === "number") return entry;
+    if (entry && typeof entry === "object" && "usd" in entry) return (entry as { usd: number }).usd;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Route ─────────────────────────────────────────────────────
 
 export async function GET(
@@ -185,12 +268,16 @@ export async function GET(
     const tvlChange24h = proto.change_1d || 0;
     const tvlChange7d = proto.change_7d || 0;
 
-    // Fetch fees, token price, utilization in parallel
-    const [feesData, tokenPrice, utilization] = await Promise.all([
+    // Fetch fees, token price, utilization, DB data in parallel
+    const [feesData, tokenPriceCG, tokenPriceRedis, utilization, riskHistory, whaleActivity] = await Promise.all([
       fetchFees(slug),
       fetchTokenPrice(slug),
+      fetchPriceFromRedis(slug),
       fetchUtilization(slug, baseTvl),
+      fetchRiskSnapshots(slug),
+      fetchWhaleActivity(slug),
     ]);
+    const tokenPrice = tokenPriceRedis ?? tokenPriceCG;
 
     const { score: healthScore, riskFactors } = calculateHealthScore({
       audits: proto.audits || 0,
@@ -248,7 +335,7 @@ export async function GET(
         tvl: d.tvl,
       }));
 
-    const response = { protocol: result, tvlHistory, timestamp: Date.now() };
+    const response = { protocol: result, tvlHistory, riskHistory, whaleActivity, timestamp: Date.now() };
     await cache.set(cacheKey, response, Math.round(CACHE_TTL.PROTOCOL_LIST / 1000));
     return NextResponse.json(response);
   } catch (err) {

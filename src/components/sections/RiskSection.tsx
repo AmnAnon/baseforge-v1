@@ -3,6 +3,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import {
   AlertTriangle,
@@ -362,7 +363,12 @@ export default function RiskSection({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium text-white">
-                        {protocol.name}
+                        <Link
+                          href={`/protocols/${protocol.id}`}
+                          className="hover:text-emerald-400 transition-colors"
+                        >
+                          {protocol.name}
+                        </Link>
                       </h3>
                       <span className="text-xs text-gray-500 px-2 py-0.5 bg-gray-800 rounded">
                         {protocol.category}
