@@ -1,13 +1,12 @@
 // src/app/api/admin/analytics/route.ts
 // Aggregated frame interaction analytics for the admin dashboard.
-// Protected by x-admin-key header matching ADMIN_KEY env var.
+// Protected by x-admin-key header (timing-safe compare + rate limiting via adminAuthMiddleware).
 
 import { NextResponse } from "next/server";
 import { count, sql, desc } from "drizzle-orm";
 import { frameInteractions as t } from "@/lib/db/schema";
 import { db } from "@/lib/db/client";
-
-const ADMIN_KEY = process.env.ADMIN_KEY || "";
+import { adminAuthMiddleware } from "@/lib/admin-auth";
 
 const BUTTON_LABELS: Record<number, string> = {
   1: "Launch Dashboard (Overview)",
@@ -98,11 +97,8 @@ async function getTopProtocols(limit = 10) {
 // ─── Route ──────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
-  // Auth: x-admin-key header must match ADMIN_KEY env var
-  const key = request.headers.get("x-admin-key");
-  if (!ADMIN_KEY || key !== ADMIN_KEY) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await adminAuthMiddleware(request);
+  if (denied) return denied;
 
   try {
     const [

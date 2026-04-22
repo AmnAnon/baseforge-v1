@@ -230,11 +230,12 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci --ignore-scripts
 
-      - name: Run npm audit
-        run: npx audit-ci --moderate || true
+      - name: Run npm audit (block on high/critical)
+        run: npx audit-ci --high
 
       - name: Report audit summary
-        run: npx audit-ci --moderate --report-type summary || true
+        if: always()
+        run: npx audit-ci --high --report-type summary || true
 
   # ── 6. Docker Build Test ────────────────────────────────
   docker:

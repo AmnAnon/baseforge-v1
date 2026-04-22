@@ -1,23 +1,15 @@
 // src/app/api/admin/api-keys/route.ts
 // Admin API for managing API keys.
-// Protected by ADMIN_KEY environment variable.
+// Protected by ADMIN_KEY environment variable (timing-safe compare + rate limiting).
 // Supports: GET (list), POST (create), PATCH (toggle/update), DELETE (revoke).
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { apiKeys, apiKeyUsage } from "@/lib/db/schema";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, gte, desc, count } from "drizzle-orm";
 import { createApiKeyInDb } from "@/lib/api-key";
+import { adminAuthMiddleware } from "@/lib/admin-auth";
 import { z } from "zod";
-
-// ─── Admin auth ─────────────────────────────────────────────────
-
-function verifyAdmin(req: Request): boolean {
-  const adminKey = process.env.ADMIN_KEY;
-  if (!adminKey) return false;
-  const provided = req.headers.get("x-admin-key");
-  return provided === adminKey;
-}
 
 // ─── Schemas ────────────────────────────────────────────────────
 
@@ -62,11 +54,11 @@ async function handleGet() {
     .from(apiKeys)
     .orderBy(desc(apiKeys.createdAt));
 
-  // Get usage stats per key (last 24h)
+  // Get usage stats per key (last 24h) — gte = "created at or after 24 h ago"
   const usageStats = await db
     .select({ keyId: apiKeyUsage.keyId, count: count() })
     .from(apiKeyUsage)
-    .where(eq(apiKeyUsage.createdAt, new Date(Date.now() - 86_400_000)))
+    .where(gte(apiKeyUsage.createdAt, new Date(Date.now() - 86_400_000)))
     .groupBy(apiKeyUsage.keyId);
 
   const usageMap = new Map(usageStats.map((u) => [u.keyId, u.count]));
@@ -196,30 +188,26 @@ async function handleDelete(req: Request) {
 // ─── Main handler ───────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  if (!verifyAdmin(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
   return handleGet();
 }
 
 export async function POST(req: NextRequest) {
-  if (!verifyAdmin(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
   return handlePost(req);
 }
 
 export async function PATCH(req: NextRequest) {
-  if (!verifyAdmin(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
   return handlePatch(req);
 }
 
 export async function DELETE(req: NextRequest) {
-  if (!verifyAdmin(req)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
   return handleDelete(req);
 }
 

@@ -65,19 +65,39 @@ export async function GET() {
 async function runHealthChecks() {
   const checks: HealthStatus["checks"] = {};
 
-  // Check upstream APIs
-  const llamaCheck = await checkUpstream("https://api.llama.fi/healthy", "DefiLlama");
-  checks.defillama = llamaCheck;
-
-  const coingeckoCheck = await checkUpstream(
-    "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
-    "CoinGecko"
-  );
-  checks.coingecko = coingeckoCheck;
+  // ─── Parallel I/O: upstream APIs + DB + indexer + worker ───────
+  // All independent — run concurrently with individual timeouts so one
+  // slow upstream can't block the entire health response.
 
   const cacheStats = cache.stats();
   const cacheBackend = process.env.CACHE_BACKEND || "memory";
   const isProd = process.env.NODE_ENV === "production";
+
+  const workerUrl = process.env.WORKER_URL?.replace(/\/$/, "");
+
+  const [llamaCheck, coingeckoCheck, dbResult, indexerResult, workerResult] =
+    await Promise.all([
+      checkUpstream("https://api.llama.fi/healthy", "DefiLlama"),
+      checkUpstream(
+        "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+        "CoinGecko"
+      ),
+      process.env.DATABASE_URL
+        ? checkDatabase()
+        : Promise.resolve(null),
+      getIndexerHealth().catch(() => null),
+      workerUrl
+        ? fetch(`${workerUrl}/health`, {
+            cache: "no-store",
+            signal: AbortSignal.timeout(2_000),
+          })
+            .then((res) => ({ ok: res.ok, status: res.status, latency: 0 }))
+            .catch((e: unknown) => ({ ok: false, status: 0, error: e instanceof Error ? e.message : "timeout or network error" }))
+        : Promise.resolve(null),
+    ]);
+
+  checks.defillama = llamaCheck;
+  checks.coingecko = coingeckoCheck;
 
   // Warn if using memory cache in production
   if (isProd && cacheBackend === "memory") {
@@ -92,59 +112,42 @@ async function runHealthChecks() {
     };
   }
 
-  // Check DB only if URL is set
-  if (process.env.DATABASE_URL) {
-    checks.database = await checkDatabase();
+  if (dbResult !== null) {
+    checks.database = dbResult;
   }
 
-  // Check indexer health
-  try {
-    const indexerHealth = await getIndexerHealth();
+  if (indexerResult !== null) {
     checks.indexer_primary = {
-      status: indexerHealth.primary.healthy ? "ok" : "error",
-      latency: indexerHealth.primary.latencyMs,
-      detail: `${indexerHealth.primary.provider} block=${indexerHealth.primary.lastBlock} lag=${indexerHealth.primary.lag}`,
+      status: indexerResult.primary.healthy ? "ok" : "error",
+      latency: indexerResult.primary.latencyMs,
+      detail: `${indexerResult.primary.provider} block=${indexerResult.primary.lastBlock} lag=${indexerResult.primary.lag}`,
     };
     checks.indexer_fallback = {
-      status: indexerHealth.fallback.healthy ? "ok" : "error",
-      latency: indexerHealth.fallback.latencyMs,
-      detail: `${indexerHealth.fallback.provider} block=${indexerHealth.fallback.lastBlock}`,
+      status: indexerResult.fallback.healthy ? "ok" : "error",
+      latency: indexerResult.fallback.latencyMs,
+      detail: `${indexerResult.fallback.provider} block=${indexerResult.fallback.lastBlock}`,
     };
     checks.indexer_active = {
       status: "ok",
-      detail: `active_provider=${indexerHealth.activeProvider}`,
+      detail: `active_provider=${indexerResult.activeProvider}`,
     };
-  } catch {
+  } else {
     checks.indexer = { status: "error", detail: "Health check failed" };
   }
 
-  // Check Railway worker
-  const workerUrl = process.env.WORKER_URL?.replace(/\/$/, "");
+  // Worker status
   let workerUnreachable = false;
-  if (workerUrl) {
-    try {
-      const start = Date.now();
-      const res = await fetch(`${workerUrl}/health`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(2_000),
-      });
-      const latency = Date.now() - start;
-      if (res.ok) {
-        checks.worker = { status: "ok", latency, detail: "railway worker healthy" };
-      } else {
-        workerUnreachable = true;
-        checks.worker = { status: "unreachable", latency, detail: `HTTP ${res.status}` };
-      }
-    } catch (e: unknown) {
-      workerUnreachable = true;
-      checks.worker = {
-        status: "unreachable",
-        detail: e instanceof Error ? e.message : "timeout or network error",
-      };
-    }
-  } else {
+  if (workerResult === null) {
     workerUnreachable = true;
     checks.worker = { status: "unreachable", detail: "WORKER_URL not configured" };
+  } else if (!workerResult.ok) {
+    workerUnreachable = true;
+    checks.worker = {
+      status: "unreachable",
+      detail: "error" in workerResult ? workerResult.error : `HTTP ${workerResult.status}`,
+    };
+  } else {
+    checks.worker = { status: "ok", detail: "railway worker healthy" };
   }
 
   // Determine overall status
