@@ -221,13 +221,28 @@ npm run db:studio    # Open Drizzle Studio
 
 ## Tech Stack
 
-- **Framework:** Next.js 15.5 (App Router, Turbopack)
+- **Framework:** Next.js 16 (App Router, Turbopack)
 - **UI:** React 19, Tailwind CSS 4, Tremor v4, Framer Motion, Lucide icons
 - **Data:** DefiLlama API, Llama API, Etherscan V2, CoinGecko, Llama Yields
-- **Cache:** In-memory with Upstash Redis option
+- **Cache:** In-memory (dev) / Upstash Redis (production)
+- **Rate limiting:** In-memory sliding window (dev) / Upstash Redis fixed-window (production — shared across replicas)
 - **Database:** Neon Postgres with Drizzle ORM
-- **Observability:** Sentry, pino structured logging
-- **Testing:** Vitest + happy-dom
+- **Observability:** Sentry, pino structured logging, Prometheus `/api/metrics`
+- **Testing:** Vitest + happy-dom + MSW
+
+## Operational Modes
+
+BaseForge behaves differently depending on which environment variables are set. This table shows the guarantees for each configuration:
+
+| Feature | Single instance / dev | Multi-replica / prod |
+|---|---|---|
+| **Cache** | In-memory (lost on restart) | Upstash Redis — set `CACHE_BACKEND=upstash` |
+| **Rate limiting** | In-memory per process (limits are per-instance) | Upstash Redis fixed-window — limits enforced across all replicas |
+| **SSE stream** | Inline fallback polling (no Redis) | Redis version-counter fan-out (`stream:latest` / `stream:version`) |
+| **DB** | Optional (alerts/portfolio disabled if unset) | Neon Postgres required for alerts, frames, API keys |
+| **Indexer** | Envio HyperSync if token set; else Etherscan fallback | Same — circuit breaker auto-switches providers |
+| **CORS** | All origins allowed (open public API default) | Set `CORS_ALLOWED_ORIGINS=https://a.com,https://b.com` to restrict |
+| **Admin endpoints** | `ADMIN_KEY` env var required | Same — brute-force rate-limited in production |
 
 ## Production Roadmap
 

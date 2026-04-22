@@ -95,6 +95,12 @@ if (CACHE_BACKEND === "upstash" && process.env.UPSTASH_REDIS_URL && process.env.
 
 // ─── Public API — all async ────────────────────────────
 
+// Inflight map: deduplicates concurrent `getOrFetch` calls for the same key.
+// Without this, N simultaneous cache misses each fire the fetcher independently
+// (cache stampede). With it, only the first caller runs the fetcher; all others
+// await the same Promise and share the result.
+const inflight = new Map<string, Promise<unknown>>();
+
 export const cache = {
   get: <T>(key: string): Promise<T | null> => driver.get<T>(key),
   getStale: <T>(key: string): Promise<T | null> => {
@@ -104,17 +110,32 @@ export const cache = {
   },
   set: <T>(key: string, value: T, ttl: number): Promise<void> => driver.set<T>(key, value, ttl),
   del: (key: string): Promise<void> => driver.del(key),
-  clear: (): Promise<void> => driver.clear(),
+  clear: (): Promise<void> => { inflight.clear(); return driver.clear(); },
   stats: (): { size: number; hitRate: number } => driver.stats(),
 
-  /** Cache-aside: getOrFetch(key, ttlMs, fetchFn) */
+  /** Cache-aside with single-flight: only one fetch runs per key at a time. */
   getOrFetch: async <T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> => {
     const ttlSeconds = Math.round(ttlMs / 1000);
     const cached = await driver.get<T>(key);
     if (cached !== null) return cached;
-    const fresh = await fetcher();
-    await driver.set(key, fresh, ttlSeconds);
-    return fresh;
+
+    // If a fetch is already in progress for this key, wait for it
+    const existing = inflight.get(key);
+    if (existing) return existing as Promise<T>;
+
+    // Start the fetch and register it so concurrent callers can share it
+    const promise = fetcher().then(
+      (fresh) => {
+        inflight.delete(key);
+        return driver.set(key, fresh, ttlSeconds).then(() => fresh);
+      },
+      (err) => {
+        inflight.delete(key);
+        throw err;
+      }
+    );
+    inflight.set(key, promise);
+    return promise as Promise<T>;
   },
 
   /** Cache-aside with stale fallback: if fetch fails, return expired cache entry with isStale=true */
