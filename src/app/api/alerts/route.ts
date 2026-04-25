@@ -2,11 +2,11 @@
 // Alert check engine — scans Base protocols against persisted alert rules in Postgres.
 // Reads rules from the database, evaluates conditions against live DefiLlama data,
 // and records triggered events with cooldown enforcement.
+//
+// Graceful degradation: if DATABASE_URL is not set, returns empty alerts.
 
 import { NextResponse } from "next/server";
 import { and, eq, gte, desc, count } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { alertRules, alertEvents } from "@/lib/db/schema";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { AlertsResponseSchema } from "@/lib/zod/schemas";
@@ -17,11 +17,22 @@ const EMPTY_ALERTS = () => ({
   isStale: true,
 });
 
+const DATABASE_ENABLED = process.env.DATABASE_ENABLED === 'true' && !!process.env.DATABASE_URL;
+
 async function evaluateAlertRules() {
-  const rules = await db
-    .select()
-    .from(alertRules)
-    .where(eq(alertRules.enabled, true));
+  if (!DATABASE_ENABLED) {
+    // No database — return empty (client will use localStorage alerts)
+    return EMPTY_ALERTS();
+  }
+
+  try {
+    const { db } = await import("@/lib/db/client");
+    const { alertRules, alertEvents } = await import("@/lib/db/schema");
+
+    const rules = await db
+      .select()
+      .from(alertRules)
+      .where(eq(alertRules.enabled, true));
 
   let protocols: {
     name: string;
@@ -39,7 +50,7 @@ async function evaluateAlertRules() {
       protocols = await protocolsRes.json();
     }
   } catch {
-    return;
+    return EMPTY_ALERTS();
   }
 
   const baseProtos = protocols.filter(
@@ -112,6 +123,12 @@ async function evaluateAlertRules() {
         });
     }
   }
+
+  return { alerts: [], timestamp: Date.now() };
+  } catch (error) {
+    console.error('[alerts] Database operation failed:', error);
+    return EMPTY_ALERTS();
+  }
 }
 
 function buildAlertMessage(condition: string, name: string, value: number) {
@@ -133,9 +150,19 @@ export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
+  if (!DATABASE_ENABLED) {
+    // Database disabled — return empty alerts (client will use localStorage)
+    return NextResponse.json(EMPTY_ALERTS(), {
+      headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=60" },
+    });
+  }
+
   try {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     await evaluateAlertRules();
+
+    const { db } = await import("@/lib/db/client");
+    const { alertEvents } = await import("@/lib/db/schema");
 
     const triggered = await db
       .select()

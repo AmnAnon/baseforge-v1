@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
+  experimental: {
+    turbo: {
+      root: process.cwd(),
+    },
+  },
   headers: async () => [
     {
       source: "/(.*)",

@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { resilientFetch } from "@/lib/api-client";
 
 interface ProtocolDatum {
   name: string;
@@ -25,10 +26,10 @@ export async function GET(req: Request) {
 
   try {
     const data = await cache.getOrFetch("protocols-list", CACHE_TTL.PROTOCOL_LIST, async () => {
-      const res = await fetch("https://api.llama.fi/protocols", { cache: "no-store" });
-      if (!res.ok) throw new Error(`protocols fetch failed: ${res.status}`);
-
-      const protocols: ProtocolDatum[] = await res.json();
+      const protocols: ProtocolDatum[] = await resilientFetch("https://api.llama.fi/protocols", {
+        timeoutMs: 12000,
+        retries: 2,
+      });
       const baseProtocols = protocols
         .filter((p) => (p.chainTvls?.Base ?? 0) > 0 && !EXCLUDED.has(p.category))
         .sort((a, b) => (b.chainTvls.Base ?? 0) - (a.chainTvls.Base ?? 0));

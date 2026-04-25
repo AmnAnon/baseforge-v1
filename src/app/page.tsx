@@ -28,12 +28,20 @@ async function getInitialData(): Promise<AnalyticsData | null> {
   try {
     const [protRes, tvlRes] = await Promise.allSettled([
       fetch("https://api.llama.fi/protocols", {
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(12_000), // Increased timeout for SSR
         next: { revalidate: 60 },
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'BaseForge-Analytics/1.0',
+        },
       }).then((r) => (r.ok ? r.json() : null)),
       fetch("https://api.llama.fi/v2/historicalChainTvl/Base", {
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(12_000), // Increased timeout for SSR
         next: { revalidate: 300 },
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'BaseForge-Analytics/1.0',
+        },
       }).then((r) => (r.ok ? r.json() : null)),
     ]);
 
@@ -42,7 +50,10 @@ async function getInitialData(): Promise<AnalyticsData | null> {
     const tvlHistory: { date: number; tvl: number }[] =
       tvlRes.status === "fulfilled" && Array.isArray(tvlRes.value) ? tvlRes.value : [];
 
-    if (protocols.length === 0 && tvlHistory.length === 0) return null;
+    if (protocols.length === 0 && tvlHistory.length === 0) {
+      console.warn('[SSR] No data received from DefiLlama - client will fetch')
+      return null;
+    }
 
     const baseProtocols = protocols
       .filter((p) => {
@@ -92,7 +103,8 @@ async function getInitialData(): Promise<AnalyticsData | null> {
       protocolData: {},
       timestamp: Date.now(),
     };
-  } catch {
+  } catch (error) {
+    console.error('[SSR] Failed to fetch initial data:', error);
     return null;
   }
 }

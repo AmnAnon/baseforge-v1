@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { resilientFetch } from "@/lib/api-client";
 import { logger } from "@/lib/logger";
 
 const EXCLUDED_CATEGORIES = new Set(["Chain", "CEX", "Bridge", "Risk Curators"]);
@@ -28,14 +29,10 @@ export async function GET(req: Request) {
 
   try {
     const data = await cache.getOrFetch("revenue-v2", CACHE_TTL.PROTOCOL_LIST, async () => {
-      const res = await fetch("https://api.llama.fi/overview/fees/base", {
-        cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
+      const json = await resilientFetch("https://api.llama.fi/overview/fees/base", {
+        timeoutMs: 15000,
+        retries: 2,
       });
-
-      if (!res.ok) throw new Error(`DefiLlama fees API returned ${res.status}`);
-
-      const json = await res.json();
       const rawProtocols: Array<{
         name: string;
         category?: string;

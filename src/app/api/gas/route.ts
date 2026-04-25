@@ -57,7 +57,13 @@ export async function GET(req: Request) {
       try {
         const { createPublicClient, http } = await import("viem");
         const { base } = await import("viem/chains");
-        const client = createPublicClient({ chain: base, transport: http("https://mainnet.base.org") });
+
+        const baseRpcUrl = process.env.BASE_RPC_URL || "https://mainnet.base.org";
+        const client = createPublicClient({
+          chain: base,
+          transport: http(baseRpcUrl, { timeout: 8000, retryCount: 2 })
+        });
+
         const gasPrice = await client.getGasPrice();
         const gasPriceGwei = Number(gasPrice) / 1e9;
         let congestion: "low" | "medium" | "high" = "low";
@@ -72,8 +78,34 @@ export async function GET(req: Request) {
           congestion,
           timestamp: Date.now(),
         };
-      } catch {
-        return { ...FALLBACK_GAS, timestamp: Date.now() };
+      } catch (error) {
+        console.error("Base RPC gas fetch failed:", error);
+        // Try fallback RPC
+        try {
+          const { createPublicClient, http } = await import("viem");
+          const { base } = await import("viem/chains");
+          const fallbackRpcUrl = process.env.BASE_RPC_FALLBACK || "https://base.llamarpc.com";
+          const fallbackClient = createPublicClient({
+            chain: base,
+            transport: http(fallbackRpcUrl, { timeout: 5000 })
+          });
+          const gasPrice = await fallbackClient.getGasPrice();
+          const gasPriceGwei = Number(gasPrice) / 1e9;
+          let congestion: "low" | "medium" | "high" = "low";
+          if (gasPriceGwei > 0.01) congestion = "high";
+          else if (gasPriceGwei > 0.002) congestion = "medium";
+          return {
+            safe: gasPriceGwei,
+            standard: gasPriceGwei * 1.2,
+            fast: gasPriceGwei * 1.5,
+            baseFee: gasPriceGwei,
+            source: "viem-rpc-fallback",
+            congestion,
+            timestamp: Date.now(),
+          };
+        } catch {
+          return { ...FALLBACK_GAS, timestamp: Date.now() };
+        }
       }
     });
 
