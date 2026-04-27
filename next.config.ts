@@ -5,9 +5,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   output: "standalone",
   experimental: {
-    turbo: {
-      root: process.cwd(),
-    },
+    // Turbopack configured via CLI --turbopack flag (Next.js 16+)
   },
   headers: async () => [
     {
