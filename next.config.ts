@@ -4,9 +4,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: "standalone",
-  experimental: {
-    // Turbopack configured via CLI --turbopack flag (Next.js 16+)
-  },
+
   headers: async () => [
     {
       source: "/(.*)",
