@@ -14,7 +14,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed-admin": "tsx --env-file=.env.local scripts/seed-admin-key.ts"
+    "db:seed-admin": "tsx --env-file=.env.local scripts/seed-admin-key.ts",
+    "dev:worker": "cd worker && tsx watch index.ts",
+    "dev:all": "next dev --turbopack & cd worker && tsx watch index.ts; wait"
   },
   "dependencies": {
     "@radix-ui/react-select": "^2.2.6",
