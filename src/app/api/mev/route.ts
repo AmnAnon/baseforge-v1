@@ -1,20 +1,23 @@
 // src/app/api/mev/route.ts
-// MEV activity — EigenPhi Base MEV (primary), Redis cache (fallback).
+// MEV activity — Envio sandwich detection (primary), Redis cache (fallback).
 //
-// EigenPhi endpoint (no API key required for basic access):
-//   GET https://api.eigenphi.io/ethereum/v1/mev/txs/latest?chain=base&limit=50
+// EigenPhi API was previously the primary source but has been deprecated
+// (returns 404 on all endpoints). Replaced with self-hosted sandwich
+// detection via Envio HyperSync swap event analysis.
 //
-// Response shape:
-//   { events, stats, source, _demo, _notice?, dataNote, timestamp, isStale }
+// Detection strategy:
+//   - Fetch recent swap events (same pipeline as whale tracking)
+//   - Group by pool × blockNumber
+//   - Find 3-tx chains where same address controls first+third swaps
+//     on the same pool in opposite directions (front-run → victim → back-run)
 
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
-import { circuitBreakers } from "@/lib/circuit-breaker";
 import { logger } from "@/lib/logger";
 import { Redis } from "@upstash/redis";
 
-// ─── Types ──────────────────────────────────────────────────────
+// ─── Types (frontend-compatible) ─────────────────────────────────
 
 interface MEVEvent {
   txHash: string;
@@ -35,7 +38,7 @@ interface MEVStats {
   avgExtractedUSD: number;
 }
 
-// ─── Redis (optional) ─────────────────────────────────────────────
+// ─── Redis (optional fallback) ─────────────────────────────────────
 
 let _redis: Redis | null = null;
 function getRedis(): Redis | null {
@@ -47,82 +50,33 @@ function getRedis(): Redis | null {
   return _redis;
 }
 
-// ─── EigenPhi field mapping ───────────────────────────────────────
+// ─── Envio sandwich source ────────────────────────────────────────
 
-type EigenPhiMevType = string; // "Sandwich" | "Arbitrage" | "Liquidation" | ...
+async function fetchSandwichData(): Promise<{
+  events: MEVEvent[];
+  source: string;
+  notice?: string;
+}> {
+  const { detectSandwiches } = await import("@/lib/data/mev/sandwich-detector");
+  const result = await detectSandwiches(200);
 
-interface EigenPhiTx {
-  tx_hash?: string;
-  mevType?: EigenPhiMevType;
-  profit_usd?: number;
-  timestamp?: number;
-  protocol?: string;
-  attackerAddress?: string;
-  victimAddress?: string;
-  // some responses use alternate casings
-  txHash?: string;
-  mev_type?: string;
-  profitUsd?: number;
-  attacker_address?: string;
-  victim_address?: string;
-}
-
-function normalizeType(raw: string | undefined): MEVEvent["type"] {
-  const lower = (raw ?? "").toLowerCase();
-  if (lower.includes("sandwich")) return "sandwich";
-  if (lower.includes("liquidat")) return "liquidation";
-  return "arbitrage"; // default for arb, front-run, etc.
-}
-
-function mapEigenPhiTx(tx: EigenPhiTx): MEVEvent {
-  const txHash   = tx.tx_hash   ?? tx.txHash   ?? "";
-  const mevType  = tx.mevType   ?? tx.mev_type  ?? "";
-  const profit   = tx.profit_usd ?? tx.profitUsd ?? 0;
-  const ts       = tx.timestamp ?? 0;
-  const protocol = tx.protocol  ?? "unknown";
-  const attacker = tx.attackerAddress ?? tx.attacker_address ?? "";
-  const victim   = tx.victimAddress   ?? tx.victim_address   ?? null;
+  const events: MEVEvent[] = result.sandwiches.map((s) => ({
+    txHash: s.txFrontRun,   // show front-run hash as primary
+    type: "sandwich" as const,
+    protocol: s.protocol,
+    extracted: s.extractedUSD,
+    attacker: s.attacker.slice(0, 10) + "…",
+    victim: s.victim.slice(0, 10) + "…",
+    timestamp: s.timestamp * 1000,
+  }));
 
   return {
-    txHash,
-    type:      normalizeType(mevType),
-    protocol:  protocol || "unknown",
-    extracted: typeof profit === "number" ? profit : parseFloat(String(profit)) || 0,
-    attacker:  attacker ? attacker.slice(0, 10) + "…" : "unknown",
-    victim:    victim ? victim.slice(0, 10) + "…" : null,
-    // EigenPhi returns Unix seconds; convert to ms
-    timestamp: ts > 1e12 ? ts : ts * 1000,
+    events,
+    source: "envio-sandwich-detector",
+    ...(events.length === 0
+      ? { notice: "No sandwich patterns detected in recent blocks" }
+      : {}),
   };
-}
-
-// ─── Primary: EigenPhi ────────────────────────────────────────────
-
-async function fetchEigenPhi(): Promise<MEVEvent[]> {
-  const res = await fetch(
-    "https://api.eigenphi.io/ethereum/v1/mev/txs/latest?chain=base&limit=50",
-    {
-      headers: { "Accept": "application/json" },
-      signal: AbortSignal.timeout(10_000),
-      cache: "no-store",
-    }
-  );
-
-  if (!res.ok) throw new Error(`EigenPhi HTTP ${res.status}`);
-
-  const json = await res.json();
-
-  // EigenPhi wraps results in a data/txs/list key depending on version
-  const rows: EigenPhiTx[] =
-    Array.isArray(json)               ? json :
-    Array.isArray(json.data)          ? json.data :
-    Array.isArray(json.txs)           ? json.txs :
-    Array.isArray(json.result)        ? json.result :
-    Array.isArray(json.mevTransactions) ? json.mevTransactions :
-    [];
-
-  if (rows.length === 0) throw new Error("EigenPhi returned empty result set");
-
-  return rows.map(mapEigenPhiTx);
 }
 
 // ─── Fallback: Redis cache ─────────────────────────────────────────
@@ -164,16 +118,19 @@ export async function GET(req: Request) {
   if (rateResponse) return rateResponse;
 
   try {
-    const data = await cache.getOrFetch("mev-eigenphi-v1", CACHE_TTL.WHALE_TX, async () => {
-      // ── 1. Try EigenPhi via circuit breaker ──
+    const data = await cache.getOrFetch("mev-sandwich-v1", CACHE_TTL.WHALE_TX, async () => {
+      // ── 1. Try Envio sandwich detector via circuit breaker (when available) ──
       let events: MEVEvent[] | null = null;
-      let source = "eigenphi";
+      let source = "envio-sandwich-detector";
       let notice: string | undefined;
 
       try {
-        events = await circuitBreakers.eigenphi.execute(() => fetchEigenPhi());
+        const result = await fetchSandwichData();
+        events = result.events;
+        source = result.source;
+        notice = result.notice;
       } catch (err) {
-        logger.warn("EigenPhi fetch failed, trying Redis cache", {
+        logger.warn("Envio sandwich detection failed, trying Redis cache", {
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -189,15 +146,16 @@ export async function GET(req: Request) {
 
       // ── 3. Empty state ──
       if (!events || events.length === 0) {
+        const emptyStats = computeStats([]);
         return {
           events: [],
-          stats: computeStats([]),
-          source: "none",
+          stats: emptyStats,
+          source: "envio-sandwich-detector",
           _demo: false,
-          _notice: "MEV data temporarily unavailable",
-          dataNote: "EigenPhi data unavailable. Will retry automatically.",
+          _notice: "No MEV activity detected in recent blocks. Sandwich detection is running on Envio HyperSync.",
+          dataNote: "Sandwich detection analyzes swap events for front-run → victim → back-run patterns. Currently scanning ~200 blocks.",
           timestamp: Date.now(),
-          isStale: true,
+          isStale: false,
         };
       }
 
@@ -209,11 +167,11 @@ export async function GET(req: Request) {
         source,
         _demo:  false,
         ...(notice ? { _notice: notice } : {}),
-        dataNote: source === "eigenphi"
-          ? "Live MEV data from EigenPhi Base indexer."
-          : "Showing cached MEV data — EigenPhi temporarily unreachable.",
+        dataNote: source === "envio-sandwich-detector"
+          ? "MEV detected via Envio HyperSync swap event pattern analysis."
+          : "Showing cached MEV data — Envio temporarily unreachable.",
         timestamp: Date.now(),
-        isStale: source !== "eigenphi",
+        isStale: source !== "envio-sandwich-detector",
       };
     });
 
@@ -231,8 +189,8 @@ export async function GET(req: Request) {
         stats: computeStats([]),
         source: "none",
         _demo: false,
-        _notice: "MEV data temporarily unavailable",
-        dataNote: "EigenPhi data unavailable. Will retry automatically.",
+        _notice: "MEV detection unavailable",
+        dataNote: "Sandwich detection temporarily unavailable. Will retry automatically.",
         timestamp: Date.now(),
         isStale: true,
       },

@@ -13,8 +13,8 @@ export const EVENT_SIGNATURES = {
   UNISWAP_V3_MINT: "0x7a53080ba414158be7ec69b987b5fb7d07dee101fe85488f0853ae16239d0bde",
   UNISWAP_V3_BURN: "0x0c396cd989a39f4459b5fa1aed6a9a8dcdbc45908acfd67e028cd568da98982c",
 
-  // Aerodrome Pool (Solidly-style)
-  AERODROME_SWAP: "0xb3e2773606abfd36b5bd91394b3a54d1398336c65005baf7f44571de818661ed",
+  // Aerodrome Pool (Solidly-style): Swap(indexed sender, indexed to, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out)
+  AERODROME_SWAP: "0xb3e2773606abfd36b5bd91394b3a54d1398336c65005baf7bf7a05efeffaf75b",
   AERODROME_MINT: "0x4c209b5fc8ad50758f13e2e1088ba56a560dff690a1c6fef26394f4c03821c4f",
   AERODROME_BURN: "0xdccd412f0b1252819cb1fd330b93224ca42612892bb3f4f789976e6d81936496",
 

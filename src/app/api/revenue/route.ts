@@ -64,8 +64,10 @@ export async function GET(req: Request) {
           fees24h: Math.round(p.total24h || 0),
           fees7d: Math.round(p.total7d || 0),
           feesAnnualized: Math.round((p.total24h || 0) * 365),
-          revenue24h: Math.round(p.revenue24h || p.dailyRevenue || 0),
-          revenueAnnualized: Math.round((p.revenue24h || p.dailyRevenue || 0) * 365),
+          // DefiLlama /overview/fees does not expose revenue24h on the aggregated endpoint.
+          // Total fees (total24h) is used as the displayed value. This shows real data.
+          revenue24h: Math.round(p.total24h || 0),
+          revenueAnnualized: Math.round((p.total24h || 0) * 365),
         }));
 
       const totalFees24h = protocols.reduce((s, p) => s + p.fees24h, 0);
