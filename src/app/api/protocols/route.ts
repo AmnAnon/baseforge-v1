@@ -26,10 +26,13 @@ export async function GET(req: Request) {
 
   try {
     const data = await cache.getOrFetch("protocols-list", CACHE_TTL.PROTOCOL_LIST, async () => {
-      const protocols: ProtocolDatum[] = await resilientFetch("https://api.llama.fi/protocols", {
-        timeoutMs: 12000,
-        retries: 2,
-      });
+      const protocols = await resilientFetch<ProtocolDatum[]>(
+        "https://api.llama.fi/protocols",
+        {
+          timeoutMs: 12000,
+          retries: 2,
+        },
+      );
       const baseProtocols = protocols
         .filter((p) => (p.chainTvls?.Base ?? 0) > 0 && !EXCLUDED.has(p.category))
         .sort((a, b) => (b.chainTvls.Base ?? 0) - (a.chainTvls.Base ?? 0));
