@@ -23,30 +23,40 @@ const EMPTY_REVENUE = () => ({
   isStale: true,
 });
 
+interface DefiLlamaFeesProtocol {
+  name: string;
+  category?: string;
+  total24h?: number;
+  total7d?: number;
+  total30d?: number;
+  revenue24h?: number;
+  revenue7d?: number;
+  revenue30d?: number;
+  dailyRevenue?: number;
+}
+
+interface DefiLlamaFeesOverview {
+  protocols?: DefiLlamaFeesProtocol[];
+  totalDataChart?: Array<[number, number]>;
+}
+
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   try {
     const data = await cache.getOrFetch("revenue-v2", CACHE_TTL.PROTOCOL_LIST, async () => {
-      const json = await resilientFetch("https://api.llama.fi/overview/fees/base", {
-        timeoutMs: 15000,
-        retries: 2,
-      });
-      const rawProtocols: Array<{
-        name: string;
-        category?: string;
-        total24h?: number;
-        total7d?: number;
-        total30d?: number;
-        revenue24h?: number;
-        revenue7d?: number;
-        revenue30d?: number;
-        dailyRevenue?: number;
-      }> = json.protocols || [];
+      const json = await resilientFetch<DefiLlamaFeesOverview>(
+        "https://api.llama.fi/overview/fees/base",
+        {
+          timeoutMs: 15000,
+          retries: 2,
+        },
+      );
+      const rawProtocols = json.protocols ?? [];
 
       // Get latest total from chart
-      const chart: Array<[number, number]> = json.totalDataChart || [];
+      const chart = json.totalDataChart ?? [];
       const latestTotal = chart.length > 0 ? chart[chart.length - 1][1] : 0;
 
       const protocols = rawProtocols

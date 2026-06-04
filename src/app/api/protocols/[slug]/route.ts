@@ -235,7 +235,7 @@ export async function GET(
       fetchAllProtocols(),
     ]);
 
-    const proto = allProtocols.find((p: { slug?: string; name?: string }) =>
+    const proto = allProtocols.find((p: { slug?: string; id?: string; name?: string }) =>
       p.slug === slug || p.id === slug || p.name?.toLowerCase().replace(/ /g, "-") === slug
     );
 
