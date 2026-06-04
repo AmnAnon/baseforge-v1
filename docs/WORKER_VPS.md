@@ -39,13 +39,15 @@ ssh ubuntu@43.163.106.68 "mkdir -p ~/.secrets && printf '%s\n' 'DATABASE_URL=YOU
 
 ## Vercel
 
-After the worker is healthy:
+Port **3001** is not open on the public internet (Tencent security group). The worker is proxied via Signal Vault on **port 80**:
 
 ```env
-WORKER_URL=http://43.163.106.68:3001
+WORKER_URL=http://43.163.106.68/baseforge
 ```
 
-Redeploy or wait for env propagation. Health should show `checks.worker.status: ok`.
+Vercel will call `http://43.163.106.68/baseforge/health` and `/baseforge/metrics`.
+
+To expose `:3001` directly instead, open TCP 3001 in the Tencent Cloud firewall and use `WORKER_URL=http://43.163.106.68:3001`.
 
 ## Ops
 
