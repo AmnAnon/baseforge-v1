@@ -4,6 +4,7 @@
 // Button 1 uses action: "app" to launch the miniapp in-app.
 import { NextRequest, NextResponse } from "next/server";
 import { logFrameInteraction, FrameLogPayload } from "@/lib/db/frame-analytics";
+import { logger } from "@/lib/logger";
 
 const BASE_URL =
   process.env.VERCEL_URL
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
       state: newState,
     });
   } catch (err) {
-    console.error("Frame POST error:", err);
+    logger.error("Frame POST error", { error: String(err) });
     return new NextResponse(`<!DOCTYPE html><html><body><h1>Frame Error</h1></body></html>`, {
       status: 500,
       headers: { "Content-Type": "text/html" },

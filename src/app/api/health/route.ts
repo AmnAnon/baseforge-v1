@@ -7,6 +7,11 @@ import { cache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
 import { getIndexerHealth } from "@/lib/data/indexers";
 import { circuitBreakers } from "@/lib/circuit-breaker";
+import {
+  DEFILLAMA_HEALTH_URL,
+  resolveCacheBackend,
+  usesCronBackgroundJobs,
+} from "@/lib/env-config";
 
 interface HealthStatus {
   status: "ok" | "degraded" | "unhealthy";
@@ -70,14 +75,15 @@ async function runHealthChecks() {
   // slow upstream can't block the entire health response.
 
   const cacheStats = cache.stats();
-  const cacheBackend = process.env.CACHE_BACKEND || "memory";
+  const cacheBackend = resolveCacheBackend();
   const isProd = process.env.NODE_ENV === "production";
+  const cronJobs = usesCronBackgroundJobs();
 
   const workerUrl = process.env.WORKER_URL?.replace(/\/$/, "");
 
   const [llamaCheck, coingeckoCheck, dbResult, indexerResult, workerResult] =
     await Promise.all([
-      checkUpstream("https://api.llama.fi/healthy", "DefiLlama"),
+      checkUpstream(DEFILLAMA_HEALTH_URL, "DefiLlama", 8_000),
       checkUpstream(
         "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
         "CoinGecko"
@@ -99,11 +105,16 @@ async function runHealthChecks() {
   checks.defillama = llamaCheck;
   checks.coingecko = coingeckoCheck;
 
-  // Warn if using memory cache in production
   if (isProd && cacheBackend === "memory") {
     checks.cache = {
       status: "error",
-      detail: "MEMORY cache in production — set CACHE_BACKEND=upstash for prod",
+      detail:
+        "MEMORY cache in production — set DATABASE_URL and CACHE_BACKEND=postgres (or unset CACHE_BACKEND)",
+    };
+  } else if (isProd && cacheBackend === "postgres" && !process.env.DATABASE_URL) {
+    checks.cache = {
+      status: "error",
+      detail: "postgres backend selected but DATABASE_URL is missing",
     };
   } else {
     checks.cache = {
@@ -135,11 +146,20 @@ async function runHealthChecks() {
     checks.indexer = { status: "error", detail: "Health check failed" };
   }
 
-  // Worker status
+  // Worker status (dedicated worker or Vercel Cron fallback)
   let workerUnreachable = false;
-  if (workerResult === null) {
+  if (workerResult === null && cronJobs) {
+    checks.worker = {
+      status: "ok",
+      detail: "vercel-cron (/api/cron/warm every 2m) — set WORKER_URL for dedicated worker",
+    };
+  } else if (workerResult === null) {
     workerUnreachable = true;
-    checks.worker = { status: "unreachable", detail: "WORKER_URL not configured" };
+    checks.worker = {
+      status: "unreachable",
+      detail:
+        "WORKER_URL not configured — set WORKER_URL or CRON_SECRET + Vercel cron",
+    };
   } else if (!workerResult.ok) {
     workerUnreachable = true;
     checks.worker = {

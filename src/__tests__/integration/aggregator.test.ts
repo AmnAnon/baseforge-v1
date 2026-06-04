@@ -56,10 +56,10 @@ beforeEach(() => {
 });
 
 describe("calculateHealthScore", () => {
-  let calculateHealthScore: typeof import("@/lib/protocol-aggregator").calculateHealthScore;
+  let calculateHealthScore: typeof import("@/lib/risk").calculateHealthScore;
 
   beforeEach(async () => {
-    ({ calculateHealthScore } = await import("@/lib/protocol-aggregator"));
+    ({ calculateHealthScore } = await import("@/lib/risk"));
   });
 
   it("neutral baseline is 50 for a completely unknown protocol", () => {
@@ -208,7 +208,7 @@ describe("calculateHealthScore", () => {
 
 describe("Score distribution sanity", () => {
   it("category baseline ordering is sensible", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     const base = {
       audits: 1, tvl: 10_000_000, tvlChange24h: 0, tvlChange7d: 0,
@@ -228,7 +228,7 @@ describe("Score distribution sanity", () => {
 
 describe("Edge cases", () => {
   it("handles zero TVL without division errors", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     const { score } = calculateHealthScore({
       audits: 0, tvl: 0, tvlChange24h: 0, tvlChange7d: 0,
@@ -240,7 +240,7 @@ describe("Edge cases", () => {
   });
 
   it("handles negative TVL gracefully", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     const { score } = calculateHealthScore({
       audits: 1, tvl: -100, tvlChange24h: 0, tvlChange7d: 0,
@@ -251,7 +251,7 @@ describe("Edge cases", () => {
   });
 
   it("handles undefined on-chain fields", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     // Should not crash when on-chain fields are undefined
     const { score } = calculateHealthScore({

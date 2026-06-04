@@ -141,9 +141,9 @@ services:
 | `NEXT_PUBLIC_DEMO_MODE` | Optional | Show demo banner (auto-true on Vercel) |
 | `ADMIN_KEY` | Optional | Gate admin analytics endpoint |
 | `NEYNAR_API_KEY` | Optional | Farcaster social data |
-| `CACHE_BACKEND` | Optional | `memory` (default) or `upstash` |
-| `UPSTASH_REDIS_URL` | Optional | Distributed cache |
-| `UPSTASH_REDIS_TOKEN` | Optional | Distributed cache auth |
+| `CACHE_BACKEND` | Optional | `memory` (dev) or `postgres` (prod, uses DB) |
+| `UPSTASH_REDIS_URL` | Legacy | No longer used (consolidated) |
+| `UPSTASH_REDIS_TOKEN` | Legacy | No longer used (consolidated) |
 
 3. Deploy. Vercel automatically detects Next.js and runs `npm run build`.
 
@@ -227,9 +227,9 @@ Full list in `.env.example`. Quick reference:
 | `NEXT_PUBLIC_BASE_URL` | Auto | `http://localhost:3000` | Deployment URL |
 | `NEXT_PUBLIC_SENTRY_DSN` | No | — | Sentry error tracking DSN |
 | `NEXT_PUBLIC_DEMO_MODE` | No | `false` | Show demo banner |
-| `CACHE_BACKEND` | No | `memory` | `memory` or `upstash` |
-| `UPSTASH_REDIS_URL` | No | — | Upstash Redis URL |
-| `UPSTASH_REDIS_TOKEN` | No | — | Upstash Redis auth token |
+| `CACHE_BACKEND` | No | `memory` | `memory` (dev) or `postgres` (prod via DATABASE_URL) |
+| `UPSTASH_REDIS_URL` | Legacy | — | No longer used (cache consolidated to Postgres) |
+| `UPSTASH_REDIS_TOKEN` | Legacy | — | No longer used |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn`, `error` |
 | `ADMIN_KEY` | No | — | Admin analytics auth key |
 | `ADMIN_FID` | No | — | Admin Farcaster FID |

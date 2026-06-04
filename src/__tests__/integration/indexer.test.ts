@@ -184,7 +184,7 @@ describe("Contract Addresses", () => {
 
 describe("Health Score with On-chain Data", () => {
   it("rewards protocols with healthy swap volume", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     const base = {
       audits: 2,
@@ -206,7 +206,7 @@ describe("Health Score with On-chain Data", () => {
   });
 
   it("penalizes protocols with significant outflows", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     const base = {
       audits: 2,
@@ -225,7 +225,7 @@ describe("Health Score with On-chain Data", () => {
   });
 
   it("rewards net inflows", async () => {
-    const { calculateHealthScore } = await import("@/lib/protocol-aggregator");
+    const { calculateHealthScore } = await import("@/lib/risk");
 
     const base = {
       audits: 1,

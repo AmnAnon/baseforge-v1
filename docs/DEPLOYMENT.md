@@ -53,11 +53,11 @@ Set environment variables on Vercel:
 | `NEXT_PUBLIC_DEMO_MODE` | Optional | `true` for demo banner |
 | `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Sentry DSN for error tracking |
 | `ADMIN_KEY` | Optional | Random string for admin endpoints |
-| `CACHE_BACKEND` | **Required in prod** | Set to `upstash` (see Redis section below) |
-| `UPSTASH_REDIS_URL` | **Required in prod** | Upstash Redis URL |
-| `UPSTASH_REDIS_TOKEN` | **Required in prod** | Upstash Redis token |
+| `CACHE_BACKEND` | Optional | `postgres` (default with DATABASE_URL) or `memory` |
+| `UPSTASH_REDIS_URL` | Legacy (ignored) | No longer used — cache uses Postgres |
+| `UPSTASH_REDIS_TOKEN` | Legacy (ignored) | No longer used |
 
-> **Production requirement:** `CACHE_BACKEND=upstash` with a valid Upstash Redis instance is **required** for production deployments. Using `memory` cache in prod will trigger a degraded health status.
+> **Production cache:** `CACHE_BACKEND=postgres` (default) uses the shared `api_cache` + `rate_limits` tables in your Neon DB. `memory` will trigger a degraded health warning in prod (single-instance only). No separate Redis/Upstash is needed or supported after consolidation.
 
 Deploy. Verify at `https://your-app.vercel.app/api/health`.
 
@@ -293,9 +293,9 @@ Once validated, submit your mini app for Warpcast discovery through the develope
 | `ENVIO_API_TOKEN` | Required | Required | Primary indexer |
 | `NEXT_PUBLIC_DEMO_MODE` | Optional | Optional | Show demo banner |
 | `NEXT_PUBLIC_SENTRY_DSN` | Recommended | Recommended | Sentry error tracking |
-| `CACHE_BACKEND` | **Required: `upstash`** | **Required: `upstash`** | Prod cache backend |
-| `UPSTASH_REDIS_URL` | **Required in prod** | **Required in prod** | Redis connection |
-| `UPSTASH_REDIS_TOKEN` | **Required in prod** | **Required in prod** | Redis auth token |
+| `CACHE_BACKEND` | `postgres` (default) | `postgres` (default) | Prod cache/rate backend uses DB |
+| `UPSTASH_REDIS_URL` | Legacy (ignored) | Legacy (ignored) | No longer required |
+| `UPSTASH_REDIS_TOKEN` | Legacy (ignored) | Legacy (ignored) | No longer required |
 | `FC_ACCOUNT_HEADER` | — | Required | accountAssociation header |
 | `FC_ACCOUNT_PAYLOAD` | — | Required | accountAssociation payload |
 | `FC_ACCOUNT_SIGNATURE` | — | Required | accountAssociation signature |

@@ -1,5 +1,5 @@
 // src/app/api/mev/route.ts
-// MEV activity — Envio sandwich detection (primary), Redis cache (fallback).
+// MEV activity — Envio sandwich detection (primary), Postgres cache (fallback).
 //
 // EigenPhi API was previously the primary source but has been deprecated
 // (returns 404 on all endpoints). Replaced with self-hosted sandwich
@@ -15,7 +15,6 @@ import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-import { Redis } from "@upstash/redis";
 
 // ─── Types (frontend-compatible) ─────────────────────────────────
 
@@ -36,18 +35,6 @@ interface MEVStats {
   liquidationCount: number;
   totalExtractedUSD: number;
   avgExtractedUSD: number;
-}
-
-// ─── Redis (optional fallback) ─────────────────────────────────────
-
-let _redis: Redis | null = null;
-function getRedis(): Redis | null {
-  if (_redis) return _redis;
-  const url   = process.env.UPSTASH_REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_TOKEN;
-  if (!url || !token) return null;
-  _redis = new Redis({ url, token });
-  return _redis;
 }
 
 // ─── Envio sandwich source ────────────────────────────────────────
@@ -79,21 +66,6 @@ async function fetchSandwichData(): Promise<{
   };
 }
 
-// ─── Fallback: Redis cache ─────────────────────────────────────────
-
-async function fetchFromRedisCache(): Promise<MEVEvent[] | null> {
-  try {
-    const client = getRedis();
-    if (!client) return null;
-    const raw = await client.get<string | MEVEvent[]>("mev:recent");
-    if (!raw) return null;
-    const parsed: MEVEvent[] = typeof raw === "string" ? JSON.parse(raw) : raw;
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 // ─── Stats computation ────────────────────────────────────────────
 
 function computeStats(events: MEVEvent[]): MEVStats {
@@ -119,60 +91,31 @@ export async function GET(req: Request) {
 
   try {
     const data = await cache.getOrFetch("mev-sandwich-v1", CACHE_TTL.WHALE_TX, async () => {
-      // ── 1. Try Envio sandwich detector via circuit breaker (when available) ──
-      let events: MEVEvent[] | null = null;
-      let source = "envio-sandwich-detector";
-      let notice: string | undefined;
-
+      // ── 1. Try Envio sandwich detector ──
       try {
         const result = await fetchSandwichData();
-        events = result.events;
-        source = result.source;
-        notice = result.notice;
-      } catch (err) {
-        logger.warn("Envio sandwich detection failed, trying Redis cache", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+        const events = result.events;
+        const source = result.source;
+        const notice = result.notice;
 
-      // ── 2. Fallback: Redis cache ──
-      if (!events) {
-        events = await fetchFromRedisCache();
-        if (events) {
-          source = "redis-cache";
-          notice = "Live MEV data temporarily unavailable — showing last known data";
-        }
-      }
+        const sorted = events.sort((a, b) => b.extracted - a.extracted);
 
-      // ── 3. Empty state ──
-      if (!events || events.length === 0) {
-        const emptyStats = computeStats([]);
         return {
-          events: [],
-          stats: emptyStats,
-          source: "envio-sandwich-detector",
-          _demo: false,
-          _notice: "No MEV activity detected in recent blocks. Sandwich detection is running on Envio HyperSync.",
-          dataNote: "Sandwich detection analyzes swap events for front-run → victim → back-run patterns. Currently scanning ~200 blocks.",
+          events: sorted.slice(0, 30),
+          stats:  computeStats(sorted),
+          source,
+          _demo:  false,
+          ...(notice ? { _notice: notice } : {}),
+          dataNote: "MEV detected via Envio HyperSync swap event pattern analysis.",
           timestamp: Date.now(),
           isStale: false,
         };
+      } catch (err) {
+        logger.error("Envio sandwich detection failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err; // Let cache handle the stale fallback if configured
       }
-
-      const sorted = events.sort((a, b) => b.extracted - a.extracted);
-
-      return {
-        events: sorted.slice(0, 30),
-        stats:  computeStats(sorted),
-        source,
-        _demo:  false,
-        ...(notice ? { _notice: notice } : {}),
-        dataNote: source === "envio-sandwich-detector"
-          ? "MEV detected via Envio HyperSync swap event pattern analysis."
-          : "Showing cached MEV data — Envio temporarily unreachable.",
-        timestamp: Date.now(),
-        isStale: source !== "envio-sandwich-detector",
-      };
     });
 
     return NextResponse.json(data, {

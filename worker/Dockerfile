@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 
 # Install deps first (layer-cached unless package.json changes)

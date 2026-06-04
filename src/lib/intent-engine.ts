@@ -3,12 +3,14 @@
 //
 // Each signal is sourced independently and weighted:
 //   Signal 1 — TVL momentum  (weight 0.3) — from protocol.c1d / c7d
-//   Signal 2 — Net flow      (weight 0.4) — from Redis whale:netflow:{protocol}
-//   Signal 3 — Whale ratio   (weight 0.3) — from Redis whale:count:{protocol}:24h
+//   Signal 2 — Net flow      (weight 0.4) — from Postgres whale_events (live aggregation)
+//   Signal 3 — Whale ratio   (weight 0.3) — from Postgres whale_events (live aggregation)
 //
 // Composite score → signal label + confidence with human-readable evidence.
 
-import { Redis } from "@upstash/redis";
+import { db } from "./db/client";
+import { whaleEvents } from "./db/schema";
+import { eq, and, gt, sql } from "drizzle-orm";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -27,44 +29,31 @@ export interface IntentSignal {
   confidence: number;
   evidence: string[];
   actionable: string;
-  _method: "heuristic_v1";
+  _method: "sql_agg_v2";
   _signal_count: number;
 }
 
-// ─── Redis client (lazy, only when env vars are present) ─────────────────
-
-let _redis: Redis | null = null;
-
-function getRedis(): Redis | null {
-  if (_redis) return _redis;
-  const url   = process.env.UPSTASH_REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_TOKEN;
-  if (!url || !token) return null;
-  _redis = new Redis({ url, token });
-  return _redis;
-}
-
-// ─── Redis key helpers ────────────────────────────────────────────────────
-
-interface NetFlowRecord {
-  netFlowUsd: number;
-}
-
-interface WhaleCountRecord {
-  buys: number;
-  sells: number;
-}
+// ─── SQL Signal Aggregators ───────────────────────────────────────────────
 
 async function readNetFlow(protocol: string): Promise<number | null> {
-  const client = getRedis();
-  if (!client) return null;
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   try {
-    const raw = await client.get<string | NetFlowRecord>(`whale:netflow:${protocol}`);
-    if (raw === null || raw === undefined) return null;
-    const parsed: NetFlowRecord =
-      typeof raw === "string" ? (JSON.parse(raw) as NetFlowRecord) : raw;
-    return typeof parsed.netFlowUsd === "number" ? parsed.netFlowUsd : null;
-  } catch {
+    const results = await db
+      .select({
+        netFlow: sql<number>`SUM(CASE WHEN ${whaleEvents.netFlowDirection} = 'in' THEN ${whaleEvents.usdValue} ELSE -${whaleEvents.usdValue} END)`
+      })
+      .from(whaleEvents)
+      .where(
+        and(
+          eq(whaleEvents.protocol, protocol),
+          gt(whaleEvents.timestamp, oneDayAgo)
+        )
+      );
+    
+    const val = results[0]?.netFlow;
+    return val !== null && val !== undefined ? Number(val) : 0;
+  } catch (err) {
+    console.error(`[IntentEngine] readNetFlow failed for ${protocol}`, err);
     return null;
   }
 }
@@ -72,23 +61,27 @@ async function readNetFlow(protocol: string): Promise<number | null> {
 async function readWhaleCount(
   protocol: string,
 ): Promise<{ buys: number; sells: number } | null> {
-  const client = getRedis();
-  if (!client) return null;
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   try {
-    const raw = await client.get<string | WhaleCountRecord>(
-      `whale:count:${protocol}:24h`,
-    );
-    if (raw === null || raw === undefined) return null;
-    const parsed: WhaleCountRecord =
-      typeof raw === "string" ? (JSON.parse(raw) as WhaleCountRecord) : raw;
-    if (
-      typeof parsed.buys === "number" &&
-      typeof parsed.sells === "number"
-    ) {
-      return { buys: parsed.buys, sells: parsed.sells };
-    }
-    return null;
-  } catch {
+    const results = await db
+      .select({
+        buys: sql<number>`COUNT(*) FILTER (WHERE ${whaleEvents.netFlowDirection} = 'in')`,
+        sells: sql<number>`COUNT(*) FILTER (WHERE ${whaleEvents.netFlowDirection} = 'out')`
+      })
+      .from(whaleEvents)
+      .where(
+        and(
+          eq(whaleEvents.protocol, protocol),
+          gt(whaleEvents.timestamp, oneDayAgo)
+        )
+      );
+    
+    return { 
+      buys: Number(results[0]?.buys ?? 0), 
+      sells: Number(results[0]?.sells ?? 0) 
+    };
+  } catch (err) {
+    console.error(`[IntentEngine] readWhaleCount failed for ${protocol}`, err);
     return null;
   }
 }
@@ -128,10 +121,9 @@ async function computeForProtocol(
     : 0;
 
   // ── Redistribute weights when signals are missing ─────────
-  // If sig2 is missing we redistribute its 0.4 equally to the other two.
-  const w1 = sig2Available ? 0.3 : 0.3 + 0.2; // 0.3 or 0.5
+  const w1 = sig2Available ? 0.3 : 0.3 + 0.2;
   const w2 = sig2Available ? 0.4 : 0;
-  const w3 = sig2Available ? 0.3 : 0.3 + 0.2; // 0.3 or 0.5
+  const w3 = sig2Available ? 0.3 : 0.3 + 0.2;
 
   const raw = momentumScore * w1 + flowScore * w2 + whaleScore * w3;
 
@@ -178,7 +170,7 @@ async function computeForProtocol(
 
   if (signalCount < 2) {
     confidence = parseFloat((confidence * 0.5).toFixed(2));
-    evidence.push("Low confidence — insufficient on-chain data");
+    evidence.push("Low confidence — insufficient live transaction data");
   }
 
   // ── Actionable summary ─────────────────────────────────────
@@ -195,7 +187,7 @@ async function computeForProtocol(
     confidence,
     evidence,
     actionable,
-    _method: "heuristic_v1",
+    _method: "sql_agg_v2",
     _signal_count: signalCount,
   };
 }
@@ -205,7 +197,7 @@ async function computeForProtocol(
 export async function computeIntentSignals(
   protocols: IntentProtocol[],
 ): Promise<IntentSignal[]> {
-  // Run all protocols in parallel — Redis reads are cheap and independent
+  // Run all protocols in parallel
   const results = await Promise.allSettled(
     protocols.slice(0, 20).map((p) => computeForProtocol(p)),
   );

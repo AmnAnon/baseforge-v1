@@ -49,8 +49,11 @@ export function middleware(request: NextRequest) {
   // ─── Block cross-origin access to admin routes at middleware level ─
   if (request.nextUrl.pathname.startsWith("/api/admin/")) {
     const origin = request.headers.get("origin");
-    // Only block actual cross-origin requests (origin header present means browser cross-origin).
-    if (origin) {
+    const host = request.headers.get("host") || "";
+    // Allow same-origin (including browser same-host fetches that include Origin header).
+    // Only block true cross-origin (origin present and does not match host).
+    const isCrossOrigin = origin && host && !origin.includes(host);
+    if (isCrossOrigin) {
       return new NextResponse(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },

@@ -264,6 +264,7 @@ export const riskSnapshots = pgTable(
     score:     integer("score").notNull(),
     health:    integer("health").notNull(),
     tvl:       numeric("tvl", { precision: 20, scale: 2 }).notNull().default("0"),
+    riskFactors: jsonb("risk_factors").$type<string[]>().default([]),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -272,7 +273,24 @@ export const riskSnapshots = pgTable(
   })
 );
 
+// ─── rate_limits ──────────────────────────────────────────────────
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull().default(0),
+    resetAt: timestamp("reset_at").notNull(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    rateLimitKeyIdx: uniqueIndex("rate_limits_key_idx").on(table.key),
+    rateLimitResetIdx: index("rate_limits_reset_idx").on(table.resetAt),
+  })
+);
+
 // ─── Type exports (continued) ─────────────────────────────────────
+export type RateLimit = typeof rateLimits.$inferSelect;
+export type NewRateLimit = typeof rateLimits.$inferInsert;
 export type WhaleEvent    = typeof whaleEvents.$inferSelect;
 export type NewWhaleEvent = typeof whaleEvents.$inferInsert;
 export type RiskSnapshot    = typeof riskSnapshots.$inferSelect;

@@ -328,8 +328,8 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
         </footer>
       </main>
 
-      {/* Admin frame analytics — dev only */}
-      {process.env.NEXT_PUBLIC_ADMIN_KEY && <AdminStatsBar />}
+      {/* Admin frame analytics — shown in demo or when explicitly enabled (no secrets leaked to client) */}
+      {(process.env.NEXT_PUBLIC_DEMO_MODE === "true" || process.env.NEXT_PUBLIC_SHOW_ADMIN_BAR === "true") && <AdminStatsBar />}
 
       {/* Bottom navigation */}
       <nav

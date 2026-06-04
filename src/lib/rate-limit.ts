@@ -1,20 +1,21 @@
 // src/lib/rate-limit.ts
 // Rate-limiting abstraction.
-//
-// In development (CACHE_BACKEND != "upstash"): in-memory sliding window per process.
-// In production with Upstash configured: Redis-backed fixed window — limits are shared
-// across all serverless instances so they can't be bypassed by hitting different replicas.
-//
-// Both implementations expose the same interface so callers don't change.
+// Consolidation phase: Removed Redis dependency in favor of Postgres-backed fixed window.
+// In development (CACHE_BACKEND == "memory"): in-memory sliding window per process.
+// In production: Postgres-backed fixed window — shared across all serverless instances.
 
-import { Redis } from "@upstash/redis";
+import { db } from "./db/client";
+import { rateLimits } from "./db/schema";
+import { eq } from "drizzle-orm";
+import { logger } from "./logger";
+import { resolveCacheBackend } from "./env-config";
 
 export interface RateLimiterConfig {
   windowMs: number; // window size in ms
   maxRequests: number; // max requests per window
 }
 
-// ─── In-Memory Sliding Window ────────────────────────────────────
+// ─── In-Memory Sliding Window (Development) ─────────────────────
 
 interface WindowEntry {
   count: number;
@@ -38,108 +39,94 @@ export class RateLimiter {
     const now = Date.now();
     const existing = windows.get(key);
 
-    // New or expired window
     if (!existing || now > existing.resetAt) {
       windows.set(key, { count: 1, resetAt: now + this.config.windowMs });
       return { allowed: true, remaining: this.config.maxRequests - 1 };
     }
 
-    // Within window
     if (existing.count < this.config.maxRequests) {
       existing.count++;
       return { allowed: true, remaining: this.config.maxRequests - existing.count };
     }
 
-    // Rate limited
     return { allowed: false, retryAfter: Math.ceil((existing.resetAt - now) / 1000) };
   }
 
-  /** Reset limit for a specific key (e.g., after tier upgrade). */
-  reset(key: string): void {
-    windows.delete(key);
-  }
+  reset(key: string): void { windows.delete(key); }
 }
 
-// ─── Redis Fixed-Window Rate Limiter (production) ────────────────
-// Uses INCR + EXPIRE so limits are shared across all replicas.
-// Key pattern: rl:{identifier}:{windowFloorSeconds}
+// ─── Postgres Rate Limiter (Production) ─────────────────────────
 
-let _redis: Redis | null = null;
-function getRedisClient(): Redis | null {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_TOKEN;
-  if (!url || !token) return null;
-  _redis = new Redis({ url, token });
-  return _redis;
-}
-
-export class RedisRateLimiter {
+export class PostgresRateLimiter {
   constructor(private config: RateLimiterConfig) {}
 
   async check(key: string): Promise<{ allowed: boolean; retryAfter?: number; remaining?: number }> {
-    const redis = getRedisClient();
-    if (!redis) {
-      // Redis not configured — fall back to in-memory limiter silently
-      return new RateLimiter(this.config).check(key);
-    }
-
-    const windowSec = Math.ceil(this.config.windowMs / 1000);
-    const windowFloor = Math.floor(Date.now() / this.config.windowMs);
-    const redisKey = `rl:${key}:${windowFloor}`;
-
+    const now = new Date();
     try {
-      // Pipeline: INCR and EXPIRE NX (set expiry only if not already set) in one round-trip.
-      // Using NX prevents resetting the TTL on every request under high traffic, which
-      // would cause the window to never expire.
-      const pipeline = redis.pipeline();
-      pipeline.incr(redisKey);
-      pipeline.expire(redisKey, windowSec + 1, "NX"); // +1 so keys outlive the window slightly
-      const [countRaw] = (await pipeline.exec()) as [number, number];
-      const count = Number(countRaw);
+      return await db.transaction(async (tx) => {
+        const existing = await tx
+          .select()
+          .from(rateLimits)
+          .where(eq(rateLimits.key, key))
+          .for("update")
+          .limit(1);
 
-      if (count > this.config.maxRequests) {
-        const windowResetMs = (windowFloor + 1) * this.config.windowMs;
-        const retryAfter = Math.ceil((windowResetMs - Date.now()) / 1000);
+        if (existing.length === 0 || now > existing[0].resetAt) {
+          const resetAt = new Date(now.getTime() + this.config.windowMs);
+          await tx
+            .insert(rateLimits)
+            .values({ key, count: 1, resetAt })
+            .onConflictDoUpdate({
+              target: rateLimits.key,
+              set: { count: 1, resetAt, updatedAt: now },
+            });
+          return { allowed: true, remaining: this.config.maxRequests - 1 };
+        }
+
+        const entry = existing[0];
+        if (entry.count < this.config.maxRequests) {
+          await tx
+            .update(rateLimits)
+            .set({ count: entry.count + 1, updatedAt: now })
+            .where(eq(rateLimits.key, key));
+          return { allowed: true, remaining: this.config.maxRequests - (entry.count + 1) };
+        }
+
+        const retryAfter = Math.ceil((entry.resetAt.getTime() - now.getTime()) / 1000);
         return { allowed: false, retryAfter: Math.max(1, retryAfter) };
-      }
-
-      return { allowed: true, remaining: this.config.maxRequests - count };
-    } catch {
-      // Redis error — fail open to avoid blocking legitimate traffic
+      });
+    } catch (err) {
+      logger.error("[PostgresRateLimiter] check failed", { error: String(err) });
       return { allowed: true, remaining: this.config.maxRequests };
     }
   }
 
-  reset(): void {
-    // Redis keys expire naturally; explicit reset would need DEL but is rarely needed
+  async reset(key: string): Promise<void> {
+    try { await db.delete(rateLimits).where(eq(rateLimits.key, key)); } catch {}
   }
 }
 
-// ─── Factory: pick the right implementation at runtime ────────────
+// ─── Factory ───────────────────────────────────────────
 
-/**
- * Create a rate limiter appropriate for the current environment.
- * - Production with Upstash: returns a RedisRateLimiter (distributed, replica-safe).
- * - Development / no Redis: returns an in-process RateLimiter.
- */
-export function createRateLimiter(config: RateLimiterConfig): RateLimiter | RedisRateLimiter {
-  const useRedis =
-    process.env.CACHE_BACKEND === "upstash" &&
-    process.env.UPSTASH_REDIS_URL &&
-    process.env.UPSTASH_REDIS_TOKEN;
-  return useRedis ? new RedisRateLimiter(config) : new RateLimiter(config);
+type AnyRateLimiter = RateLimiter | PostgresRateLimiter;
+
+export function createRateLimiter(config: RateLimiterConfig): AnyRateLimiter {
+  const backend = resolveCacheBackend();
+
+  if (backend === "memory") {
+    return new RateLimiter(config);
+  }
+
+  return new PostgresRateLimiter(config);
 }
 
-// Default: 10 req/min per IP
 export const defaultRateLimiter = createRateLimiter({
   windowMs: 60_000,
   maxRequests: 10,
 });
 
-export function rateLimiterMiddleware(limiter: RateLimiter | RedisRateLimiter = defaultRateLimiter) {
+export function rateLimiterMiddleware(limiter: AnyRateLimiter = defaultRateLimiter) {
   return async (request: Request): Promise<Response | null> => {
-    // Skip rate limiting outside production
     if (process.env.NODE_ENV !== "production") return null;
 
     const ip =
@@ -164,7 +151,6 @@ export function rateLimiterMiddleware(limiter: RateLimiter | RedisRateLimiter = 
   };
 }
 
-/** Create a per-API-key rate limiter with custom limits. */
-export function createApiKeyLimiter(rpm: number): RateLimiter | RedisRateLimiter {
+export function createApiKeyLimiter(rpm: number): AnyRateLimiter {
   return createRateLimiter({ windowMs: 60_000, maxRequests: rpm });
 }

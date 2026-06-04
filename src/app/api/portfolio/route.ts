@@ -16,27 +16,16 @@
 //   timestamp, isStale
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Redis } from "@upstash/redis";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { getWalletBalances, TRACKED_TOKENS } from "@/lib/viem/balances";
 import { basePublicClient } from "@/lib/viem/client";
+import { logger } from "@/lib/logger";
 
 // ─── Address validation ───────────────────────────────────────────
 const AddressSchema = z.object({
   address: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid EVM address"),
 });
-
-// ─── Upstash Redis (optional — falls back gracefully) ─────────────
-let _redis: Redis | null = null;
-function getRedis(): Redis | null {
-  if (_redis) return _redis;
-  const url   = process.env.UPSTASH_REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_TOKEN;
-  if (!url || !token) return null;
-  _redis = new Redis({ url, token });
-  return _redis;
-}
 
 interface PortfolioPosition {
   symbol: string;
@@ -89,29 +78,24 @@ const EMPTY_RESPONSE: PortfolioResponse = {
   isStale: true,
 };
 
-// Fetch prices: Redis cache first ("baseforge:prices" set by worker), CoinGecko fallback
+// Fetch prices: Unified cache first (set by worker or previous requests), CoinGecko fallback
 async function fetchPricesWithChange(ids: string[]): Promise<Record<string, { usd: number; change24h: number }>> {
   if (ids.length === 0) return {};
 
-  // 1. Try Redis — worker stores full CoinGecko simple/price response
+  // 1. Try Unified Cache — key "baseforge:prices" formerly set in Redis
   try {
-    const client = getRedis();
-    if (client) {
-      const raw = await client.get<string | Record<string, unknown>>("baseforge:prices");
-      if (raw) {
-        const parsed: Record<string, { usd?: number; usd_24h_change?: number }> =
-          typeof raw === "string" ? JSON.parse(raw) : raw as Record<string, { usd?: number; usd_24h_change?: number }>;
-        const result: Record<string, { usd: number; change24h: number }> = {};
-        let hits = 0;
-        for (const id of ids) {
-          if (parsed[id]?.usd !== undefined) {
-            result[id] = { usd: parsed[id].usd ?? 0, change24h: parsed[id].usd_24h_change ?? 0 };
-            hits++;
-          }
+    const raw = await cache.get<Record<string, { usd?: number; usd_24h_change?: number }>>("baseforge:prices");
+    if (raw) {
+      const result: Record<string, { usd: number; change24h: number }> = {};
+      let hits = 0;
+      for (const id of ids) {
+        if (raw[id]?.usd !== undefined) {
+          result[id] = { usd: raw[id].usd ?? 0, change24h: raw[id].usd_24h_change ?? 0 };
+          hits++;
         }
-        // Accept partial cache hit if we got at least half the IDs
-        if (hits >= Math.ceil(ids.length / 2)) return result;
       }
+      // Accept partial cache hit if we got at least half the IDs
+      if (hits >= Math.ceil(ids.length / 2)) return result;
     }
   } catch { /* fall through to direct fetch */ }
 
@@ -208,7 +192,7 @@ export async function GET(req: Request) {
       const prices = await fetchPricesWithChange(allCoingeckoIds);
 
       // Token category lookup
-      const tokenCategoryMap = new Map(TRACKED_TOKENS.map((t) => [t.symbol, t.category]));
+      // const tokenCategoryMap = new Map(TRACKED_TOKENS.map((t) => [t.symbol, t.category]));
 
       // Build positions
       const positions: PortfolioPosition[] = [];
@@ -292,7 +276,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(data, { status: 200, headers });
   } catch (err) {
-    console.error("Portfolio API error:", err);
+    logger.error("Portfolio API error", { error: String(err) });
     return NextResponse.json(EMPTY_RESPONSE, { status: 200, headers: { "X-Cache-Status": "ERROR" } });
   }
 }

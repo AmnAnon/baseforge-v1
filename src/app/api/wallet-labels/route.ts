@@ -1,6 +1,6 @@
 // src/app/api/wallet-labels/route.ts
 // Wallet label system — community-sourced wallet labels stored client-side
-// This API provides a shared dataset when Upstash is configured.
+// This API provides a shared dataset via the unified cache (Postgres in prod).
 // Labels are user-generated — "smart money" is just a label, not verified truth.
 import { NextResponse } from "next/server";
 import { cache } from "@/lib/cache";

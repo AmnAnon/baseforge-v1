@@ -1,6 +1,7 @@
 // src/components/AdminStatsBar.tsx
 // Collapsible admin stats bar for Farcaster frame analytics.
-// Authenticates via x-admin-key header (matches ADMIN_KEY env var).
+// In demo mode (NEXT_PUBLIC_DEMO_MODE), calls without secret key (protected by same-origin middleware).
+// In production, the bar is hidden unless NEXT_PUBLIC_SHOW_ADMIN_BAR=true and a valid server key is used via other means.
 
 "use client";
 
@@ -39,9 +40,6 @@ interface AnalyticsData {
 
 const POLL_INTERVAL = 30_000; // 30s
 
-// Admin key — must match ADMIN_KEY env var on the server
-const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_KEY || "";
-
 export default function AdminStatsBar() {
   const [expanded, setExpanded] = useState(false);
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -52,12 +50,12 @@ export default function AdminStatsBar() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/analytics", {
-        headers: { "x-admin-key": ADMIN_KEY },
-      });
+      // No x-admin-key sent from client (avoids leaking secrets via NEXT_PUBLIC_*).
+      // Demo mode allows it (same-origin only); production requires key via server or other UI.
+      const res = await fetch("/api/admin/analytics");
       if (!res.ok) {
         setData(null);
-        if (res.status === 403) setError("Forbidden — check ADMIN_KEY");
+        if (res.status === 403) setError("Forbidden — admin access required");
         else setError(`API error: ${res.status}`);
         return;
       }
@@ -136,7 +134,7 @@ export default function AdminStatsBar() {
 
             {!loading && !data && !error && (
               <div className="text-gray-500">
-                No data — set ADMIN_KEY env var and restart.
+                No data — enable demo mode or provide admin credentials.
               </div>
             )}
 

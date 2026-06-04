@@ -1,16 +1,20 @@
 // src/lib/cache.ts
-// Cache abstraction — In-Memory (default) with Upstash Redis driver.
-// Set CACHE_BACKEND="upstash" + UPSTASH_REDIS_URL + UPSTASH_REDIS_TOKEN in .env.local.
+// Unified Cache Abstraction — Postgres-Backed (Neon).
+// Consolidation phase: Removed Redis dependency in favor of direct SQL caching.
 
-import { Redis } from "@upstash/redis";
+import { db } from "./db/client";
+import { apiCache } from "./db/schema";
+import { eq, lt } from "drizzle-orm";
+import { logger } from "./logger";
+import { resolveCacheBackend } from "./env-config";
 
-const CACHE_BACKEND = process.env.CACHE_BACKEND || "memory";
+const CACHE_BACKEND = resolveCacheBackend();
 
-// ─── In-Memory Driver ───────────────────────────────────
+// ─── In-Memory Driver (Fallback for dev) ───────────────────────
 
 interface MemoryEntry { value: unknown; expiresAt: number }
 
-class MemoryCacheBackend {
+class MemoryCacheBackend implements CacheBackendIface {
   private store = new Map<string, MemoryEntry>();
   private hits = 0;
   private misses = 0;
@@ -23,14 +27,9 @@ class MemoryCacheBackend {
     return entry.value as T;
   }
 
-  /**
-   * Get a value including expired entries — used by stale-while-revalidate.
-   * Returns the value regardless of expiry, so callers can serve stale data.
-   */
   async getStale<T>(key: string): Promise<T | null> {
     const entry = this.store.get(key);
     if (!entry) return null;
-    // Don't delete — let caller decide if it's usable as stale
     return entry.value as T;
   }
 
@@ -46,32 +45,53 @@ class MemoryCacheBackend {
   }
 }
 
-// ─── Upstash Redis Driver ─────────────────────────────
+// ─── Postgres Driver (Production Standard) ────────────────────
 
-class UpstashCacheBackend {
-  private redis: Redis;
-  private keyPrefix = "bf:";
-
-  constructor(url: string, token: string) {
-    this.redis = new Redis({ url, token });
+class PostgresCacheBackend implements CacheBackendIface {
+  async get<T>(key: string): Promise<T | null> {
+    try {
+      const results = await db.select().from(apiCache).where(eq(apiCache.key, key)).limit(1);
+      if (results.length === 0) return null;
+      const entry = results[0];
+      if (new Date() > entry.expiresAt) return null;
+      return entry.value as T;
+    } catch (err) {
+      logger.error("[PostgresCache] get failed", { error: String(err) });
+      return null;
+    }
   }
 
-  async get<T>(key: string): Promise<T | null> {
-    const raw = await this.redis.get<string | null>(`${this.keyPrefix}${key}`);
-    if (raw === null || raw === undefined) return null;
-    try { return JSON.parse(raw) as T; } catch { return raw as unknown as T; }
+  async getStale<T>(key: string): Promise<T | null> {
+    try {
+      const results = await db.select().from(apiCache).where(eq(apiCache.key, key)).limit(1);
+      if (results.length === 0) return null;
+      return results[0].value as T;
+    } catch { return null; }
   }
 
   async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
-    const serialized = typeof value === "string" ? value : JSON.stringify(value);
-    await this.redis.set(`${this.keyPrefix}${key}`, serialized, { ex: ttlSeconds });
+    try {
+      const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+      await db
+        .insert(apiCache)
+        .values({ key, value: value as any, expiresAt })
+        .onConflictDoUpdate({
+          target: apiCache.key,
+          set: { value: value as any, expiresAt, createdAt: new Date() },
+        });
+    } catch (err) {
+      logger.error("[PostgresCache] set failed", { error: String(err) });
+    }
   }
 
-  async del(key: string): Promise<void> { await this.redis.del(`${this.keyPrefix}${key}`); }
-  async clear(): Promise<void> {
-    const keys = await this.redis.keys(`${this.keyPrefix}*`);
-    if (keys.length > 0) await this.redis.del(...keys);
+  async del(key: string): Promise<void> {
+    try { await db.delete(apiCache).where(eq(apiCache.key, key)); } catch {}
   }
+
+  async clear(): Promise<void> {
+    try { await db.delete(apiCache); } catch {}
+  }
+
   stats(): { size: number; hitRate: number } { return { size: 0, hitRate: 0 }; }
 }
 
@@ -87,25 +107,22 @@ interface CacheBackendIface {
 
 let driver: CacheBackendIface;
 
-if (CACHE_BACKEND === "upstash" && process.env.UPSTASH_REDIS_URL && process.env.UPSTASH_REDIS_TOKEN) {
-  driver = new UpstashCacheBackend(process.env.UPSTASH_REDIS_URL, process.env.UPSTASH_REDIS_TOKEN);
-} else {
+if (CACHE_BACKEND === "memory") {
   driver = new MemoryCacheBackend();
+} else {
+  // Default to Postgres
+  driver = new PostgresCacheBackend();
 }
 
-// ─── Public API — all async ────────────────────────────
+// ─── Public API ──────────────────────────────────────────
 
-// Inflight map: deduplicates concurrent `getOrFetch` calls for the same key.
-// Without this, N simultaneous cache misses each fire the fetcher independently
-// (cache stampede). With it, only the first caller runs the fetcher; all others
-// await the same Promise and share the result.
 const inflight = new Map<string, Promise<unknown>>();
 
 export const cache = {
   get: <T>(key: string): Promise<T | null> => driver.get<T>(key),
   getStale: <T>(key: string): Promise<T | null> => {
-    const d = driver as unknown as Record<string, unknown>;
-    if (typeof d.getStale === "function") return (d.getStale as (key: string) => Promise<T | null>)(key);
+    const d = driver as any;
+    if (typeof d.getStale === "function") return d.getStale(key);
     return driver.get<T>(key);
   },
   set: <T>(key: string, value: T, ttl: number): Promise<void> => driver.set<T>(key, value, ttl),
@@ -113,72 +130,52 @@ export const cache = {
   clear: (): Promise<void> => { inflight.clear(); return driver.clear(); },
   stats: (): { size: number; hitRate: number } => driver.stats(),
 
-  /** Cache-aside with single-flight: only one fetch runs per key at a time. */
+  /** Cache-aside with single-flight. */
   getOrFetch: async <T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> => {
     const ttlSeconds = Math.round(ttlMs / 1000);
     const cached = await driver.get<T>(key);
     if (cached !== null) return cached;
 
-    // If a fetch is already in progress for this key, wait for it
     const existing = inflight.get(key);
     if (existing) return existing as Promise<T>;
 
-    // Start the fetch and register it so concurrent callers can share it
     const promise = fetcher().then(
       (fresh) => {
         inflight.delete(key);
         return driver.set(key, fresh, ttlSeconds).then(() => fresh);
       },
-      (err) => {
-        inflight.delete(key);
-        throw err;
-      }
+      (err) => { inflight.delete(key); throw err; }
     );
     inflight.set(key, promise);
     return promise as Promise<T>;
   },
 
-  /** Cache-aside with stale fallback: if fetch fails, return expired cache entry with isStale=true */
+  /** Cache-aside with stale fallback. */
   getWithStaleFallback: async <T extends Record<string, unknown>>(
     key: string,
     ttlMs: number,
     fetcher: () => Promise<T>
   ): Promise<T & { isStale: boolean; _stale?: boolean; _staleAge?: number }> => {
     const ttlSeconds = Math.round(ttlMs / 1000);
-
-    // Try fresh cache first
     const cached = await driver.get<T>(key);
     if (cached !== null) return cached as T & { isStale: boolean };
 
-    // Try to fetch fresh data
     try {
       const fresh = await fetcher();
       await driver.set(key, { ...fresh, isStale: false }, ttlSeconds);
       return { ...fresh, isStale: false };
     } catch {
-      // Check for expired entries via getStale (doesn't delete on expiry)
-      const d = driver as unknown as Record<string, unknown>;
-      const getStaleFn = typeof d.getStale === "function"
-        ? (d.getStale as (key: string) => Promise<(T & { _expiresAt?: number }) | null>)
-        : null;
-      const stale = getStaleFn ? await getStaleFn(key) : null;
+      const d = driver as any;
+      const stale = typeof d.getStale === "function" ? await d.getStale(key) : null;
       if (stale !== null) {
-        const staleAge = stale._expiresAt ? Date.now() - stale._expiresAt + ttlMs : ttlMs;
-        return { ...stale, isStale: true, _stale: true, _staleAge: Math.max(0, staleAge) };
+        return { ...stale, isStale: true, _stale: true };
       }
-
-      // No stale entry — try fetcher once more
-      try {
-        const retry = await fetcher();
-        return { ...retry, isStale: true };
-      } catch {
-        throw new Error(`No cached data and fetch failed for ${key}`);
-      }
+      const retry = await fetcher();
+      return { ...retry, isStale: true };
     }
   },
 };
 
-// Preset TTLs — called in milliseconds by all API routes
 export const CACHE_TTL = {
   PRICES: 60_000,
   PROTOCOL_LIST: 600_000,

@@ -30,7 +30,7 @@ BaseForge is a Next.js 16 application that aggregates on-chain and off-chain dat
 │  │  ┌──────────────┐  ┌─────────┐  ┌───────────────┐  │    │
 │  │  │  Protocol    │  │  Cache  │  │   Indexer     │  │    │
 │  │  │  Aggregator  │  │ (mem/   │  │   Service     │  │    │
-│  │  │  (risk +     │  │  Redis) │  │  (fallback)   │  │    │
+│  │  │  (risk +     │  │  Cache) │  │  (fallback)   │  │    │
 │  │  │   scoring)   │  │         │  │               │  │    │
 │  │  └──────┬───────┘  └────┬────┘  └───────┬───────┘  │    │
 │  └─────────┼───────────────┼───────────────┼──────────┘    │
@@ -50,7 +50,7 @@ BaseForge is a Next.js 16 application that aggregates on-chain and off-chain dat
 │  └──────────────┘ └───────────┘ └────────────────────────┘ │
 │                                                             │
 │  ┌──────────────┐ ┌───────────┐ ┌────────────────────────┐ │
-│  │  Etherscan   │ │ Neon      │ │ Upstash Redis          │ │
+│  │  Etherscan   │ │ Neon      │ │ (api_cache in Postgres)│ │
 │  │  V2 API      │ │ Postgres  │ │ (optional cache)       │ │
 │  │  (fallback)  │ │ (alerts,  │ │                        │ │
 │  │              │ │  frames)  │ │                        │ │
@@ -133,7 +133,7 @@ baseforge/
 │   ├── hooks/
 │   │   └── useRealTimeData.ts   # SSE hook with exponential backoff
 │   ├── lib/
-│   │   ├── cache.ts             # Cache abstraction (memory + Upstash)
+│   │   ├── cache.ts             # Cache abstraction (memory + Postgres api_cache)
 │   │   ├── logger.ts            # Structured logging (pino-style)
 │   │   ├── rate-limit.ts        # In-memory sliding window
 │   │   ├── validation.ts        # Zod validation helpers

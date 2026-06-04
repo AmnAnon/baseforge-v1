@@ -4,6 +4,7 @@
 // holds up the Farcaster frame response.
 
 import { db } from "./client";
+import { logger } from "../logger";
 import { frameInteractions } from "./schema";
 
 const FRAME_LOG_TIMEOUT_MS = 300;
@@ -50,18 +51,14 @@ export async function logFrameInteraction(
     const timedOut = await raceWithTimeout(insertPromise, DB_TIMEOUT_MS);
 
     if (timedOut) {
-      console.warn(
-        `[frame-analytics] insert timed out after ${DB_TIMEOUT_MS}ms (DB cold?)`
-      );
+      logger.warn(`[frame-analytics] insert timed out after ${DB_TIMEOUT_MS}ms (DB cold?)`);
       return false;
     }
 
-    console.log(
-      `[frame-analytics] logged interaction fid=${payload.fid} btn=${payload.buttonIndex} in ${Date.now() - start}ms`
-    );
+    logger.info(`[frame-analytics] logged interaction fid=${payload.fid} btn=${payload.buttonIndex}`, { latencyMs: Date.now() - start });
     return true;
   } catch (err) {
-    console.error("[frame-analytics] insert failed:", err);
+    logger.error("[frame-analytics] insert failed", { error: String(err) });
     return false;
   }
 }

@@ -105,7 +105,7 @@ async function findKeyByHash(hash: string): Promise<ApiKeyRecord | null> {
   }
 }
 
-// ─── Rate limiting per key (sliding window via Upstash / in-memory) ──
+// ─── Rate limiting per key (via Postgres rate_limits table or in-memory) ──
 
 import { RateLimiter } from "./rate-limit";
 

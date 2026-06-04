@@ -132,9 +132,9 @@ curl "https://baseforge-v1.vercel.app/api/agents/context?include=all&top=20" \
 |---|---|
 | 🎨 **UI** | Cyber-neon theme, glassmorphic cards, live ticker, count-up animations, radial risk rings, CRT scanline toggle |
 | 🔑 **Auth** | API key system with SHA-256 hashed keys, tiered rate limits, admin CRUD |
-| 🛡️ **Resilience** | Circuit breaker (CLOSED→OPEN→HALF_OPEN), exponential backoff + jitter retry, Redis enforcement in prod |
+| 🛡️ **Resilience** | Circuit breaker (CLOSED→OPEN→HALF_OPEN), exponential backoff + jitter retry, Postgres cache/rate enforcement in prod |
 | 📡 **Indexing** | Moonwell Comet markets added, deeper Aerodrome coverage |
-| 🧪 **Testing** | 21 test files, 178 tests, 62%+ coverage, MSW mock infrastructure |
+| 🧪 **Testing** | 21 test files, ~183 tests, 60%+ coverage (CI gate), MSW mock infrastructure |
 | 📊 **Observability** | Prometheus metrics, Sentry transaction tracing, circuit breaker health reporting |
 | 🔧 **CI/CD** | 6-job pipeline: lint, typecheck, test, build, audit, docker |
 | 📝 **Docs** | OpenAPI spec, TypeScript/Python client types, SECURITY.md, retention policy |
@@ -162,7 +162,7 @@ src/
 │   │   ├── stream/               # SSE streaming gateway
 │   │   └── health/               # Health check with indexer status
 ├── lib/
-│   ├── cache.ts                  # Unified cache — in-memory + optional Upstash Redis
+│   ├── cache.ts                  # Unified cache — in-memory + Postgres-backed (api_cache table)
 │   ├── validation.ts             # Zod-based response validation helpers
 │   ├── protocol-aggregator.ts    # Cross-source risk scoring (DefiLlama + indexer)
 │   ├── logger.ts                 # Structured logging
@@ -200,10 +200,8 @@ Open [http://localhost:3000](http://localhost:3000).
 |---|---|
 | `ENVIO_API_TOKEN` | Envio HyperSync API token — primary on-chain data source (get from envio.dev) |
 | `ETHERSCAN_API_KEY` | Etherscan V2 API key — fallback for whale tracking |
-| `DATABASE_URL` | Neon Postgres connection string for risk history and alerts |
-| `UPSTASH_REDIS_URL` | Optional — Upstash Redis endpoint for distributed cache |
-| `UPSTASH_REDIS_TOKEN` | Optional — Upstash Redis token |
-| `CACHE_BACKEND` | `memory` (default) or `upstash` |
+| `DATABASE_URL` | Neon Postgres connection string for risk history, alerts, shared cache (api_cache), rate limits, API keys |
+| `CACHE_BACKEND` | `memory` (dev) or `postgres` (prod default; uses DB) — legacy `upstash` treated as postgres |
 
 ## Scripts
 
@@ -224,8 +222,8 @@ npm run db:studio    # Open Drizzle Studio
 - **Framework:** Next.js 16 (App Router, Turbopack)
 - **UI:** React 19, Tailwind CSS 4, Tremor v4, Framer Motion, Lucide icons
 - **Data:** DefiLlama API, Llama API, Etherscan V2, CoinGecko, Llama Yields
-- **Cache:** In-memory (dev) / Upstash Redis (production)
-- **Rate limiting:** In-memory sliding window (dev) / Upstash Redis fixed-window (production — shared across replicas)
+- **Cache:** In-memory (dev, single-instance) / Postgres-backed via Neon `api_cache` table (prod, shared)
+- **Rate limiting:** In-memory sliding window (dev) / Postgres-backed fixed-window via `rate_limits` table (prod — shared across replicas)
 - **Database:** Neon Postgres with Drizzle ORM
 - **Observability:** Sentry, pino structured logging, Prometheus `/api/metrics`
 - **Testing:** Vitest + happy-dom + MSW
@@ -236,10 +234,10 @@ BaseForge behaves differently depending on which environment variables are set. 
 
 | Feature | Single instance / dev | Multi-replica / prod |
 |---|---|---|
-| **Cache** | In-memory (lost on restart) | Upstash Redis — set `CACHE_BACKEND=upstash` |
-| **Rate limiting** | In-memory per process (limits are per-instance) | Upstash Redis fixed-window — limits enforced across all replicas |
-| **SSE stream** | Inline fallback polling (no Redis) | Redis version-counter fan-out (`stream:latest` / `stream:version`) |
-| **DB** | Optional (alerts/portfolio disabled if unset) | Neon Postgres required for alerts, frames, API keys |
+| **Cache** | In-memory (lost on restart) | Postgres via DB (`api_cache` table) — set `CACHE_BACKEND=postgres` (default) |
+| **Rate limiting** | In-memory per process (limits are per-instance) | Postgres `rate_limits` table — limits enforced across replicas |
+| **SSE stream** | Inline fallback polling | Postgres-backed version counter for fan-out (`stream:version` in api_cache) |
+| **DB** | Optional (alerts/portfolio disabled if unset) | Neon Postgres required for alerts, frames, API keys, shared cache |
 | **Indexer** | Envio HyperSync if token set; else Etherscan fallback | Same — circuit breaker auto-switches providers |
 | **CORS** | All origins allowed (open public API default) | Set `CORS_ALLOWED_ORIGINS=https://a.com,https://b.com` to restrict |
 | **Admin endpoints** | `ADMIN_KEY` env var required | Same — brute-force rate-limited in production |
@@ -308,7 +306,7 @@ After completing all 6 phases of the technical roadmap, BaseForge had a solid fo
 - SSE streaming with exponential backoff and stale fallback
 - Envio HyperSync primary indexer with Etherscan V2 fallback
 - Agent context endpoint v2 with query params, intent detection, and Zod validation
-- 93 tests passing, zero TypeScript errors
+- ~183 tests passing (21 files), zero TypeScript errors (enforced in CI)
 
 ### Next: The Agent Vision
 - **Agent SDK wrapper** — TypeScript/Python client for `/api/agents/context` (see `docs/AGENT_GUIDE.md` for usage)
@@ -364,7 +362,7 @@ After evaluating Goldsky, Envio HyperIndex, Subsquid, and The Graph for Base cha
 ```
 
 **Fallback strategy:**
-1. Check in-memory/Redis cache first (fastest)
+1. Check in-memory/Postgres cache first (fastest)
 2. Query Envio HyperSync (event-level granularity, ~25K events/sec)
 3. If Envio fails → circuit breaker activates → fall back to Etherscan V2
 4. Health check every 60s re-enables Envio when it recovers

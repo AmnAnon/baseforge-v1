@@ -15,7 +15,7 @@ import { createRateLimiter } from "./rate-limit";
 // ─── Brute-force protection ───────────────────────────────────────
 // Shared limiter: 10 admin attempts per IP per minute.
 // Intentionally stricter than the public API limiter.
-// Uses Redis in production (shared across replicas) or in-memory in dev.
+// Uses Postgres (rate_limits table) in production (shared) or in-memory in dev. (Redis removed in consolidation.)
 const adminBruteForceLimiter = createRateLimiter({
   windowMs: 60_000,
   maxRequests: 10,

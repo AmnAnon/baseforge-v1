@@ -5,25 +5,12 @@
 
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
-import { Redis } from "@upstash/redis";
 import { db } from "@/lib/db/client";
 import { riskSnapshots, whaleEvents } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
 
-// ─── Redis singleton ──────────────────────────────────────────────
-let _redis: Redis | null = null;
-function getRedis(): Redis | null {
-  if (_redis) return _redis;
-  const url = process.env.UPSTASH_REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_TOKEN;
-  if (!url || !token) return null;
-  _redis = new Redis({ url, token });
-  return _redis;
-}
-
 // ─── Case-insensitive Base TVL ──────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getBaseTvl(p: any): number {
+function getBaseTvl(p: { chainTvls?: Record<string, number> }): number {
   return p.chainTvls?.["Base"] ?? p.chainTvls?.["base"] ?? p.chainTvls?.["BASE"] ?? 0;
 }
 
@@ -161,15 +148,12 @@ async function fetchUtilization(slug: string, baseTvl: number): Promise<number |
   if (!LENDING_PROTOCOLS.has(slug)) return null;
   if (slug === "moonwell") return fetchMoonwellUtilization();
   // Estimate for other lending protocols using TVL — rough 35% utilization baseline
-  // Only shown when TVL is known, so at least something renders
   return baseTvl > 0 ? Math.round(35 + Math.random() * 10) / 1 : null;
-  // Note: replace with protocol-specific subgraph data if available
 }
 
 // ─── DB helpers ───────────────────────────────────────────────
 
 async function fetchRiskSnapshots(protocol: string) {
-  if (!process.env.DATABASE_URL) return [];
   try {
     const rows = await db
       .select()
@@ -193,7 +177,6 @@ async function fetchRiskSnapshots(protocol: string) {
 }
 
 async function fetchWhaleActivity(protocol: string) {
-  if (!process.env.DATABASE_URL) return [];
   try {
     const rows = await db
       .select()
@@ -215,16 +198,13 @@ async function fetchWhaleActivity(protocol: string) {
   }
 }
 
-async function fetchPriceFromRedis(slug: string): Promise<number | null> {
+async function fetchPriceFromCache(slug: string): Promise<number | null> {
   try {
-    const redis = getRedis();
-    if (!redis) return null;
-    const raw = await redis.get<string | Record<string, unknown>>("baseforge:prices");
+    const raw = await cache.get<Record<string, { usd?: number } | number>>("baseforge:prices");
     if (!raw) return null;
-    const prices = typeof raw === "string" ? JSON.parse(raw) : raw;
     const cgId = SLUG_TO_CG[slug];
     if (!cgId) return null;
-    const entry = prices[cgId];
+    const entry = raw[cgId];
     if (typeof entry === "number") return entry;
     if (entry && typeof entry === "object" && "usd" in entry) return (entry as { usd: number }).usd;
     return null;
@@ -255,8 +235,7 @@ export async function GET(
       fetchAllProtocols(),
     ]);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const proto = allProtocols.find((p: any) =>
+    const proto = allProtocols.find((p: { slug?: string; name?: string }) =>
       p.slug === slug || p.id === slug || p.name?.toLowerCase().replace(/ /g, "-") === slug
     );
 
@@ -269,15 +248,15 @@ export async function GET(
     const tvlChange7d = proto.change_7d || 0;
 
     // Fetch fees, token price, utilization, DB data in parallel
-    const [feesData, tokenPriceCG, tokenPriceRedis, utilization, riskHistory, whaleActivity] = await Promise.all([
+    const [feesData, tokenPriceCG, tokenPriceCached, utilization, riskHistory, whaleActivity] = await Promise.all([
       fetchFees(slug),
       fetchTokenPrice(slug),
-      fetchPriceFromRedis(slug),
+      fetchPriceFromCache(slug),
       fetchUtilization(slug, baseTvl),
       fetchRiskSnapshots(slug),
       fetchWhaleActivity(slug),
     ]);
-    const tokenPrice = tokenPriceRedis ?? tokenPriceCG;
+    const tokenPrice = tokenPriceCached ?? tokenPriceCG;
 
     const { score: healthScore, riskFactors } = calculateHealthScore({
       audits: proto.audits || 0,

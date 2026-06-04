@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
   ],
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "icons.llamao.fi" },
+      { protocol: "https", hostname: "icons.llama.fi" },
       { protocol: "https", hostname: "assets.coingecko.com" },
     ],
   },

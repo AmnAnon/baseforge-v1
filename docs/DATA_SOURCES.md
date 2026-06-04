@@ -106,13 +106,15 @@ BaseForge aggregates data from multiple providers with automatic failover. This 
 
 **Env var:** `DATABASE_URL`
 
-### 6. Upstash Redis (Optional Distributed Cache)
+### 6. Cache Backend (Postgres-backed)
 
-**What:** Serverless Redis. Optional replacement for in-memory cache.
+**What:** Unified cache using in-memory (dev) or the `api_cache` table in Neon Postgres (prod). This provides shared cache + stream versioning across serverless instances without separate Redis.
 
-**Why optional:** In-memory cache works fine for single-instance deployments (Vercel). Redis is needed for multi-region or high-traffic scenarios where cache should be shared.
+**Why:** After consolidation, Redis/Upstash dependency was removed. The DB-backed cache (via Drizzle + direct SQL in worker) is sufficient and keeps operational surface small. Set `CACHE_BACKEND=postgres` (default when DATABASE_URL present) or `memory`.
 
-**Env vars:** `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `CACHE_BACKEND=upstash`
+**Env vars:** `DATABASE_URL` (required for prod cache), `CACHE_BACKEND=memory|postgres`
+
+**Note:** Legacy `upstash` value for `CACHE_BACKEND` is accepted but treated as postgres path. Old Upstash envs are ignored.
 
 ---
 

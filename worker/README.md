@@ -4,8 +4,8 @@ Background worker that runs four perpetual loops alongside the Next.js app:
 
 | Loop | Interval | What | 
 |------|----------|------|
-| Cache Warmer | 30s | Fetches DefiLlama, CoinGecko → Upstash Redis |
-| Risk Scorer | 5min | Computes protocol health scores → Redis + Neon |
+| Cache Warmer | 30s | Fetches DefiLlama, CoinGecko → Postgres api_cache |
+| Risk Scorer | 5min | Computes protocol health scores → Postgres (risk_snapshots) |
 | Whale Persister | 5min | Batches whale events → Neon Postgres |
 | Alert Evaluator | 60s | Checks alert rules → webhook |
 | HTTP server | always | `/metrics`, `/health`, `POST /events/whale` |
@@ -18,7 +18,7 @@ Background worker that runs four perpetual loops alongside the Next.js app:
 cp worker/.env.example worker/.env.local
 ```
 
-Edit `worker/.env.local` with your Upstash Redis and Neon credentials.
+Edit `worker/.env.local` with your Neon Postgres (DATABASE_URL) credentials. (No Redis/Upstash needed — uses Postgres for cache/state.)
 
 ### 2. Install dependencies
 
@@ -42,7 +42,7 @@ The worker starts on port 3001 by default (override with `METRICS_PORT`).
 
 ## Why a Worker?
 
-The Next.js API routes fetch live data on every request. The worker pre-warms the Redis cache so the dashboard loads fast — first-visit latency drops from ~3s to ~200ms.
+The Next.js API routes fetch live data on every request. The worker pre-warms the Postgres api_cache (and risk/whale tables) so the dashboard loads fast — first-visit latency drops from ~3s to ~200ms. (Uses same DB as main app.)
 
 ## History
 

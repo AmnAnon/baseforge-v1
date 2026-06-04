@@ -4,11 +4,12 @@
  * Merges DefiLlama + on-chain data into unified protocol profiles.
  * Returns Top 20 Base protocols with complete metrics.
  *
- * Cache: 5 min (in-memory, swappable to Upstash later)
+ * Cache: 5 min (in-memory for dev or Postgres api_cache table for prod)
  */
 import { NextResponse } from "next/server";
 import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 // Category trust scores (audit standards vary by protocol type)
 const CATEGORY_TRUST: Record<string, number> = {
@@ -18,12 +19,12 @@ const CATEGORY_TRUST: Record<string, number> = {
 
 // Known protocol logos
 const PROTOCOL_LOGOS: Record<string, string> = {
-  "Aerodrome": "https://icons.llamao.fi/icons/protocols/aerodrome",
-  "Moonwell": "https://icons.llamao.fi/icons/protocols/moonwell",
-  "Sonne Finance": "https://icons.llamao.fi/icons/protocols/sonne-finance",
-  "Seamless Protocol": "https://icons.llamao.fi/icons/protocols/seamless-protocol",
-  "Compound V3": "https://icons.llamao.fi/icons/protocols/compound-v3",
-  "Aave V3": "https://icons.llamao.fi/icons/protocols/aave-v3",
+  "Aerodrome": "https://icons.llama.fi/icons/protocols/aerodrome",
+  "Moonwell": "https://icons.llama.fi/icons/protocols/moonwell",
+  "Sonne Finance": "https://icons.llama.fi/icons/protocols/sonne-finance",
+  "Seamless Protocol": "https://icons.llama.fi/icons/protocols/seamless-protocol",
+  "Compound V3": "https://icons.llama.fi/icons/protocols/compound-v3",
+  "Aave V3": "https://icons.llama.fi/icons/protocols/aave-v3",
 };
 
 interface RawProtocol {
@@ -175,7 +176,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(aggregated);
   } catch (err) {
-    console.error("Protocol aggregator error:", err);
+    logger.error("Protocol aggregator error", { error: String(err) });
     return NextResponse.json({ error: "Aggregation failed" }, { status: 500 });
   }
 }

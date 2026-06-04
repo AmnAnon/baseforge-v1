@@ -99,7 +99,7 @@ export async function GET(req: Request) {
         change_1d: p.change_1d || 0,
         change_7d: p.change_7d || 0,
         category: p.category || "DeFi",
-        logo: p.logo || `https://icons.llamao.fi/icons/protocols/${(p.slug || p.name.toLowerCase().replace(/ /g, "-"))}`,
+        logo: p.logo || `https://icons.llama.fi/icons/protocols/${(p.slug || p.name.toLowerCase().replace(/ /g, "-"))}`,
       }));
 
       // Build per-protocol detail data

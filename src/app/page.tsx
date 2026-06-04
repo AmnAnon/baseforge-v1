@@ -4,6 +4,7 @@
 // All interactive/SSE logic lives in HomeClient.tsx.
 
 import HomeClient, { type AnalyticsData } from "./HomeClient";
+import { logger } from "@/lib/logger";
 
 const EXCLUDED_CATEGORIES = new Set([
   "CEX", "Chain", "Bridge", "Liquidity Manager", "RWA",
@@ -51,7 +52,7 @@ async function getInitialData(): Promise<AnalyticsData | null> {
       tvlRes.status === "fulfilled" && Array.isArray(tvlRes.value) ? tvlRes.value : [];
 
     if (protocols.length === 0 && tvlHistory.length === 0) {
-      console.warn('[SSR] No data received from DefiLlama - client will fetch')
+      logger.warn('[SSR] No data received from DefiLlama - client will fetch')
       return null;
     }
 
@@ -104,7 +105,7 @@ async function getInitialData(): Promise<AnalyticsData | null> {
       timestamp: Date.now(),
     };
   } catch (error) {
-    console.error('[SSR] Failed to fetch initial data:', error);
+    logger.error('[SSR] Failed to fetch initial data', { error: String(error) });
     return null;
   }
 }

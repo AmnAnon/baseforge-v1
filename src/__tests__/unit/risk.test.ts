@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateHealthScore } from "@/lib/protocol-aggregator";
+import { calculateHealthScore } from "@/lib/risk";
 
 describe("calculateHealthScore", () => {
   function makeProto(overrides: Record<string, unknown> = {}) {

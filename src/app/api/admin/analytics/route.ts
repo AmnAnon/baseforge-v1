@@ -97,8 +97,15 @@ async function getTopProtocols(limit = 10) {
 // ─── Route ──────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
-  const denied = await adminAuthMiddleware(request);
-  if (denied) return denied;
+  const hasAdminKey = !!request.headers.get("x-admin-key");
+  const isDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
+  // In demo mode, allow the read-only frame stats bar without key (same-origin protected by middleware).
+  // Real admin mutations (api-keys) and non-demo still require the key.
+  if (!isDemo || hasAdminKey) {
+    const denied = await adminAuthMiddleware(request);
+    if (denied) return denied;
+  }
 
   try {
     const [
