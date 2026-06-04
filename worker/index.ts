@@ -63,13 +63,16 @@ async function incrementStreamVersion(): Promise<number> {
   try {
     const rows = await sql`
       INSERT INTO api_cache (key, value, expires_at)
-      VALUES ('stream:version', '1', '2099-01-01')
+      VALUES ('stream:version', '1'::jsonb, '2099-01-01')
       ON CONFLICT (key) DO UPDATE SET
-        value = (api_cache.value::int + 1)::text,
+        value = to_jsonb(
+          COALESCE((api_cache.value #>> '{}')::int, 0) + 1
+        ),
         expires_at = '2099-01-01'
       RETURNING value
     `;
-    return parseInt(rows[0].value as string, 10);
+    const raw = rows[0].value;
+    return typeof raw === "number" ? raw : parseInt(String(raw), 10);
   } catch (err) {
     log("error", "incrementStreamVersion failed", { error: String(err) });
     return 0;
