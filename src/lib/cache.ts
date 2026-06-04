@@ -74,10 +74,10 @@ class PostgresCacheBackend implements CacheBackendIface {
       const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
       await db
         .insert(apiCache)
-        .values({ key, value: value as any, expiresAt })
+        .values({ key, value: value as Record<string, unknown>, expiresAt })
         .onConflictDoUpdate({
           target: apiCache.key,
-          set: { value: value as any, expiresAt, createdAt: new Date() },
+          set: { value: value as Record<string, unknown>, expiresAt, createdAt: new Date() },
         });
     } catch (err) {
       logger.error("[PostgresCache] set failed", { error: String(err) });
@@ -99,6 +99,7 @@ class PostgresCacheBackend implements CacheBackendIface {
 
 interface CacheBackendIface {
   get<T>(key: string): Promise<T | null>;
+  getStale?<T>(key: string): Promise<T | null>;
   set<T>(key: string, value: T, ttlSeconds: number): Promise<void>;
   del(key: string): Promise<void>;
   clear(): Promise<void>;
@@ -121,8 +122,7 @@ const inflight = new Map<string, Promise<unknown>>();
 export const cache = {
   get: <T>(key: string): Promise<T | null> => driver.get<T>(key),
   getStale: <T>(key: string): Promise<T | null> => {
-    const d = driver as any;
-    if (typeof d.getStale === "function") return d.getStale(key);
+    if (typeof driver.getStale === "function") return driver.getStale<T>(key);
     return driver.get<T>(key);
   },
   set: <T>(key: string, value: T, ttl: number): Promise<void> => driver.set<T>(key, value, ttl),
@@ -165,8 +165,8 @@ export const cache = {
       await driver.set(key, { ...fresh, isStale: false }, ttlSeconds);
       return { ...fresh, isStale: false };
     } catch {
-      const d = driver as any;
-      const stale = typeof d.getStale === "function" ? await d.getStale(key) : null;
+      const stale =
+        typeof driver.getStale === "function" ? await driver.getStale<T>(key) : null;
       if (stale !== null) {
         return { ...stale, isStale: true, _stale: true };
       }

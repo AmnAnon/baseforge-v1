@@ -104,7 +104,7 @@ export async function GET(request: Request) {
       try {
         const rows = await db.select().from(apiCache).where(eq(apiCache.key, "stream:latest")).limit(1);
         if (rows.length > 0) {
-          controller.enqueue(sse({ ...((rows[0].value as any) || {}), type: "snapshot" }));
+          controller.enqueue(sse({ ...((rows[0].value as Record<string, unknown>) || {}), type: "snapshot" }));
           
           const verRow = await db.select().from(apiCache).where(eq(apiCache.key, "stream:version")).limit(1);
           if (verRow.length > 0) lastVersion = parseInt(verRow[0].value as string, 10);
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
 
           const dataRow = await db.select().from(apiCache).where(eq(apiCache.key, "stream:latest")).limit(1);
           if (dataRow.length === 0) return;
-          controller.enqueue(sse({ ...((dataRow[0].value as any) || {}), type: "update", _v: vNum }));
+          controller.enqueue(sse({ ...((dataRow[0].value as Record<string, unknown>) || {}), type: "update", _v: vNum }));
         } catch (err) {
           logger.error("[stream] poll failed", { error: String(err) });
         }
