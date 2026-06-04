@@ -30,6 +30,20 @@ cd worker && fly deploy   # or Railway with worker/Dockerfile
 
 Then set `WORKER_URL=https://<your-worker-host>` (no trailing slash).
 
+## Worker URL (VPS)
+
+If using the Tencent VPS worker (see `WORKER_VPS.md`), Production **must** use the proxied path:
+
+```env
+WORKER_URL=http://43.163.106.68/baseforge
+```
+
+(No trailing slash. Health probe: `http://43.163.106.68/baseforge/health` → `{"status":"ok",...}`.)
+
+If `WORKER_URL` is wrong (e.g. missing `/baseforge`), health reports `worker` → `HTTP 404`.
+
+**Alternative:** Unset `WORKER_URL`, set `CRON_SECRET`, and rely on Vercel Cron only.
+
 ## Verify after deploy
 
 ```bash
@@ -42,6 +56,8 @@ Expected when stable:
 - `checks.defillama.status`: `"ok"`
 - `checks.cache.detail`: `backend=postgres`
 - `checks.worker.detail`: mentions `vercel-cron` OR `railway worker healthy`
+
+Track phased work in `docs/V2_ROADMAP.md` (Phase 0 verification log).
 
 Manual cron test (local or staging):
 
