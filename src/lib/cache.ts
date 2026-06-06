@@ -6,9 +6,13 @@ import { db } from "./db/client";
 import { apiCache } from "./db/schema";
 import { eq, lt } from "drizzle-orm";
 import { logger } from "./logger";
-import { resolveCacheBackend } from "./env-config";
+import { getCacheMisconfiguration, resolveCacheBackend } from "./env-config";
 
 const CACHE_BACKEND = resolveCacheBackend();
+const CACHE_MISCONFIG = getCacheMisconfiguration();
+if (CACHE_MISCONFIG) {
+  logger.error("[Cache] Misconfiguration", { detail: CACHE_MISCONFIG, backend: CACHE_BACKEND });
+}
 
 // ─── In-Memory Driver (Fallback for dev) ───────────────────────
 

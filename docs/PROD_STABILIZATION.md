@@ -2,17 +2,29 @@
 
 Apply these on the **Vercel** project for `baseforge-v1` after merging/deploying the stabilization changes.
 
+## Critical: Vercel serverless cache
+
+**Do not use `CACHE_BACKEND=memory` on Vercel.** Each serverless function instance has its own isolated memory — cache writes on one instance are invisible to the next request. That causes cache misses, stampedes on upstream APIs, and inconsistent API responses.
+
+BaseForge auto-selects **postgres** when:
+
+- `DATABASE_URL` is set, or
+- The deploy runs on Vercel (`VERCEL=1`), or
+- `NODE_ENV=production`
+
+Without `DATABASE_URL` on Vercel, `/api/health` reports `checks.cache.status: "error"` and overall status degrades to `unhealthy`.
+
 ## Required environment variables
 
 | Variable | Value | Why |
 |----------|-------|-----|
-| `DATABASE_URL` | Neon connection string | Shared cache, rate limits, alerts |
+| `DATABASE_URL` | Neon connection string | **Shared** cache + rate limits across all Vercel instances |
 | `ENVIO_API_TOKEN` | From envio.dev | Primary indexer |
 | `ETHERSCAN_API_KEY` | From etherscan.io | Fallback indexer |
-| `CACHE_BACKEND` | `postgres` or **unset** | Auto-uses postgres when `DATABASE_URL` is set in production |
+| `CACHE_BACKEND` | `postgres` or **unset** | Auto-uses postgres on Vercel/production when `DATABASE_URL` is set |
 | `CRON_SECRET` | Random 32+ byte hex | Authorizes Vercel Cron cache warmer |
 
-**Remove or ignore:** `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `CACHE_BACKEND=memory` in production.
+**Remove or ignore:** `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`, `CACHE_BACKEND=memory` on Vercel/production.
 
 ## Vercel Cron (replaces missing worker)
 

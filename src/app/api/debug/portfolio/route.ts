@@ -4,6 +4,7 @@
 // NOTE: Only available in development or when DEBUG_MODE=true.
 
 import { NextResponse } from "next/server";
+import { resolveCacheBackend } from "@/lib/env-config";
 import { isAddress, erc20Abi, formatUnits, type Address } from "viem";
 import { basePublicClient } from "@/lib/viem/client";
 import { TRACKED_TOKENS } from "@/lib/viem/balances";
@@ -26,7 +27,8 @@ export async function GET(req: Request) {
     testAddress,
     env: {
       NODE_ENV: process.env.NODE_ENV,
-      CACHE_BACKEND: process.env.CACHE_BACKEND || "memory",
+      CACHE_BACKEND: resolveCacheBackend(),
+      CACHE_BACKEND_ENV: process.env.CACHE_BACKEND ?? "(unset)",
       TRACKED_TOKENS_COUNT: TRACKED_TOKENS.length,
     },
   };

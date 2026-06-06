@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  getCacheMisconfiguration,
+  isVercelDeploy,
+  requiresSharedCache,
   resolveCacheBackend,
   usesCronBackgroundJobs,
   DEFILLAMA_HEALTH_URL,
@@ -31,9 +34,67 @@ describe("resolveCacheBackend", () => {
     expect(resolveCacheBackend()).toBe("postgres");
   });
 
+  it("forces postgres on Vercel without DATABASE_URL (never memory)", () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("CACHE_BACKEND", "memory");
+    expect(resolveCacheBackend()).toBe("postgres");
+  });
+
   it("maps legacy upstash to postgres", () => {
     vi.stubEnv("CACHE_BACKEND", "upstash");
     expect(resolveCacheBackend()).toBe("postgres");
+  });
+});
+
+describe("requiresSharedCache / isVercelDeploy", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("requires shared cache in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(requiresSharedCache()).toBe(true);
+  });
+
+  it("requires shared cache on any Vercel deploy", () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("NODE_ENV", "development");
+    expect(isVercelDeploy()).toBe(true);
+    expect(requiresSharedCache()).toBe(true);
+  });
+
+  it("allows memory only in local dev/test", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    expect(requiresSharedCache()).toBe(false);
+    expect(resolveCacheBackend()).toBe("memory");
+  });
+});
+
+describe("getCacheMisconfiguration", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("flags Vercel without DATABASE_URL", () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(getCacheMisconfiguration()).toMatch(/DATABASE_URL required/);
+  });
+
+  it("returns null when Vercel has DATABASE_URL", () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/test");
+    expect(getCacheMisconfiguration()).toBeNull();
   });
 });
 

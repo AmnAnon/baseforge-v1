@@ -4,6 +4,7 @@
 // NOTE: Only available in development or when DEBUG_MODE=true.
 
 import { NextResponse } from "next/server";
+import { resolveCacheBackend } from "@/lib/env-config";
 import { getLargeSwaps, getIndexerHealth } from "@/lib/data/indexers";
 import { circuitBreakers } from "@/lib/circuit-breaker";
 
@@ -21,7 +22,8 @@ export async function GET(req: Request) {
       ENVIO_API_TOKEN_SET: !!process.env.ENVIO_API_TOKEN,
       ENVIO_API_TOKEN_LENGTH: process.env.ENVIO_API_TOKEN?.length ?? 0,
       ETHERSCAN_API_KEY_SET: !!process.env.ETHERSCAN_API_KEY,
-      CACHE_BACKEND: process.env.CACHE_BACKEND || "memory",
+      CACHE_BACKEND: resolveCacheBackend(),
+      CACHE_BACKEND_ENV: process.env.CACHE_BACKEND ?? "(unset)",
       WHALE_MIN_USD: process.env.WHALE_MIN_USD || "10000",
       WHALE_LIMIT: process.env.WHALE_LIMIT || "50",
     },

@@ -9,6 +9,7 @@ import { getIndexerHealth } from "@/lib/data/indexers";
 import { circuitBreakers } from "@/lib/circuit-breaker";
 import {
   DEFILLAMA_HEALTH_URL,
+  getCacheMisconfiguration,
   resolveCacheBackend,
   usesCronBackgroundJobs,
 } from "@/lib/env-config";
@@ -105,16 +106,14 @@ async function runHealthChecks() {
   checks.defillama = llamaCheck;
   checks.coingecko = coingeckoCheck;
 
-  if (isProd && cacheBackend === "memory") {
+  const cacheMisconfig = getCacheMisconfiguration();
+  if (cacheMisconfig) {
+    checks.cache = { status: "error", detail: cacheMisconfig };
+  } else if (cacheBackend === "memory" && isProd) {
     checks.cache = {
       status: "error",
       detail:
         "MEMORY cache in production — set DATABASE_URL and CACHE_BACKEND=postgres (or unset CACHE_BACKEND)",
-    };
-  } else if (isProd && cacheBackend === "postgres" && !process.env.DATABASE_URL) {
-    checks.cache = {
-      status: "error",
-      detail: "postgres backend selected but DATABASE_URL is missing",
     };
   } else {
     checks.cache = {
