@@ -6,34 +6,23 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  LayoutDashboard,
-  CandlestickChart,
+  Activity,
   Fish,
   ShieldAlert,
-  BarChart3,
   RefreshCw,
   Signal,
   Wallet,
   Zap,
-  GitCompare,
-  Bell,
-  DollarSign,
-  Bot,
   TrendingUp,
   Monitor,
-  Activity,
   Cpu,
+  MoreHorizontal,
 } from "lucide-react";
-import OverviewSection from "@/components/sections/OverviewSection";
-import MarketSection from "@/components/sections/MarketSection";
-import WhalesSection from "@/components/sections/WhalesSection";
-import RiskSection from "@/components/sections/RiskSection";
-import ChartsSection from "@/components/sections/ChartsSection";
+import PulseHub from "@/components/hubs/PulseHub";
+import RiskHub from "@/components/hubs/RiskHub";
+import FlowsHub from "@/components/hubs/FlowsHub";
+import MarketHub from "@/components/hubs/MarketHub";
 import PortfolioSection from "@/components/sections/PortfolioSection";
-import AlertsSection from "@/components/sections/AlertsSection";
-import ProtocolCompareSection from "@/components/sections/ProtocolCompareSection";
-import RevenueDashboard from "@/components/sections/RevenueDashboard";
-import MEVSection from "@/components/sections/MEVSection";
 import { NeonCard } from "@/components/ui/NeonCard";
 import { CountUp } from "@/components/ui/CountUp";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -49,27 +38,31 @@ export interface AnalyticsData {
   timestamp?: number;
 }
 
-type TabType = "overview" | "market" | "portfolio" | "compare" | "alerts" | "revenue" | "mev" | "whales" | "risk" | "charts";
+type HubId = "pulse" | "risk" | "flows" | "portfolio" | "more";
 
-interface TabConfig {
-  id: TabType;
+interface HubConfig {
+  id: HubId;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   ariaLabel: string;
 }
 
-const TABS: TabConfig[] = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard, ariaLabel: "Protocol overview" },
-  { id: "market", label: "Market", icon: CandlestickChart, ariaLabel: "Market data" },
-  { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Portfolio tracker" },
-  { id: "revenue", label: "Revenue", icon: DollarSign, ariaLabel: "Protocol revenue" },
-  { id: "mev", label: "MEV", icon: Bot, ariaLabel: "MEV activity" },
-  { id: "compare", label: "Compare", icon: GitCompare, ariaLabel: "Protocol comparison" },
-  { id: "alerts", label: "Alerts", icon: Bell, ariaLabel: "Active alerts" },
-  { id: "whales", label: "Whales", icon: Fish, ariaLabel: "Whale tracker" },
-  { id: "risk", label: "Risk", icon: ShieldAlert, ariaLabel: "Risk metrics" },
-  { id: "charts", label: "Charts", icon: BarChart3, ariaLabel: "Analytics charts" },
+const HUBS: HubConfig[] = [
+  { id: "pulse", label: "Pulse", icon: Activity, ariaLabel: "Ecosystem pulse — overview and charts" },
+  { id: "risk", label: "Risk", icon: ShieldAlert, ariaLabel: "Risk scores, compare, and alerts" },
+  { id: "flows", label: "Flows", icon: Fish, ariaLabel: "Whale and MEV flows" },
+  { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Wallet portfolio" },
+  { id: "more", label: "More", icon: MoreHorizontal, ariaLabel: "Market data and developer tools" },
 ];
+
+const HUB_STORAGE_KEY = "baseforge-hub";
+
+function readStoredHub(): HubId {
+  if (typeof window === "undefined") return "pulse";
+  const stored = localStorage.getItem(HUB_STORAGE_KEY);
+  if (stored && HUBS.some((h) => h.id === stored)) return stored as HubId;
+  return "pulse";
+}
 
 function formatGas(gwei?: number): string {
   if (!gwei || gwei <= 0) return "0.001";
@@ -77,7 +70,16 @@ function formatGas(gwei?: number): string {
 }
 
 export default function HomeClient({ initialData }: { initialData: AnalyticsData | null }) {
-  const [tab, setTab] = useState<TabType>("overview");
+  const [hub, setHub] = useState<HubId>("pulse");
+
+  useEffect(() => {
+    setHub(readStoredHub());
+  }, []);
+
+  const selectHub = useCallback((id: HubId) => {
+    setHub(id);
+    localStorage.setItem(HUB_STORAGE_KEY, id);
+  }, []);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(initialData);
   const [gasGwei, setGasGwei] = useState(0.001);
   const [scanlines, setScanlines] = useState(false);
@@ -148,43 +150,22 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
       .finally(() => setIsRefreshing(false));
   }, []);
 
-  const renderSection = () => {
-    switch (tab) {
-      case "market":
-        return <ErrorBoundary><MarketSection /></ErrorBoundary>;
-      case "whales":
-        return <ErrorBoundary><WhalesSection /></ErrorBoundary>;
+  const renderHub = () => {
+    switch (hub) {
       case "risk":
-        return <ErrorBoundary><RiskSection /></ErrorBoundary>;
-      case "charts":
-        return (
-          <ErrorBoundary>
-            <ChartsSection
-              data={
-                analytics?.tvlHistory
-                  ? {
-                      tvlData: analytics.tvlHistory.map((d) => ({ date: d.date, tvl: d.tvl })),
-                      feesData: [],
-                      revenueData: [],
-                      supplyBorrowData: [],
-                    }
-                  : null
-              }
-            />
-          </ErrorBoundary>
-        );
+        return <ErrorBoundary><RiskHub /></ErrorBoundary>;
+      case "flows":
+        return <ErrorBoundary><FlowsHub /></ErrorBoundary>;
       case "portfolio":
         return <ErrorBoundary><PortfolioSection /></ErrorBoundary>;
-      case "alerts":
-        return <ErrorBoundary><AlertsSection /></ErrorBoundary>;
-      case "compare":
-        return <ErrorBoundary><ProtocolCompareSection /></ErrorBoundary>;
-      case "revenue":
-        return <ErrorBoundary><RevenueDashboard /></ErrorBoundary>;
-      case "mev":
-        return <ErrorBoundary><MEVSection /></ErrorBoundary>;
+      case "more":
+        return <ErrorBoundary><MarketHub /></ErrorBoundary>;
       default:
-        return <ErrorBoundary><OverviewSection data={analytics} isLoading={isLoading} /></ErrorBoundary>;
+        return (
+          <ErrorBoundary>
+            <PulseHub analytics={analytics} isLoading={isLoading} />
+          </ErrorBoundary>
+        );
     }
   };
 
@@ -327,7 +308,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
 
       {/* Main content */}
       <main className="p-3 sm:p-6" role="main">
-        {renderSection()}
+        {renderHub()}
 
         {/* Global footer */}
         <footer className="mt-8 mb-2 text-center">
@@ -346,26 +327,26 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
         role="navigation"
         aria-label="Main navigation"
       >
-        <div className="flex justify-around items-center py-1.5 px-1 max-w-screen-xl mx-auto">
-          {TABS.map(({ id, label, icon: Icon, ariaLabel }) => (
+        <div className="flex justify-between items-center py-2 px-2 sm:px-4 max-w-screen-xl mx-auto gap-1">
+          {HUBS.map(({ id, label, icon: Icon, ariaLabel }) => (
             <button
               key={id}
-              onClick={() => setTab(id)}
+              onClick={() => selectHub(id)}
               className={`
-                flex flex-col items-center justify-center gap-0.5 py-1.5 px-2 rounded-xl
-                transition-all duration-300 min-w-[48px] max-w-[68px]
+                flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl
+                transition-all duration-300 max-w-[80px]
                 focus:outline-none focus:ring-2 focus:ring-[var(--bf-neon-primary)] focus:ring-offset-2 focus:ring-offset-[#0a0a0a]
                 ${
-                  tab === id
+                  hub === id
                     ? "text-[var(--bf-neon-primary)] bg-[#00d4ff]/10 shadow-[0_0_20px_rgba(0,212,255,0.2)]"
                     : "text-[var(--bf-text-secondary)] hover:text-[var(--bf-neon-primary)] hover:bg-white/5"
                 }
               `}
               aria-label={ariaLabel}
-              aria-current={tab === id ? "page" : undefined}
+              aria-current={hub === id ? "page" : undefined}
             >
-              <Icon size={18} className={`transition-all duration-300 ${tab === id ? "scale-110" : ""}`} />
-              <span className={`text-[8px] sm:text-[10px] font-medium truncate ${tab === id ? "neon-text" : ""}`}>
+              <Icon size={20} className={`transition-all duration-300 ${hub === id ? "scale-110" : ""}`} />
+              <span className={`text-[10px] sm:text-xs font-medium ${hub === id ? "neon-text" : ""}`}>
                 {label}
               </span>
             </button>
