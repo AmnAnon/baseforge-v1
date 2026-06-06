@@ -5,7 +5,7 @@
 
 import { logger } from "@/lib/logger";
 import { circuitBreakers } from "@/lib/circuit-breaker";
-import { CONTRACTS, TOKEN_SYMBOLS, ADDRESS_LABELS } from "./contracts";
+import { CONTRACTS, TOKEN_SYMBOLS, TOKEN_DECIMALS, ADDRESS_LABELS, WHALE_TRACKED_TOKENS } from "./contracts";
 import type { SwapEvent, WhaleFlow, LendingEvent, IndexerHealthStatus, SwapQuery, WhaleQuery, LendingQuery } from "./types";
 
 const ETHERSCAN_API_KEY = () => process.env.ETHERSCAN_API_KEY || "";
@@ -30,6 +30,31 @@ async function getEthPrice(): Promise<number> {
 
 function labelAddress(addr: string): string {
   return ADDRESS_LABELS[addr.toLowerCase()] || `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+async function fetchEtherscanTokenTx(
+  contractAddress: string,
+  offset: number = 50
+): Promise<Array<Record<string, string>>> {
+  const apiKey = ETHERSCAN_API_KEY();
+  if (!apiKey) return [];
+
+  try {
+    const url = `https://api.etherscan.io/v2/api?chainid=${BASE_CHAIN_ID}&module=account&action=tokentx&contractaddress=${contractAddress}&page=1&offset=${offset}&sort=desc&apikey=${apiKey}`;
+    const res = await circuitBreakers.etherscan.execute(() =>
+      fetch(url, { signal: AbortSignal.timeout(10_000) })
+    );
+    const data = await res.json();
+    if (data.status === "1" && Array.isArray(data.result)) {
+      return data.result;
+    }
+  } catch (err) {
+    logger.warn("Etherscan token tx fetch failed", {
+      contractAddress,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+  return [];
 }
 
 async function fetchEtherscanTxList(
@@ -100,36 +125,48 @@ export async function getSwaps(query: SwapQuery = {}): Promise<SwapEvent[]> {
   return allSwaps.slice(0, limit);
 }
 
+function tokenAmountToUsd(
+  contractAddress: string,
+  rawValue: string,
+  ethPrice: number
+): number {
+  const addr = contractAddress.toLowerCase();
+  const decimals = TOKEN_DECIMALS[addr] || 18;
+  const amount = parseFloat(rawValue || "0") / 10 ** decimals;
+
+  if (addr === CONTRACTS.USDC.toLowerCase() || addr === CONTRACTS.USDbC.toLowerCase() || addr === CONTRACTS.DAI.toLowerCase()) {
+    return amount;
+  }
+  if (addr === CONTRACTS.WETH.toLowerCase() || addr === CONTRACTS.cbETH.toLowerCase()) {
+    return amount * ethPrice;
+  }
+  return amount;
+}
+
 export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]> {
   const { limit = 50, minAmountUSD = 50_000 } = query;
   const ethPrice = await getEthPrice();
 
-  const monitored = [
-    { addr: CONTRACTS.UNISWAP_V3_ROUTER, protocol: "uniswap-v3" },
-    { addr: CONTRACTS.AERODROME_ROUTER, protocol: "aerodrome" },
-    { addr: CONTRACTS.SEAMLESS_POOL, protocol: "seamless" },
-  ];
-
   const flows: WhaleFlow[] = [];
 
-  for (const { addr, protocol } of monitored) {
-    const txList = await fetchEtherscanTxList(addr, 30);
+  // Large ERC-20 transfers (WETH, USDC, etc.) — catches real whale movement
+  for (const tokenAddr of WHALE_TRACKED_TOKENS) {
+    const txList = await fetchEtherscanTokenTx(tokenAddr, 60);
     for (const tx of txList) {
-      const ethValue = parseFloat(tx.value || "0") / 1e18;
-      const usdValue = ethValue * ethPrice;
+      const usdValue = tokenAmountToUsd(tokenAddr, tx.value, ethPrice);
       if (usdValue < minAmountUSD) continue;
 
       flows.push({
         txHash: tx.hash,
         blockNumber: parseInt(tx.blockNumber || "0"),
         timestamp: parseInt(tx.timeStamp || "0"),
-        protocol,
-        type: "swap",
-        from: labelAddress(tx.from),
-        to: labelAddress(tx.to),
+        protocol: "base",
+        type: "transfer",
+        from: tx.from,
+        to: tx.to,
         amountUSD: Math.round(usdValue),
-        token: "ETH",
-        tokenAmount: ethValue.toFixed(4),
+        token: TOKEN_SYMBOLS[tokenAddr.toLowerCase()] || "TOKEN",
+        tokenAmount: (parseFloat(tx.value || "0") / 10 ** (TOKEN_DECIMALS[tokenAddr.toLowerCase()] || 18)).toFixed(4),
       });
     }
   }

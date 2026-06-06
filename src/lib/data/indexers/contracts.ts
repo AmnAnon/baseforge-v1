@@ -66,6 +66,15 @@ export const CONTRACTS = {
   WELL: "0x511c69db9a61b0cb0d77a048aa395f2c7f6b6a36",
 } as const;
 
+/** High-liquidity tokens for large-transfer whale detection */
+export const WHALE_TRACKED_TOKENS = [
+  CONTRACTS.WETH,
+  CONTRACTS.USDC,
+  CONTRACTS.USDbC,
+  CONTRACTS.DAI,
+  CONTRACTS.cbETH,
+] as const;
+
 // ── Token decimals for USD conversion ────────────────────────
 export const TOKEN_DECIMALS: Record<string, number> = {
   [CONTRACTS.WETH]: 18,

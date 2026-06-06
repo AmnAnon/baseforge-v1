@@ -17,7 +17,7 @@
 
 import { logger } from "@/lib/logger";
 import { circuitBreakers } from "@/lib/circuit-breaker";
-import { CONTRACTS, EVENT_SIGNATURES, TOKEN_SYMBOLS, TOKEN_DECIMALS } from "./contracts";
+import { CONTRACTS, EVENT_SIGNATURES, TOKEN_SYMBOLS, TOKEN_DECIMALS, WHALE_TRACKED_TOKENS } from "./contracts";
 import type {
   SwapEvent,
   LiquidityEvent,
@@ -106,20 +106,25 @@ async function queryHyperSync(params: {
   fromBlock: number;
   toBlock?: number;
   addresses?: string[];
-  topics: string[][];
+  topics?: string[][];
+  logs?: Array<{ address?: string[]; topics: string[][] }>;
   maxBlocks?: number;
 }): Promise<HyperSyncResponse> {
   const token = API_TOKEN();
 
+  const logEntries =
+    params.logs ??
+    [
+      {
+        ...(params.addresses?.length ? { address: params.addresses } : {}),
+        topics: params.topics ?? [[]],
+      },
+    ];
+
   const query = {
     from_block: params.fromBlock,
     ...(params.toBlock ? { to_block: params.toBlock } : {}),
-    logs: [
-      {
-        ...(params.addresses?.length ? { address: params.addresses } : {}),
-        topics: params.topics,
-      },
-    ],
+    logs: logEntries,
     field_selection: {
       log: [
         "address",
@@ -179,11 +184,21 @@ async function queryHyperSync(params: {
     })
   );
 
-  return {
+  const result = {
     data: { logs, blocks },
     nextBlock: raw.next_block || raw.nextBlock || 0,
     totalExecutionTime: raw.total_execution_time || 0,
   };
+
+  if (token && logs.length === 0 && params.fromBlock > 0) {
+    logger.debug("HyperSync returned 0 logs", {
+      fromBlock: params.fromBlock,
+      topics: params.topics?.[0]?.length ?? 0,
+      addresses: params.addresses?.length ?? 0,
+    });
+  }
+
+  return result;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -197,6 +212,20 @@ function decodeUint256(hex: string): bigint {
   if (!hex || hex === "0x") return 0n;
   return BigInt(hex);
 }
+
+/** Decode signed int256 values (Uniswap V3 swap amounts). */
+function decodeInt256(hex: string): bigint {
+  if (!hex || hex === "0x") return 0n;
+  const v = BigInt(hex);
+  const signBit = 1n << 255n;
+  return v >= signBit ? v - (1n << 256n) : v;
+}
+
+function absBigInt(v: bigint): bigint {
+  return v < 0n ? -v : v;
+}
+
+const DEFAULT_BLOCK_LOOKBACK = 12_000; // ~6–7h on Base
 
 function formatTokenAmount(raw: bigint, decimals: number): string {
   const divisor = 10n ** BigInt(decimals);
@@ -272,29 +301,32 @@ async function getLatestBlock(): Promise<number> {
 /**
  * Fetch recent swap events from Aerodrome and Uniswap V3 on Base.
  */
+async function queryDexSwapLogs(
+  fromBlock: number,
+  protocol?: SwapQuery["protocol"]
+): Promise<HyperSyncResponse> {
+  const logFilters: Array<{ topics: string[][] }> = [];
+  if (!protocol || protocol === "aerodrome") {
+    logFilters.push({ topics: [[EVENT_SIGNATURES.AERODROME_SWAP]] });
+  }
+  if (!protocol || protocol === "uniswap-v3") {
+    logFilters.push({ topics: [[EVENT_SIGNATURES.UNISWAP_V3_SWAP]] });
+  }
+
+  return queryHyperSync({
+    fromBlock,
+    logs: logFilters,
+    maxBlocks: DEFAULT_BLOCK_LOOKBACK,
+  });
+}
+
 export async function getSwaps(query: SwapQuery = {}): Promise<SwapEvent[]> {
   const { limit = 50, minAmountUSD = 0 } = query;
   const ethPrice = await getEthPriceUSD();
   const latestBlock = await getLatestBlock();
-  const fromBlock = query.fromBlock || Math.max(0, latestBlock - 2000); // ~1hr of blocks
+  const fromBlock = query.fromBlock || Math.max(0, latestBlock - DEFAULT_BLOCK_LOOKBACK);
 
-  const topics: string[][] = [];
-
-  if (!query.protocol || query.protocol === "aerodrome") {
-    topics.push([EVENT_SIGNATURES.AERODROME_SWAP]);
-  }
-  if (!query.protocol || query.protocol === "uniswap-v3") {
-    topics.push([EVENT_SIGNATURES.UNISWAP_V3_SWAP]);
-  }
-
-  // Merge into a single OR query via topic0 array
-  const allTopic0s = topics.map((t) => t[0]);
-
-  const response = await queryHyperSync({
-    fromBlock,
-    topics: [allTopic0s],
-    maxBlocks: 5000,
-  });
+  const response = await queryDexSwapLogs(fromBlock, query.protocol);
 
   const swaps: SwapEvent[] = [];
 
@@ -310,12 +342,12 @@ export async function getSwaps(query: SwapQuery = {}): Promise<SwapEvent[]> {
         const recipient = extractAddress(log.topics[2]);
 
         // Data: amount0 (int256), amount1 (int256), sqrtPriceX96, liquidity, tick
-        const amount0Raw = decodeUint256("0x" + data.slice(0, 64));
-        const amount1Raw = decodeUint256("0x" + data.slice(64, 128));
+        const amount0Raw = decodeInt256("0x" + data.slice(0, 64));
+        const amount1Raw = decodeInt256("0x" + data.slice(64, 128));
 
         const usdEst =
-          estimateUSD(CONTRACTS.WETH, amount0Raw > 0n ? amount0Raw : -amount0Raw, ethPrice) +
-          estimateUSD(CONTRACTS.USDC, amount1Raw > 0n ? amount1Raw : -amount1Raw, ethPrice);
+          estimateUSD(CONTRACTS.WETH, absBigInt(amount0Raw), ethPrice) +
+          estimateUSD(CONTRACTS.USDC, absBigInt(amount1Raw), ethPrice);
 
         if (usdEst >= minAmountUSD) {
           swaps.push({
@@ -381,6 +413,50 @@ export async function getSwaps(query: SwapQuery = {}): Promise<SwapEvent[]> {
   return swaps.slice(0, limit);
 }
 
+async function fetchLargeTokenTransfers(
+  fromBlock: number,
+  minAmountUSD: number,
+  ethPrice: number,
+  limit: number
+): Promise<WhaleFlow[]> {
+  const response = await queryHyperSync({
+    fromBlock,
+    addresses: [...WHALE_TRACKED_TOKENS],
+    topics: [[EVENT_SIGNATURES.TRANSFER]],
+    maxBlocks: DEFAULT_BLOCK_LOOKBACK,
+  });
+
+  const flows: WhaleFlow[] = [];
+
+  for (const log of response.data.logs) {
+    const ts = blockTimestamp(response.data.blocks, log.blockNumber);
+    const from = extractAddress(log.topics[1]);
+    const to = extractAddress(log.topics[2]);
+    const data = log.data.startsWith("0x") ? log.data.slice(2) : log.data;
+    const amount = decodeUint256("0x" + data.slice(0, 64));
+    const tokenAddr = log.address.toLowerCase();
+    const usdEst = estimateUSD(tokenAddr, amount, ethPrice);
+
+    if (usdEst < minAmountUSD) continue;
+
+    flows.push({
+      txHash: log.transactionHash,
+      blockNumber: log.blockNumber,
+      timestamp: ts,
+      protocol: "base",
+      type: "transfer",
+      from,
+      to,
+      amountUSD: Math.round(usdEst),
+      token: TOKEN_SYMBOLS[tokenAddr] || "TOKEN",
+      tokenAmount: formatTokenAmount(amount, TOKEN_DECIMALS[tokenAddr] || 18),
+    });
+  }
+
+  flows.sort((a, b) => b.amountUSD - a.amountUSD);
+  return flows.slice(0, limit);
+}
+
 /**
  * Fetch whale-sized flows across DEXes and lending protocols.
  */
@@ -388,12 +464,15 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
   const { limit = 50, minAmountUSD = 50_000 } = query;
   const ethPrice = await getEthPriceUSD();
   const latestBlock = await getLatestBlock();
-  const fromBlock = query.fromBlock || Math.max(0, latestBlock - 5000);
+  const fromBlock = query.fromBlock || Math.max(0, latestBlock - DEFAULT_BLOCK_LOOKBACK);
 
-  // Query all major event types
-  const topic0s = [
-    EVENT_SIGNATURES.UNISWAP_V3_SWAP,
-    EVENT_SIGNATURES.AERODROME_SWAP,
+  const lendingAddresses = [
+    CONTRACTS.SEAMLESS_POOL,
+    CONTRACTS.MOONWELL_USDC,
+    CONTRACTS.MOONWELL_WETH,
+  ];
+
+  const lendingTopic0s = [
     EVENT_SIGNATURES.AAVE_SUPPLY,
     EVENT_SIGNATURES.AAVE_WITHDRAW,
     EVENT_SIGNATURES.AAVE_BORROW,
@@ -401,16 +480,31 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
     EVENT_SIGNATURES.AAVE_LIQUIDATION,
   ];
 
-  const response = await queryHyperSync({
-    fromBlock,
-    topics: [topic0s],
-    maxBlocks: 10000,
-  });
+  const [swapResponse, lendingResponse, tokenTransfers] = await Promise.all([
+    queryDexSwapLogs(fromBlock),
+    queryHyperSync({
+      fromBlock,
+      addresses: lendingAddresses,
+      logs: lendingTopic0s.map((t) => ({ topics: [[t]] })),
+      maxBlocks: DEFAULT_BLOCK_LOOKBACK,
+    }),
+    fetchLargeTokenTransfers(fromBlock, minAmountUSD, ethPrice, limit),
+  ]);
 
-  const flows: WhaleFlow[] = [];
+  const flows: WhaleFlow[] = [...tokenTransfers];
+  const seenTx = new Set(tokenTransfers.map((f) => f.txHash));
 
-  for (const log of response.data.logs) {
-    const ts = blockTimestamp(response.data.blocks, log.blockNumber);
+  const allLogs = [
+    ...swapResponse.data.logs,
+    ...lendingResponse.data.logs,
+  ];
+  const allBlocks = [
+    ...swapResponse.data.blocks,
+    ...lendingResponse.data.blocks,
+  ];
+
+  for (const log of allLogs) {
+    const ts = blockTimestamp(allBlocks, log.blockNumber);
     const topic0 = log.topics[0];
     const data = log.data.startsWith("0x") ? log.data.slice(2) : log.data;
 
@@ -421,8 +515,8 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
       if (topic0 === EVENT_SIGNATURES.UNISWAP_V3_SWAP) {
         const sender = extractAddress(log.topics[1]);
         const recipient = extractAddress(log.topics[2]);
-        const amount0Raw = decodeUint256("0x" + data.slice(0, 64));
-        const usdEst = estimateUSD(CONTRACTS.WETH, amount0Raw > 0n ? amount0Raw : -amount0Raw, ethPrice);
+        const amount0Raw = decodeInt256("0x" + data.slice(0, 64));
+        const usdEst = estimateUSD(CONTRACTS.WETH, absBigInt(amount0Raw), ethPrice);
 
         if (usdEst >= minAmountUSD) {
           flow = {
@@ -548,7 +642,10 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
         }
       }
 
-      if (flow) flows.push(flow);
+      if (flow && !seenTx.has(flow.txHash)) {
+        seenTx.add(flow.txHash);
+        flows.push(flow);
+      }
     } catch (err) {
       logger.debug("Failed to decode whale flow log", {
         tx: log.transactionHash,

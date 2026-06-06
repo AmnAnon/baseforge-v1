@@ -143,7 +143,9 @@ export async function getLargeSwaps(query: SwapQuery = {}): Promise<{
   );
 
   const result = { swaps: data, source, timestamp: Date.now() };
-  await cache.set(cacheKey, result, ttlSec);
+  if (data.length > 0) {
+    await cache.set(cacheKey, result, ttlSec);
+  }
   return result;
 }
 
@@ -192,7 +194,9 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<{
   };
 
   const result = { flows: data, source, timestamp: Date.now(), summary };
-  await cache.set(cacheKey, result, ttlSec);
+  if (data.length > 0) {
+    await cache.set(cacheKey, result, ttlSec);
+  }
   return result;
 }
 

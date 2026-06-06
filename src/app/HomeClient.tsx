@@ -238,7 +238,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
                 <div>
                   <div className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider">Total TVL</div>
                   <div className="text-sm font-mono font-semibold neon-text">
-                    <CountUp value={tvl} prefix="$" />
+                    <CountUp value={tvl} prefix="$" compact />
                   </div>
                 </div>
               </div>

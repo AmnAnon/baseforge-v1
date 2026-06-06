@@ -87,6 +87,7 @@ interface ApiResponse {
   };
   source?: string;
   timestamp: number;
+  meta?: { hint?: string; minUsd?: number; indexer?: string };
 }
 
 // ─── Constants ────────────────────────────────────────────────
@@ -190,7 +191,19 @@ function generateAISummary(whales: WhaleTransaction[], profiles: WhaleProfile[])
 
 // ─── Animated Empty State ─────────────────────────────────────
 
-function ScanningEmpty() {
+function ScanningEmpty({
+  hint,
+  source,
+  threshold,
+  timeWindow,
+  onLowerThreshold,
+}: {
+  hint?: string;
+  source?: string;
+  threshold: number;
+  timeWindow: number;
+  onLowerThreshold: () => void;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -248,9 +261,21 @@ function ScanningEmpty() {
       >
         Scanning for whales...
       </motion.p>
-      <p className="text-[var(--bf-text-secondary)] text-xs text-center max-w-xs">
-        Monitoring DEXes and lending protocols on Base for smart money flows
+      <p className="text-[var(--bf-text-secondary)] text-xs text-center max-w-sm">
+        {hint ?? "Monitoring large WETH/USDC transfers, DEX swaps, and lending flows on Base"}
       </p>
+      <p className="text-[var(--bf-text-muted)] text-[10px] text-center mt-2 max-w-sm font-mono">
+        Threshold {formatUSD(threshold)} · Window {timeWindow >= 60 ? `${timeWindow / 60}h` : `${timeWindow}m`}
+        {source ? ` · ${source}` : ""}
+      </p>
+      {threshold > 5000 && (
+        <button
+          onClick={onLowerThreshold}
+          className="mt-4 px-3 py-1.5 text-xs bg-[var(--bf-neon-primary)]/10 hover:bg-[var(--bf-neon-primary)]/20 border border-[var(--bf-neon-primary)]/30 rounded-lg neon-text font-medium"
+        >
+          Lower to $5K
+        </button>
+      )}
 
       {/* Pulse dots */}
       <div className="flex items-center gap-2 mt-5">
@@ -400,7 +425,7 @@ export default function WhalesSection() {
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState("all");
   const [filterIntent, setFilterIntent] = useState("all");
-  const [threshold, setThreshold] = useState(10000);
+  const [threshold, setThreshold] = useState(5000);
   const [timeWindow, setTimeWindow] = useState(60);
   const [searchAddr, setSearchAddr] = useState("");
   const [displayedCount, setDisplayedCount] = useState(20);
@@ -485,6 +510,8 @@ export default function WhalesSection() {
   // Filtered transactions
   const filteredWhales = useMemo(() => {
     let list = data?.whales || [];
+    const cutoff = Date.now() - timeWindow * 60_000;
+    list = list.filter((w) => new Date(w.timestamp).getTime() >= cutoff);
     if (filterType !== "all") list = list.filter((w) => w.type === filterType);
     if (filterIntent !== "all") list = list.filter((w) => w.intent === filterIntent);
     if (searchAddr.trim()) {
@@ -492,10 +519,10 @@ export default function WhalesSection() {
       list = list.filter((w) => w.from.toLowerCase().includes(q) || w.to.toLowerCase().includes(q));
     }
     return list;
-  }, [data?.whales, filterType, filterIntent, searchAddr]);
+  }, [data?.whales, filterType, filterIntent, searchAddr, timeWindow]);
 
   // Reset displayed count when data or filters change
-  useEffect(() => { setDisplayedCount(20); }, [data, filterType, filterIntent, searchAddr]);
+  useEffect(() => { setDisplayedCount(20); }, [data, filterType, filterIntent, searchAddr, timeWindow]);
 
   // Unique intent types for filter
   const uniqueIntents = useMemo(() => {
@@ -607,13 +634,13 @@ export default function WhalesSection() {
           <NeonCard glowColor="rgba(123,97,255,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
             <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider mb-1 font-bold">Largest</p>
             <p className="text-xl sm:text-2xl font-bold font-mono tabular-nums" style={{ color: "var(--bf-neon-accent)" }}>
-              <CountUp value={data.summary.largest} prefix="$" />
+              <CountUp value={data.summary.largest} prefix="$" compact />
             </p>
           </NeonCard>
           <NeonCard glowColor="rgba(0,255,136,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
             <p className="text-[10px] text-[var(--bf-text-secondary)] uppercase tracking-wider mb-1 font-bold">Avg Size</p>
             <p className="text-xl sm:text-2xl font-bold font-mono tabular-nums status-ok">
-              <CountUp value={data.summary.avgSize} prefix="$" />
+              <CountUp value={data.summary.avgSize} prefix="$" compact />
             </p>
           </NeonCard>
           <NeonCard glowColor="rgba(255,170,0,0.06)" hoverScale={1} className="!p-3 sm:!p-4">
@@ -701,7 +728,13 @@ export default function WhalesSection() {
               <div className="p-6"><CircleRowSkeleton rows={5} /></div>
             ) : filteredWhales.length === 0 ? (
               data?.whales.length === 0 && !isLoading ? (
-                <ScanningEmpty />
+                <ScanningEmpty
+                  hint={data?.meta?.hint}
+                  source={data?.source}
+                  threshold={threshold}
+                  timeWindow={timeWindow}
+                  onLowerThreshold={() => setThreshold(5000)}
+                />
               ) : (
                 <div className="py-16 text-center">
                   <Eye className="h-8 w-8 text-[var(--bf-text-muted)] mx-auto mb-3" />

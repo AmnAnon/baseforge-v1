@@ -221,7 +221,7 @@ export const envioHandlers = [
         logs: [
           {
             address: "0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43",
-            topic0: "0xb3e2773606abfd36b5bd91394b3a54d1398336c65005baf7f44571de818661ed",
+            topic0: "0xb3e2773606abfd36b5bd91394b3a54d1398336c65005baf7bf7a05efeffaf75b",
             topic1: "0x0000000000000000000000001234567890abcdef1234567890abcdef12345678",
             topic2: "0x000000000000000000000000abcdef1234567890abcdef1234567890abcdef12",
             topic3: null,

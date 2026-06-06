@@ -307,6 +307,13 @@ export async function GET(req: Request) {
       source: result.source,
       timestamp: result.timestamp,
       isStale: false,
+      meta: whales.length === 0
+        ? {
+            hint: `No flows ≥ ${formatUSD(minUSD)} in the last ~6h. Try $5K threshold or check ENVIO_API_TOKEN + ETHERSCAN_API_KEY on the deployment.`,
+            minUsd: minUSD,
+            indexer: result.source,
+          }
+        : undefined,
     };
 
     const validated = validateOrFallback(WhalesResponseSchema, responseData, EMPTY_WHALES(), "whales");
