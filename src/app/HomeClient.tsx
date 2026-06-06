@@ -201,11 +201,20 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <h1 className="text-xl sm:text-3xl font-bold gradient-text mb-1">
-                BaseForge Analytics
+                BaseForge
               </h1>
               <p className="text-xs sm:text-base text-[var(--bf-text-secondary)]">
-                Real-time DeFi intelligence on{" "}
+                AI-ready intelligence layer for{" "}
                 <span className="neon-text font-semibold">Base</span>
+                {" "}— live risk, flows, and{" "}
+                <a
+                  href="/api/agents/context?include=all&top=5"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--bf-neon-accent)] hover:text-[var(--bf-neon-primary)] underline underline-offset-2"
+                >
+                  agent context
+                </a>
               </p>
             </div>
 

@@ -18,7 +18,7 @@
 
 BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, MEV activity, gas costs, protocol revenue — and compresses it into structured intelligence feeds designed for human traders **and** AI agents. Instead of raw dashboards, BaseForge delivers actionable signal: compressed market state, risk-weighted protocol health, and machine-readable context payloads that LLMs can consume directly.
 
-### Dashboard — Cyber-Neon Theme
+### Intelligence Console — Cyber-Neon Theme
 
 <p align="center">
   <img src="public/preview.png" alt="BaseForge Cyber-Neon Dashboard" width="700" />
@@ -55,11 +55,11 @@ BaseForge ingests real-time on-chain data — TVL, risk signals, whale flows, ME
   </tr>
 </table>
 
-### Live Demo
+### Live App
 
-| Demo | URL |
+| Surface | URL |
 |---|---|
-| **Full Dashboard** | [baseforge-v1.vercel.app](https://baseforge-v1.vercel.app) |
+| **Intelligence Console** | [baseforge-v1.vercel.app](https://baseforge-v1.vercel.app) |
 | **Agent API** | [/api/agents/context?include=all&top=5](https://baseforge-v1.vercel.app/api/agents/context?include=all&top=5) |
 | **Prometheus Metrics** | [/api/metrics](https://baseforge-v1.vercel.app/api/metrics) |
 | **Health Check** | [/api/health](https://baseforge-v1.vercel.app/api/health) |
@@ -134,7 +134,7 @@ curl "https://baseforge-v1.vercel.app/api/agents/context?include=all&top=20" \
 | 🔑 **Auth** | API key system with SHA-256 hashed keys, tiered rate limits, admin CRUD |
 | 🛡️ **Resilience** | Circuit breaker (CLOSED→OPEN→HALF_OPEN), exponential backoff + jitter retry, Postgres cache/rate enforcement in prod |
 | 📡 **Indexing** | Moonwell Comet markets added, deeper Aerodrome coverage |
-| 🧪 **Testing** | 21 test files, ~183 tests, 60%+ coverage (CI gate), MSW mock infrastructure |
+| 🧪 **Testing** | 22 test files, ~190 tests, 60%+ coverage (CI gate), MSW mock infrastructure |
 | 📊 **Observability** | Prometheus metrics, Sentry transaction tracing, circuit breaker health reporting |
 | 🔧 **CI/CD** | 6-job pipeline: lint, typecheck, test, build, audit, docker |
 | 📝 **Docs** | OpenAPI spec, TypeScript/Python client types, SECURITY.md, retention policy |
@@ -242,9 +242,9 @@ BaseForge behaves differently depending on which environment variables are set. 
 | **CORS** | All origins allowed (open public API default) | Set `CORS_ALLOWED_ORIGINS=https://a.com,https://b.com` to restrict |
 | **Admin endpoints** | `ADMIN_KEY` env var required | Same — brute-force rate-limited in production |
 
-## Production Roadmap
+## v1 Foundation Roadmap (complete)
 
-Remaining items to get BaseForge to a production-ready v1.0:
+Historical checklist for the v1.0 foundation — all items below shipped. Ongoing v2 execution is tracked in [`docs/V2_ROADMAP.md`](docs/V2_ROADMAP.md).
 
 ### Phase 1 — Real-time Data Pipeline (High Priority)
 - [x] **Dynamic OG images** — Pull live TVL from DefiLlama with timeout-based fetch and caching
@@ -306,7 +306,19 @@ After completing all 6 phases of the technical roadmap, BaseForge had a solid fo
 - SSE streaming with exponential backoff and stale fallback
 - Envio HyperSync primary indexer with Etherscan V2 fallback
 - Agent context endpoint v2 with query params, intent detection, and Zod validation
-- ~183 tests passing (21 files), zero TypeScript errors (enforced in CI)
+- ~190 tests passing (22 files), zero TypeScript errors (enforced in CI)
+- Production deploy on Vercel with Postgres cache, Envio indexer, and worker/cron warming
+
+### Current focus (v2)
+
+See [`docs/V2_ROADMAP.md`](docs/V2_ROADMAP.md) for phased work after the v1 foundation:
+
+1. **Phase 1** — Base.dev registration, builder codes, grants narrative
+2. **Phase 2** — OnchainKit swap/LP/deposit CTAs on protocol surfaces
+3. **Phase 3** — Agent narrative layer on top of `/api/agents/context`
+4. **Phase 4–6** — Wallet intelligence, Base mini app polish, API scale
+
+The live app no longer shows a production “demo” banner — preview deployments and `NEXT_PUBLIC_DEMO_MODE=true` only.
 
 ### Next: The Agent Vision
 - **Agent SDK wrapper** — TypeScript/Python client for `/api/agents/context` (see `docs/AGENT_GUIDE.md` for usage)

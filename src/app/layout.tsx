@@ -19,17 +19,18 @@ export async function generateMetadata(): Promise<Metadata> {
   const baseUrl = getBaseUrl();
 
   return {
-    title: "BaseForge Analytics — Real-time Base DeFi Dashboard",
-    description: "Comprehensive analytics for the Base blockchain ecosystem. Track TVL, protocol health, whale movements, market data and risk scores.",
+    title: "BaseForge — AI-Ready Intelligence Layer for Base",
+    description:
+      "Real-time Base DeFi intelligence: protocol risk, whale flows, MEV, and compressed context for AI agents via /api/agents/context.",
     openGraph: {
-      title: "BaseForge Analytics",
-      description: "Real-time DeFi analytics on Base chain",
+      title: "BaseForge — Intelligence Layer for Base",
+      description: "Live ecosystem state, risk scoring, and agent-ready API for Base DeFi",
       images: [
         {
           url: `${baseUrl}/api/og`,
           width: 1200,
           height: 630,
-          alt: "BaseForge Analytics — Base DeFi Dashboard",
+          alt: "BaseForge — AI-Ready Intelligence Layer for Base",
         },
       ],
       type: "website",
@@ -37,8 +38,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: "BaseForge Analytics",
-      description: "Real-time DeFi analytics on Base chain",
+      title: "BaseForge — Intelligence Layer for Base",
+      description: "Live ecosystem state, risk scoring, and agent-ready API for Base DeFi",
       images: [`${baseUrl}/api/og`],
     },
     // Farcaster Frame V1 metadata — embedded as OpenGraph other tags
@@ -61,7 +62,10 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const showDemo = process.env.NEXT_PUBLIC_DEMO_MODE === "true" || !!process.env.VERCEL_URL;
+  // Preview / explicit demo only — never on production (VERCEL_URL is set on all Vercel deploys).
+  const showDemo =
+    process.env.NEXT_PUBLIC_DEMO_MODE === "true" ||
+    process.env.VERCEL_ENV === "preview";
 
   return (
     <html lang="en">
