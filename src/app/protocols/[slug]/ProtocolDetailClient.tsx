@@ -27,6 +27,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import ProtocolActionPanel from "@/components/protocol/ProtocolActionPanel";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -206,6 +207,9 @@ export function ProtocolDetailClient({ data }: { data: DetailResponse }) {
             <MetricCard icon={DollarSign} label="Avg APY" value={`${p.apy.toFixed(1)}%`} color="blue" />
           )}
         </div>
+
+        {/* DeFi CTAs — swap / supply / LP */}
+        <ProtocolActionPanel slug={p.slug} protocolName={p.name} category={p.category} />
 
         {/* Health Score + Security */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

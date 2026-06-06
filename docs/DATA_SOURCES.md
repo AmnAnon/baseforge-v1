@@ -34,6 +34,9 @@ BaseForge aggregates data from multiple providers with automatic failover. This 
 | Aerodrome | Router, Factory | Swap, Mint, Burn |
 | Uniswap V3 | Factory, Router | Swap, Mint, Burn |
 | Seamless | Pool (Aave V3 fork) | Supply, Withdraw, Borrow, Repay, Liquidation |
+| Moonwell | Comet markets (USDC, WETH, cbETH) | Supply, Withdraw (partial) |
+
+**Indexer gaps (Phase 2):** Protocol detail CTAs cover Aerodrome, Uniswap V3, Seamless, and Moonwell via `src/lib/contracts.ts`. Other DefiLlama protocols show intelligence only — no in-app swap until addresses and indexer filters are added. Moonwell Comet events are defined in `contracts.ts` but not fully wired in `envio-provider.ts`. Stargate, BaseSwap, Sonne, and Compound V3 on Base are linked externally from the risk table but not indexed.
 
 **Env var:** `ENVIO_API_TOKEN`
 

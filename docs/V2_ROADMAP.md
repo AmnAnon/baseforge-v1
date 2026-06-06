@@ -48,19 +48,19 @@ curl -s https://baseforge-v1.vercel.app/api/health | jq
 
 ## Phase 1 — Base.dev & builder
 
-- [ ] Register / verify app on [Base.dev](https://base.dev)
-- [ ] Builder code attribution (transactions / analytics)
-- [ ] Grants narrative + application assets
-- [ ] ERC-8021 builder codes in tx paths where applicable
+- [x] Register / verify app on [Base.dev](https://base.dev)
+- [x] Builder code env + `dataSuffix` in wagmi config (`NEXT_PUBLIC_BASE_BUILDER_CODE`)
+- [ ] Grants narrative + application assets (deferred)
+- [x] ERC-8021 via `src/lib/builder-code.ts` (attribution on outbound txs when code set)
 - **Files:** `docs/DEPLOYMENT.md`, wallet/connect flows, any new `src/lib/builder-code.ts`
 
 ---
 
 ## Phase 2 — OnchainKit & DeFi CTAs
 
-- [ ] OnchainKit install + provider wrapper
-- [ ] Swap / LP / deposit CTAs on protocol detail surfaces
-- [ ] Contract addresses centralized; indexer gaps documented
+- [x] OnchainKit install + `OnchainKitAppProvider` (wagmi v2 aligned)
+- [x] Swap / LP / deposit CTAs on `/protocols/[slug]` (`ProtocolActionPanel`)
+- [x] Contract addresses centralized in `src/lib/contracts.ts`; gaps in `docs/DATA_SOURCES.md`
 - **Files:** `src/lib/contracts.ts` (or equivalent), protocol UI routes, `docs/DATA_SOURCES.md`
 
 ---

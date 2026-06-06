@@ -1,9 +1,10 @@
 // src/app/layout.tsx
 import "./globals.css";
+import "@coinbase/onchainkit/styles.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import DemoBanner from "@/components/DemoBanner";
-import WagmiProvider from "@/components/providers/WagmiProvider";
+import OnchainKitAppProvider from "@/components/providers/OnchainKitAppProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -70,11 +71,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-[#0a0a0a] text-[#e0e0e0] min-h-screen`}>
-        <WagmiProvider>
+        <OnchainKitAppProvider>
           {showDemo && <DemoBanner />}
           <div id="scanlines" className="scanlines" />
           {children}
-        </WagmiProvider>
+        </OnchainKitAppProvider>
       </body>
     </html>
   );
