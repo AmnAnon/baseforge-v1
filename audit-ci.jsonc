@@ -1,0 +1,28 @@
+{
+  "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
+  // Transitive advisories without fixes in current Next.js / axios / fast-uri tree.
+  // Revisit on dependency upgrades; CI still reports them in the summary step.
+  "high": true,
+  "allowlist": [
+    "GHSA-267c-6grr-h53f",
+    "GHSA-26hh-7cqf-hhc6",
+    "GHSA-35jp-ww65-95wh",
+    "GHSA-36qx-fr4f-26g5",
+    "GHSA-3g43-6gmg-66jw",
+    "GHSA-492v-c6pp-mqqv",
+    "GHSA-6chq-wfr3-2hj9",
+    "GHSA-777c-7fjr-54vf",
+    "GHSA-8h8q-6873-q5fj",
+    "GHSA-c4j6-fc7j-m34r",
+    "GHSA-hfxv-24rg-xrqf",
+    "GHSA-j5f8-grm9-p9fc",
+    "GHSA-mg66-mrh9-m8jx",
+    "GHSA-p92q-9vqr-4j8v",
+    "GHSA-pf86-5x62-jrwf",
+    "GHSA-pjwm-pj3p-43mv",
+    "GHSA-pmwg-cvhr-8vh7",
+    "GHSA-q3j6-qgpj-74h6",
+    "GHSA-q8qp-cvcw-x6jj",
+    "GHSA-v39h-62p7-jpjc"
+  ]
+}

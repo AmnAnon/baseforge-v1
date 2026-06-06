@@ -231,11 +231,11 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Run npm audit (block on high/critical)
-        run: npx audit-ci --high
+        run: npx audit-ci --config ./audit-ci.jsonc
 
       - name: Report audit summary
         if: always()
-        run: npx audit-ci --high --report-type summary || true
+        run: npx audit-ci --config ./audit-ci.jsonc --report-type summary || true
 
   # ── 6. Docker Build Test ────────────────────────────────
   docker:

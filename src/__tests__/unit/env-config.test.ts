@@ -20,6 +20,7 @@ describe("resolveCacheBackend", () => {
 
   it("defaults to postgres when DATABASE_URL is set", () => {
     vi.stubEnv("DATABASE_URL", "postgresql://localhost/test");
+    vi.stubEnv("CACHE_BACKEND", "");
     expect(resolveCacheBackend()).toBe("postgres");
   });
 

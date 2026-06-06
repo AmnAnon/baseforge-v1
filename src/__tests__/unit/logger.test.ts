@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 describe("Logger", () => {
   it("outputs structured JSON in production mode", async () => {
     vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("LOG_LEVEL", "info");
     vi.resetModules();
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
