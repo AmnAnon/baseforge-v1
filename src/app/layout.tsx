@@ -54,6 +54,9 @@ export async function generateMetadata(): Promise<Metadata> {
       "fc:frame:input:text": "Search protocols...",
       // Base.dev domain verification
       "base:app_id": "69db4cc2ed56423f0cd3e634",
+      // Talent App project ownership verification
+      "talentapp:project_verification":
+        "81e7387631632dfca99033dd4c71becfc509a4dc6d2da73271aef9793f3dd61e4ba7ab14ffe2117d916d8ce80d11c545186555cb7e4694bedbf6cf73d84e32a9",
     },
   };
 }
