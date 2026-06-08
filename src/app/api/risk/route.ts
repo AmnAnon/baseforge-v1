@@ -5,6 +5,7 @@ import { cache, CACHE_TTL } from "@/lib/cache";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { RiskResponseSchema } from "@/lib/zod/schemas";
+import { scoreLlamaProtocol, toAuditStatus } from "@/lib/risk";
 
 interface ProtocolDatum {
   name: string;
@@ -14,6 +15,7 @@ interface ProtocolDatum {
   audit_note?: string;
   forkedFrom?: string[];
   change_7d: number;
+  change_1d?: number;
   oracles?: string[];
   chainTvls: Record<string, number | Record<string, { tvl: number; date: number }[]>>;
   mcap: number;
@@ -41,7 +43,7 @@ export async function GET(req: Request) {
           const res = await fetch("https://api.llama.fi/protocols");
           if (!res.ok) throw new Error(`protocols fetch failed: ${res.status}`);
           return res.json();
-        }
+        },
       );
 
       const baseProtocols = protocols
@@ -49,7 +51,7 @@ export async function GET(req: Request) {
         .sort((a, b) => (b.chainTvls.Base as number) - (a.chainTvls.Base as number));
 
       const totalBaseTVL = baseProtocols.reduce(
-        (sum, p) => sum + (p.chainTvls.Base as number), 0
+        (sum, p) => sum + (p.chainTvls.Base as number), 0,
       );
 
       const riskData: Array<Record<string, unknown>> = [];
@@ -61,42 +63,31 @@ export async function GET(req: Request) {
         const tvl = protocol.chainTvls.Base as number;
         const dominanceScore = totalBaseTVL > 0 ? (tvl / totalBaseTVL) * 100 : 0;
         const auditCount = protocol.audits || 0;
-        const auditStatus = auditCount > 0 ? (auditCount >= 2 ? "audited" : "partial") : "unaudited";
-        const isForked = protocol.forkedFrom && protocol.forkedFrom.length > 0;
+        const auditStatus = toAuditStatus(auditCount);
         const change7d = protocol.change_7d || 0;
         const tvlVolatility = Math.min(Math.abs(change7d) / 100, 1);
 
-        let healthScore = 50;
-        healthScore += Math.min(auditCount * 5, 25);
-        if (tvl > 100_000_000) healthScore += 15;
-        else if (tvl > 10_000_000) healthScore += 10;
-        else if (tvl > 1_000_000) healthScore += 5;
-        if (isForked) healthScore += 5;
-        if (tvlVolatility > 0.3) healthScore -= 20;
-        else if (tvlVolatility > 0.15) healthScore -= 10;
-        if (change7d < -10) healthScore -= 15;
-        else if (change7d < -5) healthScore -= 10;
-        if (protocol.category === "Dexes") healthScore += 5;
-        else if (protocol.category === "Lending") healthScore += 3;
-        healthScore = Math.max(0, Math.min(100, healthScore));
-        const riskScore = 100 - healthScore;
+        const scored = scoreLlamaProtocol({
+          audits: auditCount,
+          change_1d: protocol.change_1d,
+          change_7d: change7d,
+          category: protocol.category,
+          oracles: protocol.oracles,
+          forkedFrom: protocol.forkedFrom,
+          chainTvls: { Base: tvl },
+        });
 
-        const riskFactors: string[] = [];
-        if (auditStatus === "unaudited") riskFactors.push("No audit");
-        else if (auditStatus === "partial") riskFactors.push("Limited audit");
-        if (tvlVolatility > 0.2) riskFactors.push("High TVL volatility");
-        if (change7d < -10) riskFactors.push("Rapid TVL decline");
+        const riskFactors = [...scored.riskFactors];
         if (dominanceScore > 30) riskFactors.push("TVL concentration risk");
-        if ((protocol.oracles?.length ?? 0) < 2) riskFactors.push("Limited oracle diversity");
-        if (!isForked && !protocol.audit_note) riskFactors.push("Unverified codebase");
+        if (!protocol.forkedFrom?.length && !protocol.audit_note) riskFactors.push("Unverified codebase");
 
         riskData.push({
           id: protocol.slug || protocol.name.toLowerCase(),
           name: protocol.name,
           tvl,
           dominanceScore: Math.round(dominanceScore * 100) / 100,
-          healthScore,
-          riskScore,
+          healthScore: scored.health,
+          riskScore: scored.risk,
           auditStatus,
           auditCount,
           forkedFrom: protocol.forkedFrom,
@@ -141,10 +132,10 @@ export async function GET(req: Request) {
       : { "Cache-Control": "public, max-age=60, stale-while-revalidate=120", "X-Cache-Status": "HIT" };
 
     return NextResponse.json(validated, { headers });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { ...EMPTY_RISK(), isStale: true },
-      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } }
+      { status: 200, headers: { "Cache-Control": "public, max-age=0, stale-while-revalidate=120" } },
     );
   }
 }

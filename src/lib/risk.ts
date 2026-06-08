@@ -139,3 +139,81 @@ export function calculateHealthScore(proto: HealthScoreInput): HealthScoreResult
   score = Math.max(0, Math.min(100, score));
   return { score, riskFactors };
 }
+
+export type RiskLevel = "high" | "medium" | "low";
+export type AuditStatus = "audited" | "partial" | "unaudited";
+
+export function toRiskLevel(healthScore: number): RiskLevel {
+  const risk = 100 - healthScore;
+  if (risk > 50) return "high";
+  if (risk > 30) return "medium";
+  return "low";
+}
+
+export function toAuditStatus(audits: number): AuditStatus {
+  if (audits >= 2) return "audited";
+  if (audits >= 1) return "partial";
+  return "unaudited";
+}
+
+/** Snake_case factors for agent API consumers. */
+export function toAgentRiskFactors(factors: string[]): string[] {
+  return factors.map((f) =>
+    f
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, ""),
+  );
+}
+
+export interface LlamaProtocolInput {
+  audits?: number;
+  change_1d?: number;
+  change_7d?: number;
+  category: string;
+  oracles?: string[];
+  forkedFrom?: string[];
+  apy?: number;
+  chainTvls?: Record<string, number>;
+  swapVolume24h?: number;
+  netFlow24h?: number;
+  uniqueTraders24h?: number;
+}
+
+function getChainTvl(chainTvls: Record<string, number> | undefined, chain = "Base"): number {
+  if (!chainTvls) return 0;
+  return chainTvls[chain] ?? chainTvls.base ?? chainTvls.BASE ?? 0;
+}
+
+/**
+ * Score a DefiLlama-shaped protocol with the canonical health model.
+ * Optional on-chain fields apply when provided (e.g. from protocol-aggregator).
+ */
+export function scoreLlamaProtocol(p: LlamaProtocolInput, chain = "Base") {
+  const tvl = getChainTvl(p.chainTvls, chain);
+  const audits = p.audits || 0;
+  const { score, riskFactors } = calculateHealthScore({
+    audits,
+    tvl,
+    tvlChange24h: p.change_1d || 0,
+    tvlChange7d: p.change_7d || 0,
+    category: p.category,
+    oracles: p.oracles || [],
+    forkedFrom: p.forkedFrom,
+    apy: p.apy,
+    swapVolume24h: p.swapVolume24h,
+    netFlow24h: p.netFlow24h,
+    uniqueTraders24h: p.uniqueTraders24h,
+  });
+
+  return {
+    health: score,
+    risk: 100 - score,
+    riskFactors,
+    factors: toAgentRiskFactors(riskFactors),
+    level: toRiskLevel(score),
+    audit: toAuditStatus(audits),
+  };
+}

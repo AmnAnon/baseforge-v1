@@ -6,7 +6,7 @@
 // Graceful degradation: if DATABASE_URL is not set, returns empty alerts.
 
 import { NextResponse } from "next/server";
-import { and, eq, gte, desc, count } from "drizzle-orm";
+import { gte, desc } from "drizzle-orm";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { AlertsResponseSchema } from "@/lib/zod/schemas";
@@ -17,141 +17,13 @@ const EMPTY_ALERTS = () => ({
   isStale: true,
 });
 
-const DATABASE_ENABLED = process.env.DATABASE_ENABLED === 'true' && !!process.env.DATABASE_URL;
-
-async function evaluateAlertRules() {
-  if (!DATABASE_ENABLED) {
-    // No database — return empty (client will use localStorage alerts)
-    return EMPTY_ALERTS();
-  }
-
-  try {
-    const { db } = await import("@/lib/db/client");
-    const { alertRules, alertEvents } = await import("@/lib/db/schema");
-
-    const rules = await db
-      .select()
-      .from(alertRules)
-      .where(eq(alertRules.enabled, true));
-
-  let protocols: {
-    name: string;
-    slug: string;
-    tvl?: number;
-    change_1d?: number;
-    change_7d?: number;
-    audits?: number;
-    apyMean30d?: number;
-    chainTvls?: Record<string, number>;
-  }[] = [];
-  try {
-    const protocolsRes = await fetch("https://api.llama.fi/protocols", { cache: "no-store" });
-    if (protocolsRes.ok) {
-      protocols = await protocolsRes.json();
-    }
-  } catch {
-    return EMPTY_ALERTS();
-  }
-
-  const baseProtos = protocols.filter(
-    (p) => (p.chainTvls?.Base || 0) > 1_000_000
-  );
-
-  const now = new Date();
-
-  for (const proto of baseProtos) {
-    const name = proto.name;
-
-    for (const rule of rules) {
-      if (rule.protocol !== "*" && rule.protocol !== proto.slug && rule.protocol !== name) continue;
-
-      let value = 0;
-      let triggered = false;
-
-      switch (rule.condition) {
-        case "tvl_change_24h_pct": {
-          value = proto.change_1d || 0;
-          triggered = value < Number(rule.threshold);
-          break;
-        }
-        case "utilization_pct": {
-          value = proto.tvl ? 100 - Math.abs(proto.change_7d || 0) : 0;
-          triggered = value > Number(rule.threshold);
-          break;
-        }
-        case "health_score": {
-          const audits = proto.audits || 0;
-          const change7d = proto.change_7d || 0;
-          value = Math.max(0, 50 + audits * 5 + (change7d < -10 ? -10 : 0));
-          triggered = value < Number(rule.threshold);
-          break;
-        }
-        case "apy": {
-          value = proto.apyMean30d || 0;
-          triggered = value > Number(rule.threshold);
-          break;
-        }
-      }
-
-      if (!triggered) continue;
-
-      const cutoff = new Date(now.getTime() - rule.cooldownMinutes! * 60 * 1000);
-      const recent = await db
-        .select({ count: count() })
-        .from(alertEvents)
-        .where(
-          and(
-            eq(alertEvents.ruleId, rule.id),
-            eq(alertEvents.protocol, name),
-            gte(alertEvents.triggeredAt, cutoff)
-          )
-        );
-
-      if (recent[0]?.count > 0) continue;
-
-      const message = buildAlertMessage(rule.condition, name, value);
-
-      await db
-        .insert(alertEvents)
-        .values({
-          ruleId: rule.id,
-          protocol: name,
-          currentValue: String(value),
-          message,
-          severity: rule.severity,
-          network: rule.network ?? "Base",
-        });
-    }
-  }
-
-  return { alerts: [], timestamp: Date.now() };
-  } catch (error) {
-    console.error('[alerts] Database operation failed:', error);
-    return EMPTY_ALERTS();
-  }
-}
-
-function buildAlertMessage(condition: string, name: string, value: number) {
-  switch (condition) {
-    case "tvl_change_24h_pct":
-      return `${name} TVL dropped ${value.toFixed(1)}% in 24h`;
-    case "utilization_pct":
-      return `${name} utilization at ${value.toFixed(1)}%`;
-    case "health_score":
-      return `${name} health score at ${value.toFixed(0)} (unaudited + declining TVL)`;
-    case "apy":
-      return `${name} 30d mean APY at ${value.toFixed(1)}% — anomalous yield`;
-    default:
-      return `${name} alert triggered: ${condition} = ${value}`;
-  }
-}
+const DATABASE_ENABLED = !!process.env.DATABASE_URL;
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
   if (!DATABASE_ENABLED) {
-    // Database disabled — return empty alerts (client will use localStorage)
     return NextResponse.json(EMPTY_ALERTS(), {
       headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=60" },
     });
@@ -159,7 +31,6 @@ export async function GET(req: Request) {
 
   try {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    await evaluateAlertRules();
 
     const { db } = await import("@/lib/db/client");
     const { alertEvents } = await import("@/lib/db/schema");

@@ -10,6 +10,7 @@
 import http from "node:http";
 import * as promClient from "prom-client";
 import { neon } from "@neondatabase/serverless";
+import { validateWebhookUrlSync } from "./webhook-url";
 
 // ─── Environment ─────────────────────────────────────────────────
 const DATABASE_URL        = process.env.DATABASE_URL         ?? "";
@@ -478,11 +479,18 @@ async function runAlertEvaluator(): Promise<void> {
         await sql`UPDATE alert_rules SET last_triggered = NOW() WHERE id = ${rule.id}`;
 
         if (rule.webhook_url) {
-          await fetch(rule.webhook_url, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ event: "alert_triggered", ruleId: rule.id, message, currentValue, threshold }),
-            signal: AbortSignal.timeout(5000),
-          }).catch(() => {});
+          const webhookCheck = validateWebhookUrlSync(rule.webhook_url);
+          if (webhookCheck.ok) {
+            await fetch(rule.webhook_url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ event: "alert_triggered", ruleId: rule.id, message, currentValue, threshold }),
+              signal: AbortSignal.timeout(5000),
+              redirect: "error",
+            }).catch(() => {});
+          } else {
+            log("warn", "skipped unsafe webhook URL", { source: "alert-evaluator", ruleId: rule.id, error: webhookCheck.error });
+          }
         }
       } catch {}
     }

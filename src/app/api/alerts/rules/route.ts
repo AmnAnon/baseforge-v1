@@ -1,5 +1,5 @@
 // src/app/api/alerts/rules/route.ts
-// CRUD operations for alert rules.
+// CRUD operations for alert rules (admin-authenticated).
 // GET    — list all rules (enabled + disabled)
 // POST   — create a new alert rule
 // PATCH  — toggle or update an existing rule
@@ -9,11 +9,16 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { alertRules } from "@/lib/db/schema";
+import { adminAuthMiddleware } from "@/lib/admin-auth";
+import { validateWebhookUrl } from "@/lib/webhook-url";
 
 const ALERT_TYPES = ["tvl_drop", "utilization_spike", "apy_anomaly", "whale_movement", "health_decrease"] as const;
 const SEVERITIES = ["critical", "warning", "info"] as const;
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
+
   try {
     const rules = await db
       .select()
@@ -28,6 +33,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { type, protocol, network, condition, threshold, severity, cooldownMinutes, enabled, webhookUrl } = body;
@@ -43,8 +51,15 @@ export async function POST(req: Request) {
     if (!condition || typeof threshold !== "number" || !protocol) {
       return NextResponse.json(
         { error: "condition, threshold, and protocol are required" },
-        { status: 400 }
+        { status: 400 },
       );
+    }
+
+    if (webhookUrl) {
+      const check = await validateWebhookUrl(webhookUrl);
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 });
+      }
     }
 
     const [rule] = await db
@@ -70,6 +85,9 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { id, enabled, threshold, cooldownMinutes } = body;
@@ -102,6 +120,9 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
+
   try {
     const url = new URL(req.url);
     const id = url.searchParams.get("id");

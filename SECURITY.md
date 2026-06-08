@@ -67,7 +67,7 @@ Contact us to discuss bounty eligibility before public disclosure.
 ## Security Architecture
 
 ### Data at Rest
-- API keys: stored hashed in Postgres (SHA-256 + salt)
+- API keys: stored hashed in Postgres (SHA-256 digest of raw key)
 - Session tokens: HTTP-only, Secure, SameSite=Strict cookies
 - No private keys ever stored or transmitted
 
@@ -82,9 +82,13 @@ Contact us to discuss bounty eligibility before public disclosure.
 - Farcaster frames: verified via Warpcast domain association
 
 ### Rate Limiting
-- Per-IP sliding window (in-memory for dev, Upstash Redis for prod)
-- Per-API-key quotas (free tier: 100 req/min, paid: 1000 req/min)
-- Admin-configurable via environment variables
+- Per-IP sliding window (in-memory for dev, Postgres `rate_limits` table in prod)
+- Per-API-key quotas (free tier: 100 req/min, pro: 1000 req/min)
+- Alert rule CRUD and webhook tests require `x-admin-key` (ADMIN_KEY)
+
+### Alert Webhooks
+- Webhook URLs must use HTTPS; private/metadata hosts are blocked (SSRF protection)
+- Worker skips delivery for URLs that fail validation
 
 ---
 

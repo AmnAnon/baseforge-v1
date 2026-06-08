@@ -1,14 +1,18 @@
 // src/app/api/alerts/acknowledge/route.ts
-// Acknowledge a triggered alert event to clear it from the dashboard.
+// Acknowledge alert events (admin-authenticated).
 // POST — mark a single event as acknowledged
-// DELETE — clear all acknowledged events older than 24h (cleanup)
+// DELETE — clear acknowledged events older than 7 days
 
 import { NextResponse } from "next/server";
 import { eq, and, lte } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { alertEvents } from "@/lib/db/schema";
+import { adminAuthMiddleware } from "@/lib/admin-auth";
 
 export async function POST(req: Request) {
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const { eventId } = body;
@@ -37,17 +41,20 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
+  const denied = await adminAuthMiddleware(req);
+  if (denied) return denied;
+
   try {
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const deleted = await db
+    await db
       .delete(alertEvents)
       .where(
         and(
           eq(alertEvents.acknowledged, true),
-          lte(alertEvents.triggeredAt, weekAgo)
-        )
+          lte(alertEvents.triggeredAt, weekAgo),
+        ),
       );
 
     return NextResponse.json({ deleted: true }, { status: 200 });

@@ -42,6 +42,22 @@ vi.mock("@/lib/logger", () => ({
   timing: () => () => 150,
 }));
 
+vi.mock("@/lib/protocol-aggregator", () => ({
+  aggregateProtocols: vi.fn().mockResolvedValue({
+    protocols: [
+      {
+        slug: "aerodrome",
+        name: "Aerodrome",
+        healthScore: 82,
+        riskScore: 18,
+        riskFactors: ["Limited oracle diversity"],
+        auditStatus: "audited",
+      },
+    ],
+    summary: { totalProtocols: 1, totalTvl: 1_000_000_000, avgHealth: 82, highRiskCount: 0, unauditedCount: 0, totalSwapVolume24h: 0, totalFees24h: 0 },
+  }),
+}));
+
 vi.mock("@/lib/data/indexers", () => ({
   getLargeSwaps: vi.fn().mockResolvedValue({
     swaps: [{ txHash: "0xabc", blockNumber: 20000000, timestamp: Date.now(), protocol: "aerodrome", amountUSD: 100000, type: "swap", from: "0x1", to: "0x2", token: "WETH", tokenAmount: "50", pool: "0xpool", sender: "0x1", recipient: "0x2", tokenIn: "WETH", tokenOut: "USDC", amountIn: "50", amountOut: "160000" }],

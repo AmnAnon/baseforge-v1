@@ -61,6 +61,44 @@ interface RulesResponse {
   rules: AlertRule[];
 }
 
+// ─── Admin auth (rules CRUD requires x-admin-key) ───────────────
+
+const ADMIN_KEY_STORAGE = "baseforge-admin-key";
+
+function getStoredAdminKey(): string {
+  if (typeof window === "undefined") return "";
+  return sessionStorage.getItem(ADMIN_KEY_STORAGE) ?? "";
+}
+
+function adminHeaders(extra?: Record<string, string>): HeadersInit {
+  const key = getStoredAdminKey();
+  return {
+    ...extra,
+    ...(key ? { "x-admin-key": key } : {}),
+  };
+}
+
+function AdminKeyField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl text-sm">
+      <label className="block text-xs text-amber-300 mb-1">Admin key (required for rule management)</label>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Paste ADMIN_KEY — stored in this browser session only"
+        className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+      />
+    </div>
+  );
+}
+
 // ─── Constants ──────────────────────────────────────────────────
 
 const SEVERITY_CONFIG = {
@@ -130,7 +168,7 @@ function CreateRuleForm({ onCreated }: { onCreated: () => void }) {
     try {
       const res = await fetch("/api/alerts/rules", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: adminHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           type,
           protocol: protocol.trim() || "*",
@@ -268,7 +306,10 @@ function RuleRow({
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const res = await fetch(`/api/alerts/rules?id=${rule.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/alerts/rules?id=${rule.id}`, {
+        method: "DELETE",
+        headers: adminHeaders(),
+      });
       if (!res.ok) throw new Error("Delete failed");
       onDelete(rule.id);
     } catch {
@@ -283,7 +324,7 @@ function RuleRow({
     try {
       const res = await fetch("/api/alerts/rules/test-webhook", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: adminHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ webhookUrl: rule.webhookUrl, ruleId: rule.id }),
       });
       const data = await res.json().catch(() => ({}));
@@ -345,21 +386,25 @@ function RuleRow({
 
 // ─── Rules Tab ───────────────────────────────────────────────────
 
-function RulesTab() {
+function RulesTab({ hasAdminKey }: { hasAdminKey: boolean }) {
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
   const fetchRules = useCallback(async () => {
+    if (!hasAdminKey) {
+      setLoading(false);
+      return;
+    }
     try {
-      const res = await fetch("/api/alerts/rules");
+      const res = await fetch("/api/alerts/rules", { headers: adminHeaders() });
       if (!res.ok) return;
       const data: RulesResponse = await res.json();
       setRules(data.rules.filter((r) => r.enabled));
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hasAdminKey]);
 
   useEffect(() => { fetchRules(); }, [fetchRules]);
 
@@ -374,6 +419,9 @@ function RulesTab() {
 
   return (
     <div className="space-y-4">
+      {!hasAdminKey && (
+        <p className="text-xs text-gray-500">Enter your ADMIN_KEY above to load and manage alert rules.</p>
+      )}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-400">{rules.length} active rule{rules.length !== 1 ? "s" : ""}</p>
         <button
@@ -424,6 +472,19 @@ export default function AlertsSection() {
   const [autoRefresh, setAutoRefresh]       = useState(true);
   const [showAcknowledged, setShowAcknowledged] = useState(false);
   const [acknowledging, setAcknowledging]   = useState<string | null>(null);
+  const [adminKey, setAdminKey]             = useState("");
+
+  useEffect(() => {
+    setAdminKey(getStoredAdminKey());
+  }, []);
+
+  const saveAdminKey = (key: string) => {
+    setAdminKey(key);
+    if (typeof window !== "undefined") {
+      if (key) sessionStorage.setItem(ADMIN_KEY_STORAGE, key);
+      else sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+    }
+  };
 
   const fetchAlerts = useCallback(async () => {
     setError(null);
@@ -443,7 +504,7 @@ export default function AlertsSection() {
     try {
       const res = await fetch("/api/alerts/acknowledge", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: adminHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ eventId }),
       });
       if (!res.ok) throw new Error(`Failed to acknowledge: ${res.status}`);
@@ -522,6 +583,8 @@ export default function AlertsSection() {
           )}
         </div>
       </div>
+
+      <AdminKeyField value={adminKey} onChange={saveAdminKey} />
 
       {/* Tab bar */}
       <div className="flex gap-1 bg-gray-900/60 border border-gray-800 rounded-full p-1 w-fit">
@@ -632,7 +695,7 @@ export default function AlertsSection() {
       )}
 
       {/* Rules tab */}
-      {tab === "rules" && <RulesTab />}
+      {tab === "rules" && <RulesTab hasAdminKey={!!adminKey} />}
     </section>
   );
 }

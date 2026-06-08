@@ -19,6 +19,8 @@ import { apiKeyMiddleware } from "@/lib/api-key";
 import { logger, timing } from "@/lib/logger";
 import { getWhaleFlows, getLendingActivity, getIndexerHealth } from "@/lib/data/indexers";
 import { computeIntentSignals, type IntentProtocol } from "@/lib/intent-engine";
+import { scoreLlamaProtocol, toRiskLevel } from "@/lib/risk";
+import { aggregateProtocols } from "@/lib/protocol-aggregator";
 
 // ─── Agent-specific rate limiter (20 req/min — more generous for bots) ──
 
@@ -74,44 +76,6 @@ function clamp(n: number, min: number, max: number) {
 
 function r2(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function computeRisk(p: ProtocolDatum, totalTvl: number) {
-  const tvl = p.chainTvls.Base || 0;
-  const dominance = totalTvl > 0 ? (tvl / totalTvl) * 100 : 0;
-  const audits = p.audits || 0;
-  const vol = clamp(Math.abs(p.change_7d || 0) / 100, 0, 1);
-
-  let health = 50;
-  health += clamp(audits * 5, 0, 25);
-  if (tvl > 100_000_000) health += 15;
-  else if (tvl > 10_000_000) health += 10;
-  else if (tvl > 1_000_000) health += 5;
-  if (p.forkedFrom?.length) health += 5;
-  if (vol > 0.3) health -= 20;
-  else if (vol > 0.15) health -= 10;
-  if ((p.change_7d || 0) < -10) health -= 15;
-  else if ((p.change_7d || 0) < -5) health -= 10;
-  if (p.category === "Dexes") health += 5;
-  else if (p.category === "Lending") health += 3;
-  health = clamp(health, 0, 100);
-
-  const factors: string[] = [];
-  if (audits === 0) factors.push("no_audit");
-  else if (audits === 1) factors.push("limited_audit");
-  if (vol > 0.2) factors.push("high_volatility");
-  if ((p.change_7d || 0) < -10) factors.push("rapid_decline");
-  if (dominance > 30) factors.push("concentration_risk");
-  if ((p.oracles?.length ?? 0) < 2) factors.push("low_oracle_diversity");
-
-  const risk = 100 - health;
-  return {
-    health,
-    risk,
-    factors,
-    level: (risk > 50 ? "high" : risk > 30 ? "medium" : "low") as "high" | "medium" | "low",
-    audit: (audits >= 2 ? "audited" : audits >= 1 ? "partial" : "unaudited") as "audited" | "partial" | "unaudited",
-  };
 }
 
 async function fetchYields(): Promise<Record<string, number>> {
@@ -191,15 +155,19 @@ async function buildProtocolSection(
     factors: string[]; dom: number;
   }>;
 }> {
-  const [protRes, tvlRes] = await Promise.all([
+  const [protRes, tvlRes, aggregated] = await Promise.all([
     fetch(LLAMA_PROTOCOLS, { cache: "no-store", signal: AbortSignal.timeout(10_000) }),
     fetch(LLAMA_CHAIN_TVL, { cache: "no-store", signal: AbortSignal.timeout(10_000) }),
+    aggregateProtocols().catch(() => null),
   ]);
   if (!protRes.ok || !tvlRes.ok) throw new Error("DefiLlama fetch failed");
 
   const rawProtocols: ProtocolDatum[] = await protRes.json();
   const tvlHistory: { date: number; tvl: number }[] = await tvlRes.json();
   const yields = await fetchYields();
+  const aggBySlug = new Map(
+    (aggregated?.protocols ?? []).map((p) => [p.slug, p]),
+  );
 
   let filtered = rawProtocols
     .filter((p) => (p.chainTvls?.Base || 0) > 0 && !EXCLUDED.has(p.category))
@@ -217,17 +185,44 @@ async function buildProtocolSection(
 
   const evaluated = filtered.slice(0, Math.max(top, 50)).map((p) => {
     const id = p.slug || p.name.toLowerCase().replace(/ /g, "-");
-    const r = computeRisk(p, totalTvl);
     const apy = yields[id] || yields[p.name.toLowerCase().replace(/ /g, "-")] || 0;
+    const agg = aggBySlug.get(id);
+    const r = agg
+      ? {
+          health: agg.healthScore,
+          risk: agg.riskScore,
+          factors: agg.riskFactors.map((f) =>
+            f.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+          ),
+          level: toRiskLevel(agg.healthScore),
+          audit: agg.auditStatus,
+        }
+      : scoreLlamaProtocol({
+          audits: p.audits,
+          change_1d: p.change_1d,
+          change_7d: p.change_7d,
+          category: p.category,
+          oracles: p.oracles,
+          forkedFrom: p.forkedFrom,
+          apy,
+          chainTvls: p.chainTvls,
+        });
     return {
-      id, name: p.name, cat: p.category,
+      id,
+      name: p.name,
+      cat: p.category,
       tvl: Math.round(p.chainTvls.Base || 0),
       c1d: r2(p.change_1d || 0),
       c7d: r2(p.change_7d || 0),
       c30d: p.change_1m !== undefined ? r2(p.change_1m) : undefined,
       apy: r2(apy),
-      ...r,
+      health: r.health,
+      risk: r.risk,
+      factors: r.factors,
+      level: r.level,
+      audit: r.audit,
       dom: r2(totalTvl > 0 ? ((p.chainTvls.Base || 0) / totalTvl) * 100 : 0),
+      _riskEnriched: !!agg,
     };
   });
 
@@ -381,6 +376,8 @@ export async function GET(req: Request) {
       _chain: "base",
       _chainId: 8453,
       _source: healthData?.activeProvider || "defillama",
+      _riskMethod: "canonical_v1",
+      _riskNote: "Health scores use calculateHealthScore; aerodrome/uniswap-v3 include on-chain indexer enrichment when available.",
       _latencyMs: 0, // filled at end
       _tier: tier,
       _rateLimit: {

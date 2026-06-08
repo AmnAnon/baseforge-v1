@@ -8,6 +8,7 @@ import { cache, CACHE_TTL } from "@/lib/cache";
 import { db } from "@/lib/db/client";
 import { riskSnapshots, whaleEvents } from "@/lib/db/schema";
 import { desc, eq } from "drizzle-orm";
+import { scoreLlamaProtocol } from "@/lib/risk";
 
 // ─── Case-insensitive Base TVL ──────────────────────────────────
 function getBaseTvl(p: { chainTvls?: Record<string, number> }): number {
@@ -35,40 +36,6 @@ const SLUG_TO_CG: Record<string, string> = {
 const LENDING_PROTOCOLS = new Set([
   "seamless-protocol", "moonwell", "aave-v3", "compound-v3", "sonne-finance",
 ]);
-
-// ─── Health score ──────────────────────────────────────────────
-function calculateHealthScore(proto: {
-  audits: number; tvl: number; tvlChange24h: number;
-  tvlChange7d: number; category: string; oracles: string[];
-  forkedFrom?: string[]; apy?: number;
-}): { score: number; riskFactors: string[] } {
-  let score = 50;
-  const riskFactors: string[] = [];
-
-  score += proto.audits * 5;
-  if (proto.audits < 1) { riskFactors.push("No audits"); score -= 15; }
-
-  const CATEGORY_BASELINE: Record<string, number> = {
-    Lending: 15, Dexes: 15, "Liquid Staking": 20, CDP: 15,
-    Yield: 5, Derivatives: 10, Options: 8,
-  };
-  score += CATEGORY_BASELINE[proto.category] || 5;
-
-  if (proto.tvl > 100_000_000) score += 15;
-  else if (proto.tvl > 10_000_000) score += 10;
-  else if (proto.tvl > 1_000_000) score += 5;
-  else { riskFactors.push("Low TVL"); score -= 10; }
-
-  if (Math.abs(proto.tvlChange7d) > 25) { riskFactors.push("High TVL volatility"); score -= 15; }
-  else if (proto.tvlChange7d < -10) { riskFactors.push("TVL declining"); score -= 8; }
-  if (Math.abs(proto.tvlChange24h) > 10) { riskFactors.push("Extreme 24h TVL swing"); score -= 10; }
-  if (proto.oracles.length < 2) { riskFactors.push("Limited oracle diversity"); score -= 5; }
-  if (proto.forkedFrom?.length) score += 3;
-  if ((proto.apy || 0) > 1000) { riskFactors.push("Suspiciously high APY"); score -= 10; }
-
-  score = Math.max(0, Math.min(100, score));
-  return { score, riskFactors };
-}
 
 // ─── Data fetchers ─────────────────────────────────────────────
 
@@ -258,15 +225,15 @@ export async function GET(
     ]);
     const tokenPrice = tokenPriceCached ?? tokenPriceCG;
 
-    const { score: healthScore, riskFactors } = calculateHealthScore({
+    const { health: healthScore, riskFactors } = scoreLlamaProtocol({
       audits: proto.audits || 0,
-      tvl: baseTvl,
-      tvlChange24h,
-      tvlChange7d,
+      change_1d: tvlChange24h,
+      change_7d: tvlChange7d,
       category: proto.category || "DeFi",
       oracles: proto.oracles || [],
       forkedFrom: proto.forkedFrom,
       apy: proto.apyMean30d,
+      chainTvls: { Base: baseTvl },
     });
 
     const isLending = LENDING_PROTOCOLS.has(slug);
