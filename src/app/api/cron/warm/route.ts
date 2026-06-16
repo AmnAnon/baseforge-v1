@@ -34,12 +34,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await warmSharedCache();
+    const [result, alertsTriggered] = await Promise.all([
+      warmSharedCache(),
+      import("@/lib/alert-engine")
+        .then(({ evaluateAlertRules }) => evaluateAlertRules())
+        .catch(() => 0),
+    ]);
+
     return NextResponse.json(
       {
         status: result.ok ? "ok" : "partial",
         ...result,
         backend: resolveCacheBackend(),
+        alertsTriggered,
       },
       { status: result.ok ? 200 : 207 },
     );

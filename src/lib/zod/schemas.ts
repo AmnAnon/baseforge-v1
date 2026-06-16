@@ -158,16 +158,30 @@ export const RiskResponseSchema = z.object({
   isStale: z.boolean().optional().default(false),
 });
 
+const WhaleSummarySchema = z.object({
+  total: z.number(),
+  largest: z.number(),
+  avgSize: z.number(),
+  types: z.record(z.string(), z.number()).default({}),
+  activeWhales: z.number().optional(),
+  totalVolumeUSD: z.number().optional(),
+});
+
 export const WhalesResponseSchema = z.object({
   whales: z.array(z.unknown()).default([]),
-  summary: z.object({
-    total: z.number(),
-    largest: z.number(),
-    avgSize: z.number(),
-    types: z.record(z.string(), z.number()).default({}),
-  }),
+  whaleProfiles: z.array(z.unknown()).optional().default([]),
+  hotSignals: z.array(z.unknown()).optional().default([]),
+  summary: WhaleSummarySchema,
+  source: z.string().optional(),
   timestamp: z.number(),
   isStale: z.boolean().optional().default(false),
+  meta: z
+    .object({
+      hint: z.string().optional(),
+      minUsd: z.number().optional(),
+      indexer: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const RevenueResponseSchema = z.object({

@@ -1,15 +1,13 @@
 // src/app/api/alerts/route.ts
-// Alert check engine — scans Base protocols against persisted alert rules in Postgres.
-// Reads rules from the database, evaluates conditions against live DefiLlama data,
-// and records triggered events with cooldown enforcement.
-//
-// Graceful degradation: if DATABASE_URL is not set, returns empty alerts.
+// Alert check engine — evaluates rules against live data, returns recent events.
 
 import { NextResponse } from "next/server";
 import { gte, desc } from "drizzle-orm";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { AlertsResponseSchema } from "@/lib/zod/schemas";
+import { evaluateAlertRules } from "@/lib/alert-engine";
+import type { AlertEvent } from "@/lib/db/schema";
 
 const EMPTY_ALERTS = () => ({
   alerts: [],
@@ -17,19 +15,41 @@ const EMPTY_ALERTS = () => ({
   isStale: true,
 });
 
-const DATABASE_ENABLED = !!process.env.DATABASE_URL;
+function serializeAlertEvent(row: AlertEvent) {
+  return {
+    id: row.id,
+    ruleId: row.ruleId,
+    protocol: row.protocol,
+    network: row.network,
+    currentValue: String(row.currentValue),
+    message: row.message,
+    severity: row.severity,
+    triggeredAt:
+      row.triggeredAt instanceof Date
+        ? row.triggeredAt.toISOString()
+        : String(row.triggeredAt),
+    acknowledged: row.acknowledged,
+    acknowledgedAt: row.acknowledgedAt
+      ? row.acknowledgedAt instanceof Date
+        ? row.acknowledgedAt.toISOString()
+        : String(row.acknowledgedAt)
+      : null,
+  };
+}
 
 export async function GET(req: Request) {
   const rateResponse = await rateLimiterMiddleware()(req);
   if (rateResponse) return rateResponse;
 
-  if (!DATABASE_ENABLED) {
+  if (!process.env.DATABASE_URL) {
     return NextResponse.json(EMPTY_ALERTS(), {
       headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=60" },
     });
   }
 
   try {
+    await evaluateAlertRules();
+
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const { db } = await import("@/lib/db/client");
@@ -43,7 +63,11 @@ export async function GET(req: Request) {
 
     const validated = validateOrFallback(
       AlertsResponseSchema,
-      { alerts: triggered, timestamp: Date.now() },
+      {
+        alerts: triggered.map(serializeAlertEvent),
+        timestamp: Date.now(),
+        isStale: false,
+      },
       EMPTY_ALERTS(),
       "alerts"
     );

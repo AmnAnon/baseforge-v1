@@ -11,13 +11,17 @@ import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { validateOrFallback } from "@/lib/validation";
 import { WhalesResponseSchema } from "@/lib/zod/schemas";
 import { getWhaleFlows } from "@/lib/data/indexers";
+import { logger } from "@/lib/logger";
 
 const DEFAULT_MIN_USD = parseInt(process.env.WHALE_MIN_USD || "10000");
 const DEFAULT_LIMIT = parseInt(process.env.WHALE_LIMIT || "50");
 
 const EMPTY_WHALES = () => ({
   whales: [],
-  summary: { total: 0, largest: 0, avgSize: 0, types: {} },
+  whaleProfiles: [] as WhaleProfileOutput[],
+  hotSignals: [] as HotSignal[],
+  summary: { total: 0, largest: 0, avgSize: 0, types: {}, activeWhales: 0, totalVolumeUSD: 0 },
+  source: "none",
   timestamp: Date.now(),
   isStale: true,
 });
@@ -324,7 +328,10 @@ export async function GET(req: Request) {
         "X-Data-Source": result.source,
       },
     });
-  } catch {
+  } catch (err) {
+    logger.error("whales route failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
     // Try to serve stale cached data before returning empty
     const stale = await (await import("@/lib/cache")).cache.getStale<ReturnType<typeof EMPTY_WHALES>>("idx:whales:10000");
     if (stale && "whales" in stale) {
