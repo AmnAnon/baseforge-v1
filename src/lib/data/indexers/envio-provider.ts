@@ -164,6 +164,10 @@ async function queryHyperSync(params: {
 
   const raw = await res.json();
 
+  if (raw.error) {
+    throw new Error(`HyperSync error: ${typeof raw.error === "string" ? raw.error : JSON.stringify(raw.error)}`);
+  }
+
   // Normalize field naming (HyperSync uses snake_case)
   const logs: HyperSyncLog[] = (raw.data?.logs || []).map(
     (l: Record<string, unknown>) => ({
@@ -225,7 +229,7 @@ function absBigInt(v: bigint): bigint {
   return v < 0n ? -v : v;
 }
 
-const DEFAULT_BLOCK_LOOKBACK = 12_000; // ~6–7h on Base
+const DEFAULT_BLOCK_LOOKBACK = 4_000; // ~2–3h on Base — smaller window for reliable HyperSync responses
 
 function formatTokenAmount(raw: bigint, decimals: number): string {
   const divisor = 10n ** BigInt(decimals);
@@ -290,10 +294,25 @@ async function getLatestBlock(): Promise<number> {
     });
     if (res.ok) {
       const data = await res.json();
-      return data.height || data;
+      const height = typeof data === "number" ? data : data.height;
+      if (height > 0) return height;
     }
   } catch {}
-  return 0;
+
+  try {
+    const res = await fetch("https://mainnet.base.org", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.result) return parseInt(String(data.result), 16);
+    }
+  } catch {}
+
+  throw new Error("Unable to resolve latest Base block height");
 }
 
 // ─── Public API ─────────────────────────────────────────────────
@@ -303,6 +322,7 @@ async function getLatestBlock(): Promise<number> {
  */
 async function queryDexSwapLogs(
   fromBlock: number,
+  toBlock: number,
   protocol?: SwapQuery["protocol"]
 ): Promise<HyperSyncResponse> {
   const logFilters: Array<{ topics: string[][] }> = [];
@@ -315,6 +335,7 @@ async function queryDexSwapLogs(
 
   return queryHyperSync({
     fromBlock,
+    toBlock,
     logs: logFilters,
     maxBlocks: DEFAULT_BLOCK_LOOKBACK,
   });
@@ -326,7 +347,7 @@ export async function getSwaps(query: SwapQuery = {}): Promise<SwapEvent[]> {
   const latestBlock = await getLatestBlock();
   const fromBlock = query.fromBlock || Math.max(0, latestBlock - DEFAULT_BLOCK_LOOKBACK);
 
-  const response = await queryDexSwapLogs(fromBlock, query.protocol);
+  const response = await queryDexSwapLogs(fromBlock, latestBlock, query.protocol);
 
   const swaps: SwapEvent[] = [];
 
@@ -415,19 +436,27 @@ export async function getSwaps(query: SwapQuery = {}): Promise<SwapEvent[]> {
 
 async function fetchLargeTokenTransfers(
   fromBlock: number,
+  toBlock: number,
   minAmountUSD: number,
   ethPrice: number,
   limit: number
 ): Promise<WhaleFlow[]> {
-  const response = await queryHyperSync({
-    fromBlock,
-    addresses: [...WHALE_TRACKED_TOKENS],
-    topics: [[EVENT_SIGNATURES.TRANSFER]],
-    maxBlocks: DEFAULT_BLOCK_LOOKBACK,
-  });
-
   const flows: WhaleFlow[] = [];
 
+  // Per-token queries — more reliable than one mega-filter on HyperSync
+  const responses = await Promise.all(
+    WHALE_TRACKED_TOKENS.map((token) =>
+      queryHyperSync({
+        fromBlock,
+        toBlock,
+        addresses: [token],
+        topics: [[EVENT_SIGNATURES.TRANSFER]],
+        maxBlocks: DEFAULT_BLOCK_LOOKBACK,
+      })
+    )
+  );
+
+  for (const response of responses) {
   for (const log of response.data.logs) {
     const ts = blockTimestamp(response.data.blocks, log.blockNumber);
     const from = extractAddress(log.topics[1]);
@@ -452,6 +481,7 @@ async function fetchLargeTokenTransfers(
       tokenAmount: formatTokenAmount(amount, TOKEN_DECIMALS[tokenAddr] || 18),
     });
   }
+  }
 
   flows.sort((a, b) => b.amountUSD - a.amountUSD);
   return flows.slice(0, limit);
@@ -465,6 +495,7 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
   const ethPrice = await getEthPriceUSD();
   const latestBlock = await getLatestBlock();
   const fromBlock = query.fromBlock || Math.max(0, latestBlock - DEFAULT_BLOCK_LOOKBACK);
+  const toBlock = latestBlock;
 
   const lendingAddresses = [
     CONTRACTS.SEAMLESS_POOL,
@@ -481,14 +512,15 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
   ];
 
   const [swapResponse, lendingResponse, tokenTransfers] = await Promise.all([
-    queryDexSwapLogs(fromBlock),
+    queryDexSwapLogs(fromBlock, toBlock),
     queryHyperSync({
       fromBlock,
+      toBlock,
       addresses: lendingAddresses,
       logs: lendingTopic0s.map((t) => ({ topics: [[t]] })),
       maxBlocks: DEFAULT_BLOCK_LOOKBACK,
     }),
-    fetchLargeTokenTransfers(fromBlock, minAmountUSD, ethPrice, limit),
+    fetchLargeTokenTransfers(fromBlock, toBlock, minAmountUSD, ethPrice, limit),
   ]);
 
   const flows: WhaleFlow[] = [...tokenTransfers];

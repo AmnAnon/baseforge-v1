@@ -99,7 +99,6 @@ async function withFallback<T>(
       });
       monitor.trackDataSourceFailure("envio", err, { operation: label });
       monitor.trackProviderSwitch("envio-hypersync", "etherscan-fallback", err instanceof Error ? err.message : "unknown");
-      // Mark unhealthy for circuit breaker
       envioHealthy = false;
     }
   }
@@ -120,6 +119,58 @@ async function withFallback<T>(
   }
 }
 
+/** Merge Envio + Etherscan when either returns rows (Envio often succeeds with []). */
+async function withMergedArrayFallback<T extends { txHash: string }>(
+  label: string,
+  primary: () => Promise<T[]>,
+  secondary: () => Promise<T[]>
+): Promise<{ data: T[]; source: string }> {
+  const end = timing(`indexer.${label}`);
+  const sources: string[] = [];
+  const merged = new Map<string, T>();
+
+  if (await isEnvioAvailable()) {
+    try {
+      const data = await primary();
+      for (const row of data) merged.set(row.txHash, row);
+      if (data.length > 0) sources.push("envio-hypersync");
+      else logger.info(`Envio ${label} returned 0 rows, merging Etherscan fallback`);
+    } catch (err) {
+      logger.warn(`Envio ${label} failed`, {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      monitor.trackDataSourceFailure("envio", err, { operation: label });
+      envioHealthy = false;
+    }
+  }
+
+  if (process.env.ETHERSCAN_API_KEY) {
+    try {
+      const data = await secondary();
+      for (const row of data) merged.set(row.txHash, row);
+      if (data.length > 0) sources.push("etherscan-fallback");
+    } catch (err) {
+      logger.warn(`Etherscan ${label} fallback failed`, {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      monitor.trackDataSourceFailure("etherscan", err, { operation: label });
+    }
+  }
+
+  const data = Array.from(merged.values());
+  const latencyMs = end();
+  monitor.trackLatency(`indexer.${label}`, latencyMs, {
+    provider: sources.join("+") || "none",
+    rows: data.length,
+  });
+
+  if (data.length === 0 && !process.env.ETHERSCAN_API_KEY) {
+    logger.warn(`Indexer ${label}: no rows — set ETHERSCAN_API_KEY for fallback`);
+  }
+
+  return { data, source: sources.join("+") || "none" };
+}
+
 // ─── Public API ─────────────────────────────────────────────────
 
 /**
@@ -136,7 +187,7 @@ export async function getLargeSwaps(query: SwapQuery = {}): Promise<{
   const cached = await cache.get<{ swaps: SwapEvent[]; source: string; timestamp: number }>(cacheKey);
   if (cached) return cached;
 
-  const { data, source } = await withFallback(
+  const { data, source } = await withMergedArrayFallback(
     "swaps",
     () => envio.getSwaps(query),
     () => fallback.getSwaps(query)
@@ -170,7 +221,7 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<{
   const cached = await cache.get<ReturnType<typeof getWhaleFlows> extends Promise<infer T> ? T : never>(cacheKey);
   if (cached) return cached;
 
-  const { data, source } = await withFallback(
+  const { data, source } = await withMergedArrayFallback(
     "whaleFlows",
     () => envio.getWhaleFlows(query),
     () => fallback.getWhaleFlows(query)

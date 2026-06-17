@@ -199,6 +199,26 @@ export const etherscanHandlers = [
       });
     }
 
+    if (action === "tokentx") {
+      return HttpResponse.json({
+        status: "1",
+        message: "OK",
+        result: [
+          {
+            blockNumber: "20000001",
+            timeStamp: String(Math.floor(Date.now() / 1000) - 120),
+            hash: "0xwhaleusdc",
+            from: "0x1111111111111111111111111111111111111111",
+            to: "0x2222222222222222222222222222222222222222",
+            value: "25000000000",
+            contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            tokenSymbol: "USDC",
+            tokenDecimal: "6",
+          },
+        ],
+      });
+    }
+
     if (action === "eth_blockNumber") {
       return HttpResponse.json({
         status: "1",

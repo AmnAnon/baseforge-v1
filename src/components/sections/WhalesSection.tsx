@@ -254,13 +254,9 @@ function ScanningEmpty({
         </svg>
       </motion.div>
 
-      <motion.p
-        className="neon-text font-mono text-sm mb-1"
-        animate={{ opacity: [0.6, 1, 0.6] }}
-        transition={{ duration: 2, repeat: Infinity }}
-      >
-        Scanning for whales...
-      </motion.p>
+      <p className="text-[var(--bf-text-primary)] font-mono text-sm mb-1 font-semibold">
+        No whale flows in this window
+      </p>
       <p className="text-[var(--bf-text-secondary)] text-xs text-center max-w-sm">
         {hint ?? "Monitoring large WETH/USDC transfers, DEX swaps, and lending flows on Base"}
       </p>

@@ -13,7 +13,7 @@ import { WhalesResponseSchema } from "@/lib/zod/schemas";
 import { getWhaleFlows } from "@/lib/data/indexers";
 import { logger } from "@/lib/logger";
 
-const DEFAULT_MIN_USD = parseInt(process.env.WHALE_MIN_USD || "10000");
+const DEFAULT_MIN_USD = parseInt(process.env.WHALE_MIN_USD || "5000");
 const DEFAULT_LIMIT = parseInt(process.env.WHALE_LIMIT || "50");
 
 const EMPTY_WHALES = () => ({
@@ -313,7 +313,7 @@ export async function GET(req: Request) {
       isStale: false,
       meta: whales.length === 0
         ? {
-            hint: `No flows ≥ ${formatUSD(minUSD)} in the last ~6h. Try $5K threshold or check ENVIO_API_TOKEN + ETHERSCAN_API_KEY on the deployment.`,
+            hint: `No flows ≥ ${formatUSD(minUSD)} in the last ~3h. Indexer merges Envio + Etherscan — confirm ETHERSCAN_API_KEY on Vercel or tap Pull Latest.`,
             minUsd: minUSD,
             indexer: result.source,
           }

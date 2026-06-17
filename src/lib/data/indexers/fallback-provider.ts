@@ -151,7 +151,7 @@ export async function getWhaleFlows(query: WhaleQuery = {}): Promise<WhaleFlow[]
 
   // Large ERC-20 transfers (WETH, USDC, etc.) — catches real whale movement
   for (const tokenAddr of WHALE_TRACKED_TOKENS) {
-    const txList = await fetchEtherscanTokenTx(tokenAddr, 60);
+    const txList = await fetchEtherscanTokenTx(tokenAddr, 100);
     for (const tx of txList) {
       const usdValue = tokenAmountToUsd(tokenAddr, tx.value, ethPrice);
       if (usdValue < minAmountUSD) continue;
