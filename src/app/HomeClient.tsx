@@ -29,6 +29,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useRealTimeData } from "@/hooks/useRealTimeData";
 import { timeAgo, freshnessColor } from "@/lib/utils";
 import AdminStatsBar from "@/components/AdminStatsBar";
+import Logo from "@/components/ui/Logo";
 
 export interface AnalyticsData {
   baseMetrics?: { totalTvl: number; totalProtocols: number; avgApy: number; change24h: number };
@@ -181,9 +182,13 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
           {/* Title row */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-3xl font-bold gradient-text mb-1">
-                BaseForge
-              </h1>
+              <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
+                <Logo size={36} className="sm:hidden" />
+                <Logo size={44} className="hidden sm:block" />
+                <h1 className="text-xl sm:text-3xl font-bold gradient-text">
+                  BaseForge
+                </h1>
+              </div>
               <p className="text-xs sm:text-base text-[var(--bf-text-secondary)]">
                 AI-ready intelligence layer for{" "}
                 <span className="neon-text font-semibold">Base</span>

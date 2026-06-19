@@ -23,6 +23,14 @@ export async function generateMetadata(): Promise<Metadata> {
     title: "BaseForge — AI-Ready Intelligence Layer for Base",
     description:
       "Real-time Base DeFi intelligence: protocol risk, whale flows, MEV, and compressed context for AI agents via /api/agents/context.",
+    manifest: "/manifest.json",
+    icons: {
+      icon: [
+        { url: "/favicon.ico" },
+        { url: "/icon.png", sizes: "512x512", type: "image/png" },
+      ],
+      apple: "/apple-touch-icon.png",
+    },
     openGraph: {
       title: "BaseForge — Intelligence Layer for Base",
       description: "Live ecosystem state, risk scoring, and agent-ready API for Base DeFi",

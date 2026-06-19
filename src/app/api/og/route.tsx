@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     const tvl = totalTvl ?? "$1.2B";
     const procs = protocolCount ?? "15";
     const delta = change24h ?? "+2.3%";
-    const deltaColor = delta.startsWith("-") ? "#ef4444" : "#10b981";
+    const deltaColor = delta.startsWith("-") ? "#ff2d7b" : "#00ff88";
 
     return new ImageResponse(
       (
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            background: "linear-gradient(135deg, #000 0%, #0a1628 50%, #06120d 100%)",
+            background: "linear-gradient(135deg, #0a0a0a 0%, #111827 45%, #1a1a2e 100%)",
             fontFamily: "Inter, sans-serif",
           }}
         >
@@ -81,17 +81,41 @@ export async function GET(request: NextRequest) {
           <div style={{ display: "flex", alignItems: "center", gap: 18, marginBottom: 12 }}>
             <div style={{
               width: 56, height: 56, borderRadius: 14,
-              background: "linear-gradient(135deg, #10b981, #3b82f6)",
+              background: "#0a0a0a",
+              border: "2px solid rgba(0, 212, 255, 0.45)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 22, fontWeight: 800, color: "#fff",
-            }}>BF</div>
-            <div style={{ fontSize: 42, fontWeight: 800, color: "#fff" }}>
-              BaseForge Analytics
+              position: "relative",
+            }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 6,
+                border: "2px solid #7b61ff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "linear-gradient(135deg, rgba(0,212,255,0.15), rgba(123,97,255,0.2))",
+              }}>
+                <div style={{
+                  width: 14, height: 4, borderRadius: 2,
+                  background: "linear-gradient(90deg, #00d4ff, #7b61ff)",
+                  marginBottom: 6,
+                }} />
+              </div>
+              <div style={{
+                position: "absolute", top: 8, right: 8,
+                width: 10, height: 10, borderRadius: 999,
+                background: "#00ff88",
+              }} />
+            </div>
+            <div style={{
+              fontSize: 42, fontWeight: 800,
+              background: "linear-gradient(135deg, #00d4ff 0%, #7b61ff 50%, #ff2d7b 100%)",
+              backgroundClip: "text",
+              color: "transparent",
+            }}>
+              BaseForge
             </div>
           </div>
 
-          <div style={{ fontSize: 22, color: "#6b7280", marginBottom: 40 }}>
-            Real-time DeFi analytics on Base chain
+          <div style={{ fontSize: 22, color: "#888888", marginBottom: 40 }}>
+            AI-ready intelligence layer for Base
           </div>
 
           {/* Metric cards */}
@@ -99,30 +123,30 @@ export async function GET(request: NextRequest) {
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center",
               padding: "20px 32px",
-              background: "rgba(16,185,129,0.1)", borderRadius: 16,
-              border: "1px solid rgba(16,185,129,0.2)",
+              background: "rgba(0,212,255,0.08)", borderRadius: 16,
+              border: "1px solid rgba(0,212,255,0.25)",
             }}>
-              <div style={{ fontSize: 16, color: "#6b7280", marginBottom: 6 }}>Total TVL</div>
-              <div style={{ fontSize: 48, fontWeight: 700, color: "#10b981" }}>{tvl}</div>
+              <div style={{ fontSize: 16, color: "#888888", marginBottom: 6 }}>Total TVL</div>
+              <div style={{ fontSize: 48, fontWeight: 700, color: "#00d4ff" }}>{tvl}</div>
             </div>
 
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center",
               padding: "20px 32px",
-              background: "rgba(59,130,246,0.1)", borderRadius: 16,
-              border: "1px solid rgba(59,130,246,0.2)",
+              background: "rgba(123,97,255,0.1)", borderRadius: 16,
+              border: "1px solid rgba(123,97,255,0.25)",
             }}>
-              <div style={{ fontSize: 16, color: "#6b7280", marginBottom: 6 }}>Protocols</div>
-              <div style={{ fontSize: 48, fontWeight: 700, color: "#3b82f6" }}>{procs}</div>
+              <div style={{ fontSize: 16, color: "#888888", marginBottom: 6 }}>Protocols</div>
+              <div style={{ fontSize: 48, fontWeight: 700, color: "#7b61ff" }}>{procs}</div>
             </div>
 
             <div style={{
               display: "flex", flexDirection: "column", alignItems: "center",
               padding: "20px 32px",
-              background: "rgba(245,158,11,0.1)", borderRadius: 16,
-              border: `1px solid rgba(245,158,11,0.2)`,
+              background: "rgba(0,255,136,0.08)", borderRadius: 16,
+              border: "1px solid rgba(0,255,136,0.2)",
             }}>
-              <div style={{ fontSize: 16, color: "#6b7280", marginBottom: 6 }}>7d Change</div>
+              <div style={{ fontSize: 16, color: "#888888", marginBottom: 6 }}>7d Change</div>
               <div style={{ fontSize: 48, fontWeight: 700, color: deltaColor }}>{delta}</div>
             </div>
           </div>
@@ -141,11 +165,16 @@ export async function GET(request: NextRequest) {
         <div style={{
           height: "100%", width: "100%", display: "flex",
           alignItems: "center", justifyContent: "center",
-          background: "linear-gradient(135deg, #000, #0a1628)",
+          background: "linear-gradient(135deg, #0a0a0a, #1a1a2e)",
           fontFamily: "Inter, sans-serif",
         }}>
-          <div style={{ fontSize: 48, fontWeight: 800, color: "#10b981" }}>
-            BaseForge Analytics
+          <div style={{
+            fontSize: 48, fontWeight: 800,
+            background: "linear-gradient(135deg, #00d4ff, #7b61ff, #ff2d7b)",
+            backgroundClip: "text",
+            color: "transparent",
+          }}>
+            BaseForge
           </div>
         </div>
       ),

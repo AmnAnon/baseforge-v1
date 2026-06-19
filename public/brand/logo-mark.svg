@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-label="BaseForge">
+  <defs>
+    <linearGradient id="bf-grad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="50%" stop-color="#7b61ff"/>
+      <stop offset="100%" stop-color="#ff2d7b"/>
+    </linearGradient>
+    <linearGradient id="bf-grad-h" x1="12" y1="20" x2="36" y2="20" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#7b61ff"/>
+    </linearGradient>
+    <filter id="bf-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- App tile background -->
+  <rect x="2" y="2" width="44" height="44" rx="11" fill="#0a0a0a"/>
+  <rect x="2.75" y="2.75" width="42.5" height="42.5" rx="10.25" stroke="url(#bf-grad)" stroke-opacity="0.4" stroke-width="1.5"/>
+
+  <!-- Base network hex frame -->
+  <path
+    d="M24 9.5 34.5 15.5v12L24 33.5 13.5 27.5v-12L24 9.5Z"
+    stroke="url(#bf-grad)"
+    stroke-width="1.25"
+    stroke-linejoin="round"
+    fill="none"
+    opacity="0.65"
+  />
+
+  <!-- Forge anvil -->
+  <rect x="14.5" y="19" width="19" height="3.5" rx="0.9" fill="url(#bf-grad-h)"/>
+  <path d="M16.5 22.5h15l-2.2 6.2H18.7L16.5 22.5Z" fill="url(#bf-grad)"/>
+  <rect x="18" y="28.7" width="12" height="2.4" rx="0.6" fill="url(#bf-grad-h)" opacity="0.85"/>
+  <path d="M33.5 18.8 37.2 19.8 35.4 23.2 33.5 22.2V18.8Z" fill="#7b61ff"/>
+
+  <!-- Intelligence spark -->
+  <circle cx="24" cy="15.8" r="1.6" fill="#00d4ff" filter="url(#bf-glow)"/>
+  <path d="M24 17.6v1.2" stroke="#00d4ff" stroke-width="1.2" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- Live signal -->
+  <circle cx="37.5" cy="10.5" r="2.2" fill="#00ff88"/>
+  <circle cx="37.5" cy="10.5" r="4.2" fill="#00ff88" opacity="0.22"/>
+</svg>
