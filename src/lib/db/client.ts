@@ -3,10 +3,12 @@
 // Lazy-initialized: only throws when the DB is actually used without DATABASE_URL.
 // Routes that don't need the DB won't crash on import.
 
-import { drizzle } from "drizzle-orm/neon-http";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
+import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
-export type DbClient = ReturnType<typeof drizzle>;
+export type DbClient = ReturnType<typeof drizzleNeon> | ReturnType<typeof drizzlePostgres>;
 
 let _db: DbClient | null = null;
 
@@ -16,12 +18,14 @@ export function getDb(): DbClient {
   if (!url) {
     throw new Error("DATABASE_URL is required. Set it in .env.local or your deployment environment.");
   }
-  // Append PgBouncer params for Neon serverless — prevents connection exhaustion
-  // under concurrent serverless invocations.
-  const pooledUrl = url.includes("pgbouncer=true")
-    ? url
-    : `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true&connection_limit=1`;
-  _db = drizzle(neon(pooledUrl));
+  if (url.includes("neon.tech")) {
+    const pooledUrl = url.includes("pgbouncer=true")
+      ? url
+      : `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true&connection_limit=1`;
+    _db = drizzleNeon(neon(pooledUrl)) as DbClient;
+  } else {
+    _db = drizzlePostgres(postgres(url)) as DbClient;
+  }
   return _db;
 }
 

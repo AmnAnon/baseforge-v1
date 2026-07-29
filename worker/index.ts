@@ -10,6 +10,7 @@
 import http from "node:http";
 import * as promClient from "prom-client";
 import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { validateWebhookUrlSync } from "./webhook-url";
 
 // ─── Environment ─────────────────────────────────────────────────
@@ -21,12 +22,17 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-// ─── Neon SQL client ─────────────────────────────────────────────
-function buildDbUrl(url: string): string {
-  if (url.includes("pgbouncer=true")) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true&connection_limit=1`;
+// ─── SQL client (Neon serverless or native Postgres) ─────────────
+function createSqlClient(url: string) {
+  if (url.includes("neon.tech")) {
+    const formattedUrl = url.includes("pgbouncer=true")
+      ? url
+      : `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true&connection_limit=1`;
+    return neon(formattedUrl);
+  }
+  return postgres(url);
 }
-const sql = neon(buildDbUrl(DATABASE_URL));
+const sql = createSqlClient(DATABASE_URL);
 
 // ─── Cache Helpers (Postgres-backed) ───────────────────────────
 async function setCache(key: string, value: unknown, ttlSec: number): Promise<void> {
@@ -34,7 +40,7 @@ async function setCache(key: string, value: unknown, ttlSec: number): Promise<vo
   try {
     await sql`
       INSERT INTO api_cache (key, value, expires_at, created_at)
-      VALUES (${key}, ${JSON.stringify(value)}, ${expiresAt}, NOW())
+      VALUES (${key}, ${JSON.stringify(value)}::jsonb, ${expiresAt}, NOW())
       ON CONFLICT (key) DO UPDATE SET
         value = EXCLUDED.value,
         expires_at = EXCLUDED.expires_at,
