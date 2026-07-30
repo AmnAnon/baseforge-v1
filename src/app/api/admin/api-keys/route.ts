@@ -61,10 +61,10 @@ async function handleGet() {
     .where(gte(apiKeyUsage.createdAt, new Date(Date.now() - 86_400_000)))
     .groupBy(apiKeyUsage.keyId);
 
-  const usageMap = new Map(usageStats.map((u) => [u.keyId, u.count]));
+  const usageMap = new Map(usageStats.map((u: { keyId: string; count: number | string }) => [u.keyId, Number(u.count)] as [string, number]));
 
   return NextResponse.json({
-    keys: keys.map((k) => ({
+    keys: keys.map((k: Record<string, unknown> & { id: string }) => ({
       ...k,
       usage24h: usageMap.get(k.id) ?? 0,
     })),
