@@ -122,8 +122,8 @@ function getKeyLimiter(keyId: string, rpm: number): RateLimiter {
 // ─── Usage tracking (fire-and-forget) ───────────────────────────
 
 function trackUsage(input: Omit<NewApiKeyUsage, "id" | "createdAt">): void {
-  db.insert(apiKeyUsage).values(input).catch((err) => {
-    logger.warn("Failed to track API key usage", { error: err.message });
+  db.insert(apiKeyUsage).values(input).catch((err: unknown) => {
+    logger.warn("Failed to track API key usage", { error: err instanceof Error ? err.message : String(err) });
   });
 }
 

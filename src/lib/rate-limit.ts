@@ -63,7 +63,8 @@ export class PostgresRateLimiter {
   async check(key: string): Promise<{ allowed: boolean; retryAfter?: number; remaining?: number }> {
     const now = new Date();
     try {
-      return await db.transaction(async (tx) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return await db.transaction(async (tx: any) => {
         const existing = await tx
           .select()
           .from(rateLimits)
