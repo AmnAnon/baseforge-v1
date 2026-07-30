@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
+  ArrowRightLeft,
   Activity,
   Fish,
   ShieldAlert,
@@ -22,7 +23,10 @@ import PulseHub from "@/components/hubs/PulseHub";
 import RiskHub from "@/components/hubs/RiskHub";
 import FlowsHub from "@/components/hubs/FlowsHub";
 import MarketHub from "@/components/hubs/MarketHub";
+import SwapHub from "@/components/hubs/SwapHub";
 import PortfolioSection from "@/components/sections/PortfolioSection";
+import WalletConnectButton from "@/components/ui/WalletConnectButton";
+import SwapModal from "@/components/ui/SwapModal";
 import { NeonCard } from "@/components/ui/NeonCard";
 import { CountUp } from "@/components/ui/CountUp";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -39,7 +43,7 @@ export interface AnalyticsData {
   timestamp?: number;
 }
 
-type HubId = "pulse" | "risk" | "flows" | "portfolio" | "more";
+type HubId = "pulse" | "risk" | "flows" | "swap" | "portfolio" | "more";
 
 interface HubConfig {
   id: HubId;
@@ -52,6 +56,7 @@ const HUBS: HubConfig[] = [
   { id: "pulse", label: "Pulse", icon: Activity, ariaLabel: "Ecosystem pulse — overview and charts" },
   { id: "risk", label: "Risk", icon: ShieldAlert, ariaLabel: "Risk scores, compare, and alerts" },
   { id: "flows", label: "Flows", icon: Fish, ariaLabel: "Whale and MEV flows" },
+  { id: "swap", label: "Swap", icon: ArrowRightLeft, ariaLabel: "1-Click Base DEX Swap" },
   { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Wallet portfolio" },
   { id: "more", label: "More", icon: MoreHorizontal, ariaLabel: "Market data and developer tools" },
 ];
@@ -86,6 +91,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
   const [scanlines, setScanlines] = useState(false);
   const { data: streamData, connectionState: streamState, isConnected, isFailed, reconnect, health } = useRealTimeData();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
 
   // CRT toggle via keyboard shortcut (Ctrl+Shift+S)
   useEffect(() => {
@@ -157,6 +163,8 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
         return <ErrorBoundary><RiskHub /></ErrorBoundary>;
       case "flows":
         return <ErrorBoundary><FlowsHub /></ErrorBoundary>;
+      case "swap":
+        return <ErrorBoundary><SwapHub /></ErrorBoundary>;
       case "portfolio":
         return <ErrorBoundary><PortfolioSection /></ErrorBoundary>;
       case "more":
@@ -180,7 +188,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
       <header className="sticky top-0 z-20 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[#00d4ff]/20 shadow-[0_0_30px_rgba(0,212,255,0.1)]">
         <div className="p-3 sm:p-4">
           {/* Title row */}
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5 sm:gap-3 mb-1">
                 <Logo size={36} className="sm:hidden" />
@@ -204,14 +212,23 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
               </p>
             </div>
 
-            {/* Refresh + CRT toggle */}
-            <div className="flex items-center gap-2">
+            {/* Header Action Bar: Wallet Connect + 1-Click Swap + Refresh + CRT */}
+            <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
               {analytics?.timestamp && (
-                <div className={`text-xs ${freshnessColor(analytics.timestamp)} flex items-center gap-1`}>
+                <div className={`hidden md:flex text-xs ${freshnessColor(analytics.timestamp)} items-center gap-1`}>
                   <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
                   {timeAgo(analytics.timestamp)}
                 </div>
               )}
+              <button
+                onClick={() => setIsSwapModalOpen(true)}
+                className="px-3 py-1.5 bg-gradient-to-r from-[#00d4ff]/20 to-[#7b61ff]/20 hover:from-[#00d4ff]/30 hover:to-[#7b61ff]/30 border border-[#00d4ff]/40 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(0,212,255,0.15)]"
+                title="1-Click DEX Swap"
+              >
+                <Zap size={14} className="text-amber-400 fill-amber-400 animate-pulse" />
+                <span>⚡ 1-Click Swap</span>
+              </button>
+              <WalletConnectButton />
               <button
                 onClick={() => setScanlines((s) => {
                   const n = !s;
@@ -358,6 +375,9 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
           ))}
         </div>
       </nav>
+
+      {/* 1-Click Swap Popup Modal */}
+      <SwapModal isOpen={isSwapModalOpen} onClose={() => setIsSwapModalOpen(false)} />
     </div>
   );
 }
