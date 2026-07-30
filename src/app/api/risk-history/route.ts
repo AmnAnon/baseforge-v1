@@ -36,7 +36,7 @@ async function queryRiskSnapshots(protocol: string): Promise<RiskHistoryPoint[]>
     .orderBy(desc(riskSnapshots.timestamp))
     .limit(168); // 7 days of ~hourly snapshots (worker runs every 5 min, deduped in practice)
 
-  return rows.map((r) => {
+  return rows.map((r: Record<string, unknown> & { timestamp: Date | string; health?: number; score: number; tvl?: number | string }) => {
     const ts = r.timestamp instanceof Date ? r.timestamp.getTime() : new Date(r.timestamp).getTime();
     return {
       date:        new Date(ts).toISOString(),

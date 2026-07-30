@@ -128,7 +128,7 @@ async function fetchRiskSnapshots(protocol: string) {
       .where(eq(riskSnapshots.protocol, protocol))
       .orderBy(desc(riskSnapshots.timestamp))
       .limit(168);
-    return rows.reverse().map((r) => {
+    return rows.reverse().map((r: Record<string, unknown> & { timestamp: Date | string; health?: number; score: number; tvl?: number | string }) => {
       const ts = r.timestamp instanceof Date ? r.timestamp.getTime() : new Date(r.timestamp).getTime();
       return {
         date: new Date(ts).toISOString(),
@@ -151,7 +151,7 @@ async function fetchWhaleActivity(protocol: string) {
       .where(eq(whaleEvents.protocol, protocol))
       .orderBy(desc(whaleEvents.timestamp))
       .limit(10);
-    return rows.map((r) => ({
+    return rows.map((r: Record<string, unknown> & { txHash: string; action: string; usdValue: number | string; wallet: string; netFlowDirection: string; timestamp: Date | string }) => ({
       txHash: r.txHash,
       action: r.action,
       usdValue: parseFloat(String(r.usdValue)),
