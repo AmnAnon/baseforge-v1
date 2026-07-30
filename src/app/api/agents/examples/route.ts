@@ -51,6 +51,20 @@ const EXAMPLES = {
         },
       },
     },
+    buildTx: {
+      url: "/api/agents/actions/build-tx",
+      method: "POST",
+      description: "Generate raw unsigned EVM transaction calldata for AI agent on-chain execution",
+      requestBody: {
+        action: "swap",
+        params: {
+          tokenIn: "ETH",
+          tokenOut: "USDC",
+          amountIn: "1000000000000000000",
+          protocol: "uniswap-v3"
+        }
+      }
+    },
     swaps: {
       url: "/api/swaps",
       method: "GET",
