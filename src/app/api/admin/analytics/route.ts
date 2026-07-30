@@ -59,7 +59,7 @@ async function getDAUTrend() {
     .groupBy(sql`date_trunc('day', ${t.createdAt})`)
     .orderBy(sql`date_trunc('day', ${t.createdAt})`);
 
-  return rows.map((r) => ({
+  return rows.map((r: { date: string; dau: number | string; interactions: number | string }) => ({
     date: r.date,
     dau: Number(r.dau),
     interactions: Number(r.interactions),
@@ -90,8 +90,8 @@ async function getTopProtocols(limit = 10) {
     .limit(limit);
 
   return rows
-    .filter((r) => r.protocol)
-    .map((r) => ({ protocol: r.protocol!, views: Number(r.views) }));
+    .filter((r: { protocol: string | null; views: number | string }) => r.protocol)
+    .map((r: { protocol: string | null; views: number | string }) => ({ protocol: r.protocol!, views: Number(r.views) }));
 }
 
 // ─── Route ──────────────────────────────────────────────────────────
