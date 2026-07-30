@@ -31,7 +31,7 @@ async function getClicksPerButton() {
     .groupBy(t.buttonIndex)
     .orderBy(t.buttonIndex);
 
-  return rows.map((r) => ({
+  return rows.map((r: { buttonIndex: number; clicks: number | string }) => ({
     buttonIndex: r.buttonIndex,
     label: BUTTON_LABELS[r.buttonIndex] || `Button ${r.buttonIndex}`,
     clicks: Number(r.clicks),
