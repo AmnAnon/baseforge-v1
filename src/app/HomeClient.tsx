@@ -10,6 +10,7 @@ import {
   Activity,
   Fish,
   ShieldAlert,
+  Rocket,
   RefreshCw,
   Signal,
   Wallet,
@@ -24,6 +25,7 @@ import RiskHub from "@/components/hubs/RiskHub";
 import FlowsHub from "@/components/hubs/FlowsHub";
 import MarketHub from "@/components/hubs/MarketHub";
 import SwapHub from "@/components/hubs/SwapHub";
+import MemecoinRadarHub from "@/components/hubs/MemecoinRadarHub";
 import PortfolioSection from "@/components/sections/PortfolioSection";
 import WalletConnectButton from "@/components/ui/WalletConnectButton";
 import SwapModal from "@/components/ui/SwapModal";
@@ -43,7 +45,7 @@ export interface AnalyticsData {
   timestamp?: number;
 }
 
-type HubId = "pulse" | "risk" | "flows" | "swap" | "portfolio" | "more";
+type HubId = "pulse" | "risk" | "flows" | "launches" | "swap" | "portfolio" | "more";
 
 interface HubConfig {
   id: HubId;
@@ -56,6 +58,7 @@ const HUBS: HubConfig[] = [
   { id: "pulse", label: "Pulse", icon: Activity, ariaLabel: "Ecosystem pulse — overview and charts" },
   { id: "risk", label: "Risk", icon: ShieldAlert, ariaLabel: "Risk scores, compare, and alerts" },
   { id: "flows", label: "Flows", icon: Fish, ariaLabel: "Whale and MEV flows" },
+  { id: "launches", label: "Radar", icon: Rocket, ariaLabel: "Base Memecoin & Token Launch Radar" },
   { id: "swap", label: "Swap", icon: ArrowRightLeft, ariaLabel: "1-Click Base DEX Swap" },
   { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Wallet portfolio" },
   { id: "more", label: "More", icon: MoreHorizontal, ariaLabel: "Market data and developer tools" },
@@ -163,6 +166,8 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
         return <ErrorBoundary><RiskHub /></ErrorBoundary>;
       case "flows":
         return <ErrorBoundary><FlowsHub /></ErrorBoundary>;
+      case "launches":
+        return <ErrorBoundary><MemecoinRadarHub /></ErrorBoundary>;
       case "swap":
         return <ErrorBoundary><SwapHub /></ErrorBoundary>;
       case "portfolio":
