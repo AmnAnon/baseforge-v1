@@ -8,7 +8,8 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import { neon } from "@neondatabase/serverless";
 import postgres from "postgres";
 
-export type DbClient = ReturnType<typeof drizzleNeon> | ReturnType<typeof drizzlePostgres>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type DbClient = any;
 
 let _db: DbClient | null = null;
 
@@ -22,9 +23,9 @@ export function getDb(): DbClient {
     const pooledUrl = url.includes("pgbouncer=true")
       ? url
       : `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true&connection_limit=1`;
-    _db = drizzleNeon(neon(pooledUrl)) as DbClient;
+    _db = drizzleNeon(neon(pooledUrl));
   } else {
-    _db = drizzlePostgres(postgres(url)) as DbClient;
+    _db = drizzlePostgres(postgres(url));
   }
   return _db;
 }
