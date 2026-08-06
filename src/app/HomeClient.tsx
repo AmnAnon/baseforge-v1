@@ -16,6 +16,7 @@ import {
   Wallet,
   Zap,
   TrendingUp,
+  Terminal,
   Monitor,
   Cpu,
   MoreHorizontal,
@@ -27,6 +28,7 @@ import MarketHub from "@/components/hubs/MarketHub";
 import SwapHub from "@/components/hubs/SwapHub";
 import MemecoinRadarHub from "@/components/hubs/MemecoinRadarHub";
 import SmartMoneyHub from "@/components/hubs/SmartMoneyHub";
+import DeveloperHub from "@/components/hubs/DeveloperHub";
 import PortfolioSection from "@/components/sections/PortfolioSection";
 import WalletConnectButton from "@/components/ui/WalletConnectButton";
 import SwapModal from "@/components/ui/SwapModal";
@@ -46,7 +48,7 @@ export interface AnalyticsData {
   timestamp?: number;
 }
 
-type HubId = "pulse" | "risk" | "flows" | "launches" | "signals" | "swap" | "portfolio" | "more";
+type HubId = "pulse" | "risk" | "flows" | "launches" | "signals" | "swap" | "portfolio" | "dev" | "more";
 
 interface HubConfig {
   id: HubId;
@@ -62,6 +64,7 @@ const HUBS: HubConfig[] = [
   { id: "launches", label: "Radar", icon: Rocket, ariaLabel: "Base Memecoin & Token Launch Radar" },
   { id: "signals", label: "Alpha", icon: TrendingUp, ariaLabel: "Smart Money & Copy-Trading Signals" },
   { id: "swap", label: "Swap", icon: ArrowRightLeft, ariaLabel: "1-Click Base DEX Swap" },
+  { id: "dev", label: "Build", icon: Terminal, ariaLabel: "Developer SDK & Action API" },
   { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Wallet portfolio" },
   { id: "more", label: "More", icon: MoreHorizontal, ariaLabel: "Market data and developer tools" },
 ];
@@ -174,6 +177,8 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
         return <ErrorBoundary><SmartMoneyHub /></ErrorBoundary>;
       case "swap":
         return <ErrorBoundary><SwapHub /></ErrorBoundary>;
+      case "dev":
+        return <ErrorBoundary><DeveloperHub /></ErrorBoundary>;
       case "portfolio":
         return <ErrorBoundary><PortfolioSection /></ErrorBoundary>;
       case "more":
