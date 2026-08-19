@@ -1,10 +1,11 @@
-// src/app/layout.tsx
 import "./globals.css";
 import "@coinbase/onchainkit/styles.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import DemoBanner from "@/components/DemoBanner";
 import OnchainKitAppProvider from "@/components/providers/OnchainKitAppProvider";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -86,6 +87,8 @@ export default function RootLayout({
           {showDemo && <DemoBanner />}
           <div id="scanlines" className="scanlines" />
           {children}
+          <Analytics />
+          <SpeedInsights />
         </OnchainKitAppProvider>
       </body>
     </html>
