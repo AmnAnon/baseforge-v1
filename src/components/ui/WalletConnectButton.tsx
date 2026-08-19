@@ -201,8 +201,15 @@ export default function WalletConnectButton({ onAddressChange }: WalletConnectBu
         "
         aria-label="Connect wallet"
       >
-        <Wallet className="h-3.5 w-3.5" aria-hidden />
-        {isConnecting ? "Connecting…" : "Connect Wallet"}
+        <Wallet className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+        {isConnecting ? (
+          "Connecting…"
+        ) : (
+          <>
+            <span className="hidden sm:inline">Connect Wallet</span>
+            <span className="sm:hidden">Connect</span>
+          </>
+        )}
       </button>
     </div>
   );

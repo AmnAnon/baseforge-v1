@@ -183,24 +183,23 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col pb-20">
       {/* Compact Sticky Header */}
-      <header className="sticky top-0 z-20 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[#00d4ff]/20 shadow-[0_0_30px_rgba(0,212,255,0.1)]">
-        <div className="max-w-screen-xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-20 bg-[#0a0a0a]/95 backdrop-blur-xl border-b border-[#00d4ff]/20 shadow-[0_0_30px_rgba(0,212,255,0.1)]">
+        <div className="max-w-screen-xl mx-auto px-2.5 sm:px-6 py-2 flex items-center justify-between gap-2">
           {/* Brand Logo & Title */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Logo size={28} className="sm:hidden" />
-            <Logo size={32} className="hidden sm:block" />
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg sm:text-xl font-bold gradient-text tracking-tight">
+          <div className="flex items-center gap-2 shrink-0">
+            <Logo size={26} className="sm:w-7 sm:h-7" />
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-base sm:text-xl font-bold gradient-text tracking-tight select-none">
                 BaseForge
               </span>
-              <span className="hidden sm:inline-block text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#00d4ff]/10 text-[var(--bf-neon-primary)] border border-[#00d4ff]/20">
+              <span className="hidden md:inline-block text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#00d4ff]/10 text-[var(--bf-neon-primary)] border border-[#00d4ff]/20">
                 Base L2
               </span>
             </div>
           </div>
 
           {/* Action Bar: 1-Click Swap + Wallet Connect + CRT + Refresh */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {analytics?.timestamp && (
               <div className={`hidden lg:flex text-xs ${freshnessColor(analytics.timestamp)} items-center gap-1 mr-1`}>
                 <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
@@ -209,12 +208,12 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
             )}
             <button
               onClick={() => setIsSwapModalOpen(true)}
-              className="px-2.5 sm:px-3 py-1.5 bg-gradient-to-r from-[#00d4ff]/20 to-[#7b61ff]/20 hover:from-[#00d4ff]/30 hover:to-[#7b61ff]/30 border border-[#00d4ff]/40 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(0,212,255,0.15)]"
+              className="px-2 sm:px-3 py-1.5 bg-gradient-to-r from-[#00d4ff]/20 to-[#7b61ff]/20 hover:from-[#00d4ff]/30 hover:to-[#7b61ff]/30 border border-[#00d4ff]/40 rounded-xl text-xs font-semibold text-white flex items-center gap-1 transition-all shadow-[0_0_15px_rgba(0,212,255,0.15)]"
               title="1-Click DEX Swap"
             >
-              <Zap size={13} className="text-amber-400 fill-amber-400 animate-pulse" />
+              <Zap size={13} className="text-amber-400 fill-amber-400 animate-pulse shrink-0" />
               <span className="hidden sm:inline">⚡ 1-Click Swap</span>
-              <span className="sm:hidden">Swap</span>
+              <span className="sm:hidden text-[11px] font-bold">Swap</span>
             </button>
             <WalletConnectButton />
             <button
@@ -235,7 +234,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
               className="p-1.5 bg-black/40 hover:bg-black/60 border border-[var(--bf-neon-primary)]/30 rounded-xl transition-all text-[var(--bf-neon-primary)] disabled:opacity-50"
               aria-label="Refresh data"
             >
-              <RefreshCw size={15} className={isRefreshing ? "animate-spin" : ""} />
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
