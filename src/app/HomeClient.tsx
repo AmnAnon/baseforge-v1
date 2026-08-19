@@ -196,6 +196,8 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
   const protocols = analytics?.baseMetrics?.totalProtocols ?? 0;
   const change24h = analytics?.baseMetrics?.change24h ?? 0;
 
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col pb-20">
       {/* Compact Sticky Header */}
       <header className="sticky top-0 z-20 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[#00d4ff]/20 shadow-[0_0_30px_rgba(0,212,255,0.1)]">
         <div className="max-w-screen-xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-3">
