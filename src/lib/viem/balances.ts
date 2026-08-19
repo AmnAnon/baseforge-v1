@@ -32,6 +32,10 @@ export const TRACKED_TOKENS: TrackedToken[] = [
   { symbol: "TOSHI", address: "0xAC1Bd2486aAf3B5C0fc3aD863896978e05245724", decimals: 18, coingeckoId: "toshi", category: "other" },
   { symbol: "USDT", address: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2", decimals: 6, coingeckoId: "tether", category: "stablecoin" },
   { symbol: "LDO", address: "0x898781BFcb99042A95e69700050Fc76aDD04e3D5", decimals: 18, coingeckoId: "lido-dao", category: "governance" },
+  { symbol: "ALB", address: "0x1dd2d631c92b68df9ad7a77265695ab9fF8D6382", decimals: 18, coingeckoId: "alien-base", category: "governance" },
+  { symbol: "BSWAP", address: "0x78a087d713be963bf307b18f5ff8122ef9a63ae9", decimals: 18, coingeckoId: "baseswap", category: "governance" },
+  { symbol: "EXTRA", address: "0x2b8A201e7F322744B9E7eCEd9Aaa67dE52B7e4f1", decimals: 18, coingeckoId: "extra-finance", category: "governance" },
+  { symbol: "USD+", address: "0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376", decimals: 6, coingeckoId: "overnight-finance", category: "stablecoin" },
 ];
 
 export async function getWalletBalances(walletAddress: Address) {

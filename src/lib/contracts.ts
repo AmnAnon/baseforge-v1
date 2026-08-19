@@ -122,8 +122,168 @@ const MOONWELL: ProtocolSurface = {
   ],
 };
 
+const AAVE_V3: ProtocolSurface = {
+  slug: "aave-v3",
+  name: "Aave V3",
+  category: "Lending",
+  dappUrl: "https://app.aave.com",
+  indexed: true,
+  actions: [
+    {
+      type: "deposit",
+      label: "Supply",
+      description: "Deposit collateral on Aave V3 Base",
+      href: "https://app.aave.com/?marketName=proto_base_v3",
+    },
+    {
+      type: "borrow",
+      label: "Borrow",
+      description: "Borrow assets against collateral on Base",
+      href: "https://app.aave.com/?marketName=proto_base_v3",
+    },
+  ],
+};
+
+const MORPHO: ProtocolSurface = {
+  slug: "morpho",
+  name: "Morpho Blue",
+  category: "Lending",
+  dappUrl: "https://app.morpho.org",
+  indexed: true,
+  actions: [
+    {
+      type: "deposit",
+      label: "Supply Vault",
+      description: "Earn optimized yield on Morpho Blue Base vaults",
+      href: "https://app.morpho.org/base/vaults",
+    },
+    {
+      type: "borrow",
+      label: "Borrow",
+      description: "Borrow against collateral in isolated markets",
+      href: "https://app.morpho.org/base/markets",
+    },
+  ],
+};
+
+const COMPOUND_V3: ProtocolSurface = {
+  slug: "compound-v3",
+  name: "Compound V3",
+  category: "Lending",
+  dappUrl: "https://app.compound.finance",
+  indexed: true,
+  actions: [
+    {
+      type: "deposit",
+      label: "Supply",
+      description: "Supply assets to Compound V3 Comet on Base",
+      href: "https://app.compound.finance/markets?chain=base",
+    },
+  ],
+};
+
+const ALIEN_BASE: ProtocolSurface = {
+  slug: "alien-base",
+  name: "Alien Base",
+  category: "Dexs",
+  dappUrl: "https://alienbase.xyz",
+  indexed: true,
+  defaultSwap: { from: "ETH", to: "USDC" },
+  actions: [
+    {
+      type: "swap",
+      label: "Swap",
+      description: "Trade tokens on Alien Base",
+      href: "https://app.alienbase.xyz/#/swap",
+    },
+    {
+      type: "add_liquidity",
+      label: "Provide LP",
+      description: "Provide liquidity to Alien Base pools",
+      href: "https://app.alienbase.xyz/#/pool",
+    },
+  ],
+};
+
+const BASESWAP: ProtocolSurface = {
+  slug: "baseswap",
+  name: "BaseSwap",
+  category: "Dexs",
+  dappUrl: "https://baseswap.fi",
+  indexed: true,
+  actions: [
+    {
+      type: "swap",
+      label: "Swap",
+      description: "Trade tokens on BaseSwap",
+      href: "https://baseswap.fi/swap",
+    },
+  ],
+};
+
+const EXTRA_FINANCE: ProtocolSurface = {
+  slug: "extra-finance",
+  name: "Extra Finance",
+  category: "Yield",
+  dappUrl: "https://extrafi.io",
+  indexed: true,
+  actions: [
+    {
+      type: "deposit",
+      label: "Farm",
+      description: "Leveraged yield farming on Base",
+      href: "https://app.extrafi.io/farm?chain=base",
+    },
+  ],
+};
+
+const OVERNIGHT_FINANCE: ProtocolSurface = {
+  slug: "overnight-finance",
+  name: "Overnight Finance",
+  category: "Yield",
+  dappUrl: "https://overnight.fi",
+  indexed: true,
+  actions: [
+    {
+      type: "deposit",
+      label: "Mint USD+",
+      description: "Mint daily yield-bearing USD+ on Base",
+      href: "https://app.overnight.fi",
+    },
+  ],
+};
+
+const AVANTIS: ProtocolSurface = {
+  slug: "avantis",
+  name: "Avantis",
+  category: "Perps",
+  dappUrl: "https://avantisfi.com",
+  indexed: true,
+  actions: [
+    {
+      type: "swap",
+      label: "Trade Perps",
+      description: "Trade crypto, forex & commodities perps on Base",
+      href: "https://app.avantisfi.com/trade",
+    },
+  ],
+};
+
 /** Slug aliases from DefiLlama → canonical surface. */
-const SURFACES: ProtocolSurface[] = [AERODROME, UNISWAP, SEAMLESS, MOONWELL];
+const SURFACES: ProtocolSurface[] = [
+  AERODROME,
+  UNISWAP,
+  SEAMLESS,
+  MOONWELL,
+  AAVE_V3,
+  MORPHO,
+  COMPOUND_V3,
+  ALIEN_BASE,
+  BASESWAP,
+  EXTRA_FINANCE,
+  OVERNIGHT_FINANCE,
+  AVANTIS,
+];
 
 const SLUG_ALIASES: Record<string, string> = {
   aerodrome: "aerodrome-finance",
@@ -134,6 +294,20 @@ const SLUG_ALIASES: Record<string, string> = {
   seamless: "seamless-protocol",
   moonwell: "moonwell",
   "moonwell-artemis": "moonwell",
+  "aave-v3": "aave-v3",
+  aave: "aave-v3",
+  morpho: "morpho",
+  "morpho-blue": "morpho",
+  "compound-v3": "compound-v3",
+  compound: "compound-v3",
+  "alien-base": "alien-base",
+  alienbase: "alien-base",
+  baseswap: "baseswap",
+  "extra-finance": "extra-finance",
+  extrafi: "extra-finance",
+  "overnight-finance": "overnight-finance",
+  overnight: "overnight-finance",
+  avantis: "avantis",
 };
 
 export function resolveProtocolSlug(slug: string, name?: string): string | null {
