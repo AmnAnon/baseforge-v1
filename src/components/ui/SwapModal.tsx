@@ -1,18 +1,20 @@
 "use client";
 
 // src/components/ui/SwapModal.tsx
-// Glassmorphic 1-Click Swap Modal triggered from Header or CTAs.
+// Glassmorphic 1-Click Swap Modal triggered from Header, Smart Money Signals, or Memecoin Radar.
 
 import { X } from "lucide-react";
-import SwapHub from "@/components/hubs/SwapHub";
+import SwapHub, { type TargetTokenParam, type CopyTradeContext } from "@/components/hubs/SwapHub";
 import { useEffect } from "react";
 
-interface SwapModalProps {
+export interface SwapModalProps {
   isOpen: boolean;
   onClose: () => void;
+  targetToken?: TargetTokenParam;
+  copyTradeContext?: CopyTradeContext;
 }
 
-export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
+export default function SwapModal({ isOpen, onClose, targetToken, copyTradeContext }: SwapModalProps) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -34,14 +36,15 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
       <div className="relative w-full max-w-xl bg-[#0a0a0a] border border-[#00d4ff]/30 rounded-2xl shadow-[0_0_50px_rgba(0,212,255,0.2)] p-6 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white transition-colors z-10"
           aria-label="Close modal"
         >
           <X size={18} />
         </button>
 
-        <SwapHub />
+        <SwapHub targetToken={targetToken} copyTradeContext={copyTradeContext} />
       </div>
     </div>
   );
 }
+

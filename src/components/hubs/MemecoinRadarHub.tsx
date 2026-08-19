@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { Rocket, ShieldAlert, ShieldCheck, Flame, ExternalLink, Zap, Lock, Unlock, CheckCircle2, AlertTriangle, RefreshCw, Sparkles } from "lucide-react";
 import { NeonCard } from "@/components/ui/NeonCard";
 import SwapModal from "@/components/ui/SwapModal";
+import type { TargetTokenParam, CopyTradeContext } from "@/components/hubs/SwapHub";
 import type { TokenLaunchItem } from "@/app/api/tokens/launches/route";
 
 function getSafetyBadgeColor(score: number) {
@@ -27,6 +28,22 @@ export default function MemecoinRadarHub() {
   const [selectedDex, setSelectedDex] = useState<string>("all");
   const [highSafetyOnly, setHighSafetyOnly] = useState(false);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
+  const [targetToken, setTargetToken] = useState<TargetTokenParam | undefined>();
+  const [copyContext, setCopyContext] = useState<CopyTradeContext | undefined>();
+
+  const handleQuickBuy = (item: TokenLaunchItem) => {
+    setTargetToken({
+      address: item.address,
+      symbol: item.symbol,
+      name: item.name,
+    });
+    setCopyContext({
+      walletLabel: `Launch Sniper (${item.dex})`,
+      signalType: "GEM_SNIPE",
+      protocol: item.dex,
+    });
+    setIsSwapOpen(true);
+  };
 
   const fetchLaunches = async () => {
     setLoading(true);
@@ -59,93 +76,82 @@ export default function MemecoinRadarHub() {
       <div className="rounded-2xl border border-[#00d4ff]/30 bg-gradient-to-r from-black/80 via-[#0a1128]/70 to-black/80 p-5 sm:p-6 shadow-[0_0_30px_rgba(0,212,255,0.1)]">
         <div className="flex items-start justify-between gap-4 flex-wrap sm:flex-nowrap">
           <div className="space-y-1 max-w-xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00d4ff]/10 border border-[#00d4ff]/30 text-xs font-semibold text-[var(--bf-neon-primary)]">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-xs font-semibold text-purple-400">
               <Rocket size={14} className="animate-pulse" />
               <span>Base Memecoin & Token Radar</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-              Newly Launched Base Tokens
-              <Sparkles size={18} className="text-amber-400" />
+              Live Token Launches & Sniping Radar
+              <Flame size={18} className="text-amber-400 animate-bounce" />
             </h2>
             <p className="text-xs sm:text-sm text-[var(--bf-text-secondary)]">
-              Track real-time launches from <strong className="text-emerald-400">Clanker</strong>, <strong className="text-[#00d4ff]">Virtuals Protocol</strong>, and <strong className="text-purple-400">Aerodrome</strong> with instant RugCheck security scoring & 1-Click Buy.
+              Scan new token pools on Aerodrome, Uniswap V3, and Virtuals with real-time RugCheck safety scores and 1-Click Buy.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={fetchLaunches}
-              disabled={loading}
-              className="p-2.5 rounded-xl bg-black/40 hover:bg-black/60 border border-white/10 text-[var(--bf-neon-primary)] transition-all disabled:opacity-50"
-              aria-label="Refresh launches"
-            >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-            </button>
-          </div>
+          <button
+            onClick={fetchLaunches}
+            disabled={loading}
+            className="p-2.5 rounded-xl bg-black/40 hover:bg-black/60 border border-white/10 text-[var(--bf-neon-primary)] transition-all disabled:opacity-50"
+            aria-label="Refresh token launches"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          </button>
         </div>
 
-        {/* Filter controls */}
-        <div className="mt-5 pt-4 border-t border-white/10 flex items-center gap-2 flex-wrap text-xs">
-          <span className="text-gray-400 mr-1 font-medium">Filter DEX:</span>
-          {[
-            { id: "all", label: "All DEXs" },
-            { id: "clanker", label: "🔥 Clanker" },
-            { id: "virtuals", label: "🤖 Virtuals AI" },
-            { id: "aerodrome", label: "🚀 Aerodrome" },
-            { id: "uniswap v3", label: "🦄 Uniswap V3" },
-          ].map((btn) => (
-            <button
-              key={btn.id}
-              onClick={() => setSelectedDex(btn.id)}
-              className={`px-3 py-1.5 rounded-xl border transition-all ${
-                selectedDex === btn.id
-                  ? "bg-[var(--bf-neon-primary)]/20 border-[var(--bf-neon-primary)] text-white font-semibold shadow-[0_0_15px_rgba(0,212,255,0.2)]"
-                  : "bg-black/40 border-white/10 text-gray-400 hover:text-white"
-              }`}
-            >
-              {btn.label}
-            </button>
-          ))}
-
-          <div className="h-4 w-px bg-white/10 mx-1 hidden sm:block" />
+        {/* Filters */}
+        <div className="flex items-center gap-3 mt-5 pt-4 border-t border-white/10 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-xl border border-white/10 text-xs">
+            {["all", "Aerodrome", "Uniswap V3", "Virtuals"].map((dex) => (
+              <button
+                key={dex}
+                onClick={() => setSelectedDex(dex)}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+                  selectedDex === dex
+                    ? "bg-[#00d4ff]/20 text-[var(--bf-neon-primary)] border border-[#00d4ff]/30 shadow-[0_0_10px_rgba(0,212,255,0.2)]"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                {dex === "all" ? "All DEXs" : dex}
+              </button>
+            ))}
+          </div>
 
           <button
             onClick={() => setHighSafetyOnly(!highSafetyOnly)}
-            className={`px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all ${
               highSafetyOnly
-                ? "bg-emerald-500/20 border-emerald-500 text-emerald-400 font-semibold"
-                : "bg-black/40 border-white/10 text-gray-400 hover:text-white"
+                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                : "bg-black/40 text-gray-400 border-white/10 hover:text-white"
             }`}
           >
             <ShieldCheck size={14} />
-            <span>High Safety Score (&gt;80)</span>
+            <span>High Safety (80+) Only</span>
           </button>
         </div>
       </div>
 
-      {/* Launches Feed */}
+      {/* Launches Grid */}
       {loading && launches.length === 0 ? (
-        <div className="text-center py-12 text-sm text-gray-400 flex items-center justify-center gap-2">
+        <div className="text-center py-16 text-sm text-gray-400 flex items-center justify-center gap-2">
           <RefreshCw size={18} className="animate-spin text-[var(--bf-neon-primary)]" />
-          <span>Scanning Base block logs for new token launches...</span>
+          <span>Scanning Base memecoin factories and DEX pools...</span>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {launches.map((item) => (
-            <NeonCard key={item.id} glowColor="rgba(0,212,255,0.06)" className="!p-4 relative">
-              <div className="space-y-3">
-                {/* Token title row */}
+            <NeonCard key={item.id} glowColor="rgba(0,212,255,0.06)" className="!p-5">
+              <div className="space-y-4">
+                {/* Header: Name, Symbol, DEX, Safety */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00d4ff]/20 to-purple-500/20 border border-[#00d4ff]/30 flex items-center justify-center font-mono font-bold text-white">
-                      {item.symbol.slice(0, 3)}
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-500/20 to-[#00d4ff]/20 border border-white/10 flex items-center justify-center text-lg font-black text-white shrink-0">
+                      {item.symbol.slice(0, 2)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-white text-base">{item.name}</h3>
-                        <span className="text-xs font-mono text-[var(--bf-neon-primary)] font-semibold">
-                          ${item.symbol}
-                        </span>
+                        <span className="font-bold text-white text-base">{item.name}</span>
+                        <span className="font-mono text-xs text-gray-400 font-semibold">${item.symbol}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                         <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-gray-300 font-medium">
@@ -209,7 +215,7 @@ export default function MemecoinRadarHub() {
                   </a>
 
                   <button
-                    onClick={() => setIsSwapOpen(true)}
+                    onClick={() => handleQuickBuy(item)}
                     className="px-4 py-2 bg-gradient-to-r from-[#00d4ff] to-[#7b61ff] hover:opacity-90 text-black font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(0,212,255,0.2)]"
                   >
                     <Zap size={14} className="fill-black" />
@@ -223,7 +229,12 @@ export default function MemecoinRadarHub() {
       )}
 
       {/* 1-Click Swap Popup Modal */}
-      <SwapModal isOpen={isSwapOpen} onClose={() => setIsSwapOpen(false)} />
+      <SwapModal
+        isOpen={isSwapOpen}
+        onClose={() => setIsSwapOpen(false)}
+        targetToken={targetToken}
+        copyTradeContext={copyContext}
+      />
     </div>
   );
 }

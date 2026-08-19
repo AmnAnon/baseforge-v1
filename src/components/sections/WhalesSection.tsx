@@ -33,6 +33,7 @@ import { NeonCard } from "@/components/ui/NeonCard";
 import { RiskRing } from "@/components/ui/RiskRing";
 import { CountUp } from "@/components/ui/CountUp";
 import SwapModal from "@/components/ui/SwapModal";
+import type { TargetTokenParam, CopyTradeContext } from "@/components/hubs/SwapHub";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -428,7 +429,25 @@ export default function WhalesSection() {
   const [displayedCount, setDisplayedCount] = useState(20);
   const [summarySeed, setSummarySeed] = useState(0);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
+  const [targetToken, setTargetToken] = useState<TargetTokenParam | undefined>();
+  const [copyContext, setCopyContext] = useState<CopyTradeContext | undefined>();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleCopyWhale = (w: WhaleTransaction) => {
+    setTargetToken({
+      address: "",
+      symbol: w.tokenSymbol || "USDC",
+      name: w.tokenSymbol || "USDC",
+    });
+    setCopyContext({
+      walletLabel: w.fromLabel || "Whale Trader",
+      walletAddress: w.from,
+      amountUSD: w.valueUSD,
+      signalType: w.intentLabel,
+      protocol: w.protocol || "Aerodrome",
+    });
+    setIsSwapModalOpen(true);
+  };
 
   const fetchData = useCallback((minUSD: number) => {
     setIsLoading(true);
@@ -834,8 +853,8 @@ export default function WhalesSection() {
                         {/* Time & Copy Swap CTA */}
                         <div className="text-right flex-shrink-0 hidden sm:flex items-center gap-2">
                           <button
-                            onClick={() => setIsSwapModalOpen(true)}
-                            className="px-2.5 py-1 bg-gradient-to-r from-[#00d4ff]/20 to-[#7b61ff]/20 hover:from-[#00d4ff]/30 hover:to-[#7b61ff]/30 border border-[#00d4ff]/40 rounded-lg text-[10px] font-bold text-white flex items-center gap-1 transition-all"
+                            onClick={() => handleCopyWhale(w)}
+                            className="px-2.5 py-1 bg-gradient-to-r from-[#00d4ff]/20 to-[#7b61ff]/20 hover:from-[#00d4ff]/30 hover:to-[#7b61ff]/30 border border-[#00d4ff]/40 rounded-lg text-[10px] font-bold text-white flex items-center gap-1 transition-all shadow-[0_0_10px_rgba(0,212,255,0.15)]"
                             title="Copy-Swap Token"
                           >
                             <Zap size={11} className="text-amber-400 fill-amber-400" />
@@ -873,7 +892,12 @@ export default function WhalesSection() {
       </div>
 
       {/* 1-Click Swap Modal */}
-      <SwapModal isOpen={isSwapModalOpen} onClose={() => setIsSwapModalOpen(false)} />
+      <SwapModal
+        isOpen={isSwapModalOpen}
+        onClose={() => setIsSwapModalOpen(false)}
+        targetToken={targetToken}
+        copyTradeContext={copyContext}
+      />
     </section>
   );
 }

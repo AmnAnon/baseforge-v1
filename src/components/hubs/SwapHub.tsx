@@ -2,15 +2,41 @@
 
 // src/components/hubs/SwapHub.tsx
 // 1-Click Base DEX Swap Hub — OnchainKit Swap + Wagmi Wallet Integration.
+// Supports 1-Click Copy-Trading from Smart Money and Whale Signals.
 
+import { useState, useMemo } from "react";
 import { useAccount } from "wagmi";
 import { Swap } from "@coinbase/onchainkit/swap";
 import type { Token } from "@coinbase/onchainkit/token";
-import { ArrowRightLeft, ShieldCheck, Zap, Sparkles } from "lucide-react";
+import type { TransactionReceipt } from "viem";
+import { ArrowRightLeft, ShieldCheck, Zap, Sparkles, Fish, ExternalLink, CheckCircle2 } from "lucide-react";
 import WalletConnectButton from "@/components/ui/WalletConnectButton";
 import { BASE_CHAIN_ID, BASE_CONTRACTS } from "@/lib/contracts";
 
-const TOKENS: Token[] = [
+export interface TargetTokenParam {
+  address: string;
+  symbol: string;
+  name?: string;
+  decimals?: number;
+  image?: string;
+}
+
+export interface CopyTradeContext {
+  walletLabel?: string;
+  walletAddress?: string;
+  action?: string;
+  amountUSD?: number;
+  winRate?: number;
+  signalType?: string;
+  protocol?: string;
+}
+
+interface SwapHubProps {
+  targetToken?: TargetTokenParam;
+  copyTradeContext?: CopyTradeContext;
+}
+
+const DEFAULT_TOKENS: Token[] = [
   {
     address: "" as const,
     chainId: BASE_CHAIN_ID,
@@ -53,11 +79,87 @@ const TOKENS: Token[] = [
   },
 ];
 
-export default function SwapHub() {
+export default function SwapHub({ targetToken, copyTradeContext }: SwapHubProps = {}) {
   const { isConnected, address } = useAccount();
+  const [txReceipt, setTxReceipt] = useState<TransactionReceipt | null>(null);
+
+  // Construct token list prioritizing targetToken if supplied from a whale signal
+  const { fromTokens, toTokens } = useMemo(() => {
+    if (!targetToken || !targetToken.symbol) {
+      return { fromTokens: DEFAULT_TOKENS, toTokens: DEFAULT_TOKENS };
+    }
+
+    const exists = DEFAULT_TOKENS.find(
+      (t) =>
+        t.symbol.toLowerCase() === targetToken.symbol.toLowerCase() ||
+        (targetToken.address && t.address.toLowerCase() === targetToken.address.toLowerCase())
+    );
+
+    const formattedTarget: Token = exists ?? {
+      address: (targetToken.address || "") as `0x${string}`,
+      chainId: BASE_CHAIN_ID,
+      decimals: targetToken.decimals || 18,
+      name: targetToken.name || targetToken.symbol,
+      symbol: targetToken.symbol.toUpperCase(),
+      image: targetToken.image || "https://assets.coingecko.com/coins/images/31745/large/aero.png",
+    };
+
+    // Keep ETH and USDC as default `from` sources
+    const fromList = DEFAULT_TOKENS;
+    // Prioritize target token at index 0 in `to` list
+    const toList = [formattedTarget, ...DEFAULT_TOKENS.filter((t) => t.symbol !== formattedTarget.symbol)];
+
+    return { fromTokens: fromList, toTokens: toList };
+  }, [targetToken]);
+
+  const handleSwapSuccess = (receipt: TransactionReceipt) => {
+    setTxReceipt(receipt);
+  };
 
   return (
     <div className="space-y-6 max-w-xl mx-auto">
+      {/* Copy-Trade Context Card (Shown when copying a whale signal) */}
+      {copyTradeContext && (
+        <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-black/80 to-purple-950/40 p-4 shadow-[0_0_30px_rgba(245,158,11,0.15)] animate-fade-in">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400">
+                <Fish size={18} className="animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+                    ⚡ Copy-Trade Mode
+                  </span>
+                  {copyTradeContext.winRate && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
+                      {copyTradeContext.winRate}% Win-Rate
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-white font-medium mt-0.5">
+                  Following {copyTradeContext.walletLabel || "Whale"} on Base ({copyTradeContext.protocol || "Aerodrome"})
+                </div>
+              </div>
+            </div>
+            {copyTradeContext.amountUSD && (
+              <div className="text-right">
+                <div className="text-[10px] text-gray-400 uppercase font-mono">Whale Inflow</div>
+                <div className="text-sm font-bold font-mono text-emerald-400">
+                  ${copyTradeContext.amountUSD.toLocaleString()}
+                </div>
+              </div>
+            )}
+          </div>
+          {targetToken && (
+            <div className="mt-3 pt-2.5 border-t border-white/10 text-xs text-gray-300 flex items-center justify-between">
+              <span>Target Asset: <strong className="text-white font-mono">${targetToken.symbol}</strong></span>
+              <span className="text-[11px] text-[var(--bf-neon-primary)] font-mono">1-Click Auto Routed</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Header card */}
       <div className="rounded-2xl border border-[#00d4ff]/30 bg-gradient-to-r from-black/80 via-[#0a1128]/60 to-black/80 p-5 shadow-[0_0_30px_rgba(0,212,255,0.1)]">
         <div className="flex items-center justify-between gap-4">
@@ -81,17 +183,39 @@ export default function SwapHub() {
         </div>
 
         {/* Security / Builder attribution badge */}
-        <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-emerald-400/90">
+        <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs text-emerald-400/90 flex-wrap gap-2">
           <div className="flex items-center gap-1.5">
             <ShieldCheck size={14} />
-            <span>Optimal DEX Routing & Sub-second Execution</span>
+            <span>Optimal Multi-DEX Aggregator Routing</span>
           </div>
-          <div className="flex items-center gap-1 text-[var(--bf-neon-accent)] font-mono">
+          <div className="flex items-center gap-1 text-[var(--bf-neon-accent)] font-mono text-[11px]">
             <Zap size={13} />
-            <span>Builder Code Attribution Enabled</span>
+            <span>0.15% Smart Liquidity Routing</span>
           </div>
         </div>
       </div>
+
+      {/* Transaction Success Alert */}
+      {txReceipt && (
+        <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/40 p-4 shadow-[0_0_30px_rgba(16,185,129,0.2)] animate-fade-in flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 size={20} className="text-emerald-400" />
+            <div>
+              <div className="text-xs font-bold text-emerald-400">Swap Confirmed on Base!</div>
+              <div className="text-[11px] text-gray-300 font-mono">Block #{txReceipt.blockNumber.toString()}</div>
+            </div>
+          </div>
+          <a
+            href={`https://basescan.org/tx/${txReceipt.transactionHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center gap-1 transition-colors"
+          >
+            <span>View on BaseScan</span>
+            <ExternalLink size={12} />
+          </a>
+        </div>
+      )}
 
       {/* Main Swap Container */}
       <div className="rounded-2xl border border-white/10 bg-black/60 p-5 backdrop-blur-xl shadow-2xl space-y-4">
@@ -103,7 +227,7 @@ export default function SwapHub() {
             <div>
               <h3 className="text-base font-semibold text-white">Connect Wallet to Swap</h3>
               <p className="text-xs text-[var(--bf-text-secondary)] mt-1">
-                Connect your Coinbase Smart Wallet or Web3 wallet to trade Base tokens.
+                Connect your Coinbase Smart Wallet or Web3 wallet to execute trades on Base.
               </p>
             </div>
             <div className="flex justify-center pt-2">
@@ -119,8 +243,11 @@ export default function SwapHub() {
 
             <div className="rounded-xl border border-white/10 bg-gray-900/80 p-4 shadow-inner">
               <Swap
-                from={TOKENS}
-                to={TOKENS}
+                from={fromTokens}
+                to={toTokens}
+                experimental={{ useAggregator: true }}
+                config={{ maxSlippage: 1.5 }}
+                onSuccess={handleSwapSuccess}
               />
             </div>
           </div>
@@ -129,12 +256,12 @@ export default function SwapHub() {
 
       {/* Token quick links */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-        {TOKENS.slice(0, 4).map((token) => (
+        {toTokens.slice(0, 4).map((token) => (
           <div key={token.symbol} className="rounded-xl border border-white/5 bg-black/40 p-2.5 flex items-center gap-2">
             {token.image && <img src={token.image} alt={token.symbol} className="w-5 h-5 rounded-full" />}
-            <div>
-              <div className="font-bold text-white">{token.symbol}</div>
-              <div className="text-[10px] text-gray-400">{token.name}</div>
+            <div className="min-w-0">
+              <div className="font-bold text-white truncate">{token.symbol}</div>
+              <div className="text-[10px] text-gray-400 truncate">{token.name}</div>
             </div>
           </div>
         ))}
@@ -142,3 +269,4 @@ export default function SwapHub() {
     </div>
   );
 }
+

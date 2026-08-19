@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { Fish, Zap, ShieldCheck, TrendingUp, ExternalLink, RefreshCw, Sparkles, Award, ArrowUpRight } from "lucide-react";
 import { NeonCard } from "@/components/ui/NeonCard";
 import SwapModal from "@/components/ui/SwapModal";
+import type { TargetTokenParam, CopyTradeContext } from "@/components/hubs/SwapHub";
 import type { SmartMoneySignal } from "@/app/api/whales/signals/route";
 
 function getSignalBadge(type: SmartMoneySignal["signalType"]) {
@@ -26,6 +27,25 @@ export default function SmartMoneyHub() {
   const [signals, setSignals] = useState<SmartMoneySignal[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSwapOpen, setIsSwapOpen] = useState(false);
+  const [targetToken, setTargetToken] = useState<TargetTokenParam | undefined>();
+  const [copyContext, setCopyContext] = useState<CopyTradeContext | undefined>();
+
+  const handleCopyTrade = (sig: SmartMoneySignal) => {
+    setTargetToken({
+      address: sig.tokenAddress,
+      symbol: sig.tokenSymbol,
+      name: sig.tokenSymbol,
+    });
+    setCopyContext({
+      walletLabel: sig.walletLabel,
+      walletAddress: sig.wallet,
+      winRate: sig.winRate,
+      amountUSD: sig.usdValue,
+      signalType: sig.signalType,
+      protocol: sig.protocol,
+    });
+    setIsSwapOpen(true);
+  };
 
   const fetchSignals = async () => {
     setLoading(true);
@@ -148,7 +168,7 @@ export default function SmartMoneyHub() {
                       </div>
 
                       <button
-                        onClick={() => setIsSwapOpen(true)}
+                        onClick={() => handleCopyTrade(sig)}
                         className="px-4 py-2.5 bg-gradient-to-r from-[#00d4ff] to-[#7b61ff] hover:opacity-90 text-black font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(0,212,255,0.2)]"
                       >
                         <Zap size={14} className="fill-black" />
@@ -163,8 +183,13 @@ export default function SmartMoneyHub() {
         )}
       </div>
 
-      {/* 1-Click Swap Popup Modal */}
-      <SwapModal isOpen={isSwapOpen} onClose={() => setIsSwapOpen(false)} />
+      {/* 1-Click Swap Popup Modal with pre-configured Target Token and Copy Context */}
+      <SwapModal
+        isOpen={isSwapOpen}
+        onClose={() => setIsSwapOpen(false)}
+        targetToken={targetToken}
+        copyTradeContext={copyContext}
+      />
     </div>
   );
 }
