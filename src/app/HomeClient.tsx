@@ -23,12 +23,8 @@ import {
 } from "lucide-react";
 import PulseHub from "@/components/hubs/PulseHub";
 import RiskHub from "@/components/hubs/RiskHub";
-import FlowsHub from "@/components/hubs/FlowsHub";
-import MarketHub from "@/components/hubs/MarketHub";
-import SwapHub from "@/components/hubs/SwapHub";
+import AlphaHub from "@/components/hubs/AlphaHub";
 import MemecoinRadarHub from "@/components/hubs/MemecoinRadarHub";
-import SmartMoneyHub from "@/components/hubs/SmartMoneyHub";
-import DeveloperHub from "@/components/hubs/DeveloperHub";
 import PortfolioSection from "@/components/sections/PortfolioSection";
 import WalletConnectButton from "@/components/ui/WalletConnectButton";
 import SwapModal from "@/components/ui/SwapModal";
@@ -48,7 +44,7 @@ export interface AnalyticsData {
   timestamp?: number;
 }
 
-type HubId = "pulse" | "risk" | "flows" | "launches" | "signals" | "swap" | "portfolio" | "dev" | "more";
+type HubId = "pulse" | "alpha" | "risk" | "radar" | "portfolio";
 
 interface HubConfig {
   id: HubId;
@@ -59,14 +55,10 @@ interface HubConfig {
 
 const HUBS: HubConfig[] = [
   { id: "pulse", label: "Pulse", icon: Activity, ariaLabel: "Ecosystem pulse — overview and charts" },
+  { id: "alpha", label: "Alpha & Whales", icon: Fish, ariaLabel: "Smart Money & Whale Copy-Trading" },
   { id: "risk", label: "Risk", icon: ShieldAlert, ariaLabel: "Risk scores, compare, and alerts" },
-  { id: "flows", label: "Flows", icon: Fish, ariaLabel: "Whale and MEV flows" },
-  { id: "launches", label: "Radar", icon: Rocket, ariaLabel: "Base Memecoin & Token Launch Radar" },
-  { id: "signals", label: "Alpha", icon: TrendingUp, ariaLabel: "Smart Money & Copy-Trading Signals" },
-  { id: "swap", label: "Swap", icon: ArrowRightLeft, ariaLabel: "1-Click Base DEX Swap" },
-  { id: "dev", label: "Build", icon: Terminal, ariaLabel: "Developer SDK & Action API" },
-  { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Wallet portfolio" },
-  { id: "more", label: "More", icon: MoreHorizontal, ariaLabel: "Market data and developer tools" },
+  { id: "radar", label: "Radar", icon: Rocket, ariaLabel: "Base Memecoin & Token Launch Radar" },
+  { id: "portfolio", label: "Portfolio", icon: Wallet, ariaLabel: "Connected wallet portfolio" },
 ];
 
 const HUB_STORAGE_KEY = "baseforge-hub";
@@ -167,22 +159,14 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
 
   const renderHub = () => {
     switch (hub) {
+      case "alpha":
+        return <ErrorBoundary><AlphaHub /></ErrorBoundary>;
       case "risk":
         return <ErrorBoundary><RiskHub /></ErrorBoundary>;
-      case "flows":
-        return <ErrorBoundary><FlowsHub /></ErrorBoundary>;
-      case "launches":
+      case "radar":
         return <ErrorBoundary><MemecoinRadarHub /></ErrorBoundary>;
-      case "signals":
-        return <ErrorBoundary><SmartMoneyHub /></ErrorBoundary>;
-      case "swap":
-        return <ErrorBoundary><SwapHub /></ErrorBoundary>;
-      case "dev":
-        return <ErrorBoundary><DeveloperHub /></ErrorBoundary>;
       case "portfolio":
         return <ErrorBoundary><PortfolioSection /></ErrorBoundary>;
-      case "more":
-        return <ErrorBoundary><MarketHub /></ErrorBoundary>;
       default:
         return (
           <ErrorBoundary>
@@ -378,7 +362,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
               onClick={() => selectHub(id)}
               className={`
                 flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 rounded-xl
-                transition-all duration-300 max-w-[80px]
+                transition-all duration-300 max-w-[120px]
                 focus:outline-none focus:ring-2 focus:ring-[var(--bf-neon-primary)] focus:ring-offset-2 focus:ring-offset-[#0a0a0a]
                 ${
                   hub === id
@@ -390,7 +374,7 @@ export default function HomeClient({ initialData }: { initialData: AnalyticsData
               aria-current={hub === id ? "page" : undefined}
             >
               <Icon size={20} className={`transition-all duration-300 ${hub === id ? "scale-110" : ""}`} />
-              <span className={`text-[10px] sm:text-xs font-medium ${hub === id ? "neon-text" : ""}`}>
+              <span className={`text-[10px] sm:text-xs font-semibold ${hub === id ? "neon-text" : ""}`}>
                 {label}
               </span>
             </button>

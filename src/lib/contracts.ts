@@ -6,6 +6,13 @@ import { CONTRACTS as INDEXER_CONTRACTS } from "@/lib/data/indexers/contracts";
 
 export const BASE_CHAIN_ID = 8453;
 
+/** BaseForge Creator / Fee Treasury Address */
+export const CREATOR_TREASURY_ADDRESS =
+  process.env.NEXT_PUBLIC_FEE_RECIPIENT || "0x0000000000000000000000000000000000000000";
+
+/** Default integrator fee: 15 basis points (0.15%) */
+export const INTEGRATOR_FEE_BPS = 15;
+
 /** Re-export Base mainnet addresses used by indexers and CTAs. */
 export const BASE_CONTRACTS = INDEXER_CONTRACTS;
 
