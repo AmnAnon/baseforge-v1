@@ -96,10 +96,31 @@ async function runHealthChecks() {
       workerUrl
         ? fetch(`${workerUrl}/health`, {
             cache: "no-store",
-            signal: AbortSignal.timeout(2_000),
+            signal: AbortSignal.timeout(3_000),
           })
-            .then((res) => ({ ok: res.ok, status: res.status, latency: 0 }))
-            .catch((e: unknown) => ({ ok: false, status: 0, error: e instanceof Error ? e.message : "timeout or network error" }))
+            .then(async (res) => {
+              if (res.ok) return { ok: true, status: res.status, latency: 0 };
+              // Try direct root path if /health returns 404
+              try {
+                const rootRes = await fetch(workerUrl, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(3_000),
+                });
+                if (rootRes.ok) return { ok: true, status: rootRes.status, latency: 0 };
+              } catch {}
+              return { ok: false, status: res.status, latency: 0 };
+            })
+            .catch(async (e: unknown) => {
+              // Try direct root URL on error
+              try {
+                const rootRes = await fetch(workerUrl, {
+                  cache: "no-store",
+                  signal: AbortSignal.timeout(3_000),
+                });
+                if (rootRes.ok) return { ok: true, status: rootRes.status, latency: 0 };
+              } catch {}
+              return { ok: false, status: 0, error: e instanceof Error ? e.message : "timeout or network error" };
+            })
         : Promise.resolve(null),
     ]);
 
