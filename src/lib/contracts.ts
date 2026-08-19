@@ -8,7 +8,7 @@ export const BASE_CHAIN_ID = 8453;
 
 /** BaseForge Creator / Fee Treasury Address */
 export const CREATOR_TREASURY_ADDRESS =
-  process.env.NEXT_PUBLIC_FEE_RECIPIENT || "0x0000000000000000000000000000000000000000";
+  process.env.NEXT_PUBLIC_FEE_RECIPIENT || "0x27e661832ba96a322ab158352fa2e106ee3512e1";
 
 /** Default integrator fee: 15 basis points (0.15%) */
 export const INTEGRATOR_FEE_BPS = 15;
