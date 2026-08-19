@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { Fish, Zap, ShieldCheck, TrendingUp, ExternalLink, RefreshCw, Sparkles, Award, ArrowUpRight } from "lucide-react";
 import { NeonCard } from "@/components/ui/NeonCard";
 import SwapModal from "@/components/ui/SwapModal";
+import ShareOnWarpcastButton from "@/components/ui/ShareOnWarpcastButton";
 import type { TargetTokenParam, CopyTradeContext } from "@/components/hubs/SwapHub";
 import type { SmartMoneySignal } from "@/app/api/whales/signals/route";
 
@@ -161,19 +162,29 @@ export default function SmartMoneyHub() {
                     </div>
 
                     {/* Value & Copy Trade CTA */}
-                    <div className="flex items-center gap-4 shrink-0 justify-between w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
+                    <div className="flex items-center gap-3 shrink-0 justify-between w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10 flex-wrap">
                       <div className="text-right">
                         <div className="text-[10px] text-gray-400 uppercase font-mono">Trade Value</div>
                         <div className="text-base font-bold font-mono text-white">${sig.usdValue.toLocaleString()}</div>
                       </div>
 
-                      <button
-                        onClick={() => handleCopyTrade(sig)}
-                        className="px-4 py-2.5 bg-gradient-to-r from-[#00d4ff] to-[#7b61ff] hover:opacity-90 text-black font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(0,212,255,0.2)]"
-                      >
-                        <Zap size={14} className="fill-black" />
-                        <span>⚡ Copy Swap</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <ShareOnWarpcastButton
+                          tokenSymbol={sig.tokenSymbol}
+                          amountUSD={sig.usdValue}
+                          winRate={sig.winRate}
+                          signalType={sig.signalType}
+                          protocol={sig.protocol}
+                        />
+
+                        <button
+                          onClick={() => handleCopyTrade(sig)}
+                          className="px-3.5 py-2 bg-gradient-to-r from-[#00d4ff] to-[#7b61ff] hover:opacity-90 text-black font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-[0_0_20px_rgba(0,212,255,0.2)]"
+                        >
+                          <Zap size={14} className="fill-black" />
+                          <span>⚡ Copy Swap</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </NeonCard>

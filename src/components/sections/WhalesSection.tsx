@@ -33,6 +33,7 @@ import { NeonCard } from "@/components/ui/NeonCard";
 import { RiskRing } from "@/components/ui/RiskRing";
 import { CountUp } from "@/components/ui/CountUp";
 import SwapModal from "@/components/ui/SwapModal";
+import ShareOnWarpcastButton from "@/components/ui/ShareOnWarpcastButton";
 import type { TargetTokenParam, CopyTradeContext } from "@/components/hubs/SwapHub";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -851,7 +852,15 @@ export default function WhalesSection() {
                         )}
 
                         {/* Time & Copy Swap CTA */}
-                        <div className="text-right flex-shrink-0 hidden sm:flex items-center gap-2">
+                        <div className="text-right flex-shrink-0 hidden sm:flex items-center gap-1.5">
+                          <ShareOnWarpcastButton
+                            tokenSymbol={w.tokenSymbol || "ETH"}
+                            amountUSD={w.valueUSD}
+                            winRate={w.whaleScore ? Math.min(99, Math.max(70, w.whaleScore)) : 85.3}
+                            signalType={w.intentLabel}
+                            protocol={w.protocol || "Aerodrome"}
+                            className="!py-0.5 !px-2 !text-[10px]"
+                          />
                           <button
                             onClick={() => handleCopyWhale(w)}
                             className="px-2.5 py-1 bg-gradient-to-r from-[#00d4ff]/20 to-[#7b61ff]/20 hover:from-[#00d4ff]/30 hover:to-[#7b61ff]/30 border border-[#00d4ff]/40 rounded-lg text-[10px] font-bold text-white flex items-center gap-1 transition-all shadow-[0_0_10px_rgba(0,212,255,0.15)]"
