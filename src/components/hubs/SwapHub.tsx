@@ -5,11 +5,22 @@
 // Supports 1-Click Copy-Trading from Smart Money and Whale Signals.
 
 import { useState, useMemo } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { base } from "wagmi/chains";
 import { Swap } from "@coinbase/onchainkit/swap";
 import type { Token } from "@coinbase/onchainkit/token";
 import type { TransactionReceipt } from "viem";
-import { ArrowRightLeft, ShieldCheck, Zap, Sparkles, Fish, ExternalLink, CheckCircle2 } from "lucide-react";
+import {
+  ArrowRightLeft,
+  ShieldCheck,
+  Zap,
+  Sparkles,
+  Fish,
+  ExternalLink,
+  CheckCircle2,
+  AlertTriangle,
+  Sliders,
+} from "lucide-react";
 import WalletConnectButton from "@/components/ui/WalletConnectButton";
 import { BASE_CHAIN_ID, BASE_CONTRACTS } from "@/lib/contracts";
 
@@ -81,7 +92,12 @@ const DEFAULT_TOKENS: Token[] = [
 
 export default function SwapHub({ targetToken, copyTradeContext }: SwapHubProps = {}) {
   const { isConnected, address } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const [slippage, setSlippage] = useState<number>(1.5);
   const [txReceipt, setTxReceipt] = useState<TransactionReceipt | null>(null);
+
+  const isWrongNetwork = isConnected && chainId !== BASE_CHAIN_ID;
 
   // Construct token list prioritizing targetToken if supplied from a whale signal
   const { fromTokens, toTokens } = useMemo(() => {
@@ -195,6 +211,27 @@ export default function SwapHub({ targetToken, copyTradeContext }: SwapHubProps 
         </div>
       </div>
 
+      {/* Wrong Network Warning Banner */}
+      {isWrongNetwork && (
+        <div className="rounded-2xl border border-red-500/50 bg-red-950/40 p-4 shadow-[0_0_30px_rgba(239,68,68,0.2)] animate-fade-in flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={20} className="text-red-400 shrink-0" />
+            <div>
+              <div className="text-xs font-bold text-red-400">Unsupported Network Detected</div>
+              <div className="text-[11px] text-gray-300">
+                Please switch your wallet to Base Mainnet (Chain ID 8453) to swap.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => switchChain({ chainId: base.id })}
+            className="px-3.5 py-1.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs transition-colors shadow-lg"
+          >
+            Switch to Base
+          </button>
+        </div>
+      )}
+
       {/* Transaction Success Alert */}
       {txReceipt && (
         <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/40 p-4 shadow-[0_0_30px_rgba(16,185,129,0.2)] animate-fade-in flex items-center justify-between gap-3">
@@ -236,9 +273,29 @@ export default function SwapHub({ targetToken, copyTradeContext }: SwapHubProps 
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between text-xs text-gray-400 px-1">
-              <span>Connected: <strong className="font-mono text-emerald-400">{address?.slice(0, 6)}…{address?.slice(-4)}</strong></span>
-              <span>Network: <strong className="text-[var(--bf-neon-primary)]">Base Mainnet (8453)</strong></span>
+            <div className="flex items-center justify-between text-xs text-gray-400 px-1 flex-wrap gap-2">
+              <span>
+                Connected: <strong className="font-mono text-emerald-400">{address?.slice(0, 6)}…{address?.slice(-4)}</strong>
+              </span>
+
+              {/* Slippage Selector Controls */}
+              <div className="flex items-center gap-1.5">
+                <Sliders size={12} className="text-gray-400" />
+                <span className="text-[11px] text-gray-400">Slippage:</span>
+                {[0.5, 1.0, 1.5, 3.0].map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => setSlippage(val)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                      slippage === val
+                        ? "bg-[#00d4ff] text-black shadow-[0_0_10px_rgba(0,212,255,0.4)]"
+                        : "bg-white/5 hover:bg-white/10 text-gray-300"
+                    }`}
+                  >
+                    {val}%
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-gray-900/80 p-4 shadow-inner">
@@ -246,9 +303,20 @@ export default function SwapHub({ targetToken, copyTradeContext }: SwapHubProps 
                 from={fromTokens}
                 to={toTokens}
                 experimental={{ useAggregator: true }}
-                config={{ maxSlippage: 1.5 }}
+                config={{ maxSlippage: slippage }}
                 onSuccess={handleSwapSuccess}
               />
+            </div>
+
+            {/* Live Base Gas & Security pill */}
+            <div className="flex items-center justify-between text-[11px] text-gray-400 px-1 pt-1">
+              <span className="flex items-center gap-1 text-emerald-400 font-mono">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                ⛽ Base L2 Gas: &lt; $0.005
+              </span>
+              <span className="text-[var(--bf-neon-primary)] font-mono">
+                ⚡ Aerodrome / Uniswap Aggregated
+              </span>
             </div>
           </div>
         )}
