@@ -13,11 +13,11 @@ const EXAMPLES = {
   endpoints: {
     context: {
       url: "/api/agents/context",
-      method: "GET",
-      description: "Compressed, LLM-optimized Base DeFi intelligence",
-      rateLimit: "20 req/min",
+      method: "GET | POST",
+      description: "Compressed, LLM-optimized Base DeFi intelligence + Webhook Dispatch Mode",
+      rateLimit: "20 req/min (tiered via x-api-key)",
       cacheTTL: "120s",
-      params: {
+      getParams: {
         include: {
           type: "string",
           default: "protocols,risk,market",
@@ -50,6 +50,30 @@ const EXAMPLES = {
           example: "?compact=true",
         },
       },
+      postWebhookMode: {
+        description: "Generate and cryptographically sign (HMAC-SHA256) context payload dispatched to your agent webhook server",
+        body: {
+          webhook_url: "https://agent.example.com/webhook",
+          webhook_secret: "your-secret-key",
+          event_type: "agent.context.dispatch",
+          include: "protocols,risk,market,whales,intent",
+          filters: {
+            min_whale_usd: 100000,
+            risk_level: "all",
+            anomaly_only: false
+          }
+        },
+        headers: {
+          "X-BaseForge-Signature": "sha256=<hmac_hash>",
+          "X-BaseForge-Event": "agent.context.dispatch",
+          "X-BaseForge-Timestamp": "<unix_ms>"
+        }
+      },
+      pythonSdk: {
+        package: "baseforge",
+        install: "pip install baseforge",
+        quickstart: "from baseforge import BaseForgeClient; client = BaseForgeClient(); ctx = client.get_context()"
+      }
     },
     buildTx: {
       url: "/api/agents/actions/build-tx",

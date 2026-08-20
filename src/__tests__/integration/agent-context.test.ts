@@ -31,6 +31,15 @@ vi.mock("@/lib/api-key", () => ({
   }),
 }));
 
+vi.mock("@/lib/webhook-url", () => ({
+  validateWebhookUrl: vi.fn().mockImplementation((url: string) => {
+    if (url.includes("127.0.0.1") || url.includes("internal")) {
+      return Promise.resolve({ ok: false, error: "Private IP addresses are not allowed" });
+    }
+    return Promise.resolve({ ok: true, url: new URL(url) });
+  }),
+}));
+
 vi.mock("@/lib/logger", () => ({
   logger: {
     debug: vi.fn(),
@@ -92,12 +101,19 @@ vi.mock("@/lib/data/indexers", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+function makeJsonResponse(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 function mockDefiLlamaResponses() {
-  mockFetch.mockImplementation((url: string) => {
-    if (url.includes("/protocols")) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve([
+  mockFetch.mockImplementation((url: unknown) => {
+    const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : String((url as any)?.url || url || "");
+    if (urlStr.includes("/protocols")) {
+      return Promise.resolve(
+        makeJsonResponse([
           {
             id: "aerodrome", name: "Aerodrome", slug: "aerodrome",
             category: "Dexes", chainTvls: { Base: 2_100_000_000 },
@@ -117,40 +133,39 @@ function mockDefiLlamaResponses() {
             oracles: ["Chainlink", "Pyth"], forkedFrom: ["Aave V3"],
           },
         ]),
-      });
+      );
     }
-    if (url.includes("/historicalChainTvl")) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve([
+    if (urlStr.includes("/historicalChainTvl")) {
+      return Promise.resolve(
+        makeJsonResponse([
           { date: 1710000000, tvl: 7_800_000_000 },
           { date: 1710086400, tvl: 7_900_000_000 },
           { date: 1710172800, tvl: 8_200_000_000 },
         ]),
-      });
+      );
     }
-    if (url.includes("/pools")) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ data: [
+    if (urlStr.includes("/pools")) {
+      return Promise.resolve(
+        makeJsonResponse({ data: [
           { project: "aerodrome", apy: 15.2, pool: "pool1", chain: "Base", symbol: "WETH-USDC", tvlUsd: 1000000 },
           { project: "seamless-protocol", apy: 5.8, pool: "pool2", chain: "Base", symbol: "USDC", tvlUsd: 500000 },
         ]}),
-      });
+      );
     }
-    if (url.includes("coingecko")) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ ethereum: { usd: 3200, usd_24h_change: 2.5 } }),
-      });
+    if (urlStr.includes("coingecko")) {
+      return Promise.resolve(
+        makeJsonResponse({ ethereum: { usd: 3200, usd_24h_change: 2.5 } }),
+      );
     }
-    if (url.includes("etherscan") && url.includes("eth_gasPrice")) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ status: "1", result: "0x5f5e100" }),
-      });
+    if (urlStr.includes("webhook")) {
+      return Promise.resolve(makeJsonResponse({ received: true }));
     }
-    return Promise.resolve({ ok: false, status: 404 });
+    if (urlStr.includes("etherscan") && urlStr.includes("eth_gasPrice")) {
+      return Promise.resolve(
+        makeJsonResponse({ status: "1", result: "0x5f5e100" }),
+      );
+    }
+    return Promise.resolve(makeJsonResponse({ error: "not_found" }, 404));
   });
 }
 
@@ -333,5 +348,54 @@ describe("/api/agents/context", () => {
     const res = await GET(req);
 
     expect(res.headers.get("X-Data-Source")).toBe("envio-hypersync");
+  });
+
+  it("handles POST webhook dispatch mode with HMAC-SHA256 signature", async () => {
+    const { POST } = await import("@/app/api/agents/context/route");
+
+    const body = {
+      webhook_url: "https://agent-receiver.example.com/webhook",
+      webhook_secret: "secret-key-12345",
+      include: "protocols,whales,risk",
+    };
+
+    const req = new Request("http://localhost/api/agents/context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.dispatched).toBe(true);
+    expect(data.delivery.signature).toMatch(/^sha256=[a-f0-9]{64}$/);
+    expect(data.context).toBeDefined();
+  });
+
+  it("rejects invalid or SSRF dangerous webhook URLs", async () => {
+    const { POST } = await import("@/app/api/agents/context/route");
+
+    const req = new Request("http://localhost/api/agents/context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        webhook_url: "http://127.0.0.1:8080/internal",
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toBe("ssrf_protection_triggered");
+  });
+
+  it("handles OPTIONS CORS preflight", async () => {
+    const { OPTIONS } = await import("@/app/api/agents/context/route");
+    const res = await OPTIONS();
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("POST");
   });
 });
