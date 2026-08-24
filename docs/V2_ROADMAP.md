@@ -1,134 +1,154 @@
-# BaseForge v2 Roadmap
+# BaseForge v2 Roadmap & Execution Plan
 
-Phased execution plan for BaseForge v1 → v2. Checkboxes track implementation; **Phase 0** includes a live prod verification log.
+Phased execution plan for BaseForge v1 → v2+. Checkboxes track live implementation and verified production status.
 
-**Stack reality (April–June 2026):** Next.js 16 on Vercel, Neon Postgres cache/rate limits (no Upstash), Envio primary indexer, optional VPS worker (`docs/WORKER_VPS.md`), Vercel Cron fallback (`vercel.json` → `/api/cron/warm`).
+**Stack Reality:** Next.js 16 on Vercel, Neon Postgres cache & rate limits (`backend=postgres`), Envio HyperSync primary indexer, Etherscan fallback, Vercel Cron (`/api/cron/warm`), Official Python SDK (`baseforge`), Model Context Protocol (`@baseforge/mcp`).
 
 ---
 
-## Phase 0 — Production stability
+## 🗺️ Roadmap Phases Overview
 
-**Goal:** Vercel serves latest `main`, env matches `src/lib/env-config.ts`, `/api/health` is `ok` or `degraded` (not `unhealthy`).
+```mermaid
+flowchart TD
+  P0["Phase 0: Production Stability ✅"] --> P1["Phase 1: Base.dev & Builder Attribution ✅"]
+  P1 --> P2["Phase 2: OnchainKit & DeFi CTAs (Hardening) 🟡"]
+  P2 --> P3["Phase 3: Agent Layer (SDK, MCP, Webhooks) ✅"]
+  P3 --> P4["Phase 4: Wallet Intelligence & Airdrop Scoring ⏳"]
+  P4 --> P5["Phase 5: Base App / Farcaster Mini App ⏳"]
+  P5 --> P6["Phase 6: Scale & Infra ⏳"]
+  P6 --> P7["Phase 7: Predictive Risk Model (AkN HMM) ⏳"]
+```
+
+---
+
+## Phase 0 — Production Stability & Health Verification ✅
+
+**Goal:** Vercel serves latest `main`, env matches `src/lib/env-config.ts`, `/api/health` returns `100% OK`.
 
 | Step | Status | Notes |
 |------|--------|-------|
-| [ ] Redeploy Vercel **Production** from `main` @ `167db1f` or newer | Blocked | Prod still on pre–`env-config` build (see verification below) |
-| [ ] `DATABASE_URL` set (Neon) | Done | `checks.database.status: ok` |
-| [ ] `ENVIO_API_TOKEN`, `ETHERSCAN_API_KEY` set | Done | Indexer checks ok |
-| [ ] `CACHE_BACKEND` unset or `postgres` (not `memory` / not `upstash`-only) | Fix on deploy | Latest code auto-postgres when `DATABASE_URL` present |
-| [ ] `CRON_SECRET` set **or** `WORKER_URL` correct | Fix env | See worker row below |
-| [ ] `WORKER_URL=http://43.163.106.68/baseforge` (no trailing slash) **or** unset `WORKER_URL` + `CRON_SECRET` | Fix env | `/baseforge/health` returns 200 from this environment |
-| [ ] Remove legacy `UPSTASH_*` / `CACHE_BACKEND=memory` in Production | Recommended | See `docs/PROD_STABILIZATION.md` |
-| [ ] Health curl passes | Pending redeploy | Command below |
+| Redeploy Vercel **Production** from latest `main` | **Done** | Deployed at `https://baseforge-v1.vercel.app` |
+| `DATABASE_URL` set (Neon Postgres) | **Done** | `checks.database.status: ok` (latency ~700ms) |
+| `ENVIO_API_TOKEN` & `ETHERSCAN_API_KEY` set | **Done** | Primary HyperSync active on Base @ block 50M+ |
+| `CACHE_BACKEND` set to `postgres` | **Done** | Shared PostgreSQL key-value caching active |
+| `WORKER_URL` & Background cron | **Done** | Fallback to Vercel Cron `/api/cron/warm` every 2m |
+| Health check passes cleanly | **Done** | `GET /api/health` returns `status: "ok"` |
 
-### Verification log (2026-06-04)
+### Verified Live Health Check
 
-```bash
-curl -s https://baseforge-v1.vercel.app/api/health | jq
+```json
+{
+  "status": "ok",
+  "checks": {
+    "defillama": { "status": "ok", "latency": 74 },
+    "coingecko": { "status": "ok", "latency": 56 },
+    "cache": { "status": "ok", "detail": "backend=postgres, size=0, hitRate=0.0%" },
+    "database": { "status": "ok", "latency": 768 },
+    "indexer_primary": { "status": "ok", "latency": 86, "detail": "envio-hypersync block=50208257 lag=0" },
+    "indexer_fallback": { "status": "ok", "latency": 121, "detail": "etherscan-fallback block=15" },
+    "indexer_active": { "status": "ok", "detail": "active_provider=envio-hypersync" },
+    "worker": { "status": "ok", "detail": "vercel-cron (/api/cron/warm every 2m)" }
+  }
+}
 ```
-
-| Check | Prod (stale deploy) | Expected after redeploy + env |
-|-------|---------------------|-------------------------------|
-| `status` | `unhealthy` | `ok` or `degraded` |
-| `checks.defillama` | HTTP 404 | `ok` (`DEFILLAMA_HEALTH_URL` → `api.llama.fi/protocols`) |
-| `checks.cache` | MEMORY / upstash message | `backend=postgres` |
-| `checks.database` | ok | ok |
-| `checks.indexer_*` | ok | ok |
-| `checks.worker` | HTTP 404 | `railway worker healthy` or `vercel-cron` |
-
-**Root cause summary**
-
-1. **Stale Vercel build** — Health copy and DefiLlama URL match old code; `origin/main` has `src/lib/env-config.ts` + updated `src/app/api/health/route.ts`.
-2. **Worker URL** — Live probe: `curl http://43.163.106.68/baseforge/health` → `{"status":"ok",...}`. Prod `HTTP 404` implies `WORKER_URL` missing `/baseforge` suffix or pointing at a dead host.
-3. **Cron path** — If you prefer cron-only: unset `WORKER_URL`, set `CRON_SECRET`, redeploy so `usesCronBackgroundJobs()` is true.
-
-**References:** `docs/PROD_STABILIZATION.md`, `src/app/api/health/route.ts`, `src/lib/env-config.ts`, `src/app/api/cron/warm/route.ts`
 
 ---
 
-## Phase 1 — Base.dev & builder
+## Phase 1 — Base.dev & Builder Code Attribution ✅
 
 - [x] Register / verify app on [Base.dev](https://base.dev)
 - [x] Builder code env + `dataSuffix` in wagmi config (`NEXT_PUBLIC_BASE_BUILDER_CODE`)
-- [ ] Grants narrative + application assets (deferred)
-- [x] ERC-8021 via `src/lib/builder-code.ts` (attribution on outbound txs when code set)
-- **Files:** `docs/DEPLOYMENT.md`, wallet/connect flows, any new `src/lib/builder-code.ts`
+- [x] ERC-8021 via `src/lib/builder-code.ts` (attribution on outbound txs)
+- [ ] Grants narrative + application submission
 
 ---
 
-## Phase 2 — OnchainKit & DeFi CTAs
+## Phase 2 — OnchainKit & DeFi CTAs (Human Layer) 🟡
 
-- [x] OnchainKit install + `OnchainKitAppProvider` (wagmi v2 aligned)
+**Goal:** Harden human-facing DeFi execution since it's the first touchpoint before agent API consumers.
+
+- [x] OnchainKit install + `OnchainKitAppProvider` (Wagmi v2 aligned)
 - [x] Swap / LP / deposit CTAs on `/protocols/[slug]` (`ProtocolActionPanel`)
-- [x] Contract addresses centralized in `src/lib/contracts.ts`; gaps in `docs/DATA_SOURCES.md`
-- **Files:** `src/lib/contracts.ts` (or equivalent), protocol UI routes, `docs/DATA_SOURCES.md`
+- [x] Contract addresses centralized in `src/lib/contracts.ts`
+- [ ] **Hardening Tasks:**
+  - [ ] Robust token approvals with clear allowance status UI
+  - [ ] Slippage tolerance configuration and price impact warnings
+  - [ ] Dynamic gas estimation preview with fallback calldata validation
 
 ---
 
-## Phase 3 — Agent narrative layer
+## Phase 3 — AI Agent Layer & Developer Tooling ✅
 
-- [ ] Richer narratives on top of `/api/agents/context`
-- [ ] Intent engine hooks for agent-facing summaries
-- **Files:** `src/app/api/agents/context/route.ts`, `src/app/api/agents/examples/route.ts`
+**Goal:** Deepen `/api/agents/context` as the primary market differentiator before expanding surface area.
 
----
-
-## Phase 4 — Wallet intelligence
-
-- [ ] v2.0: labels, portfolio context, whale adjacency
-- [ ] v2.1: airdrop / eligibility scoring (stretch)
-- **Files:** `src/app/api/wallet-labels/route.ts`, `src/app/api/portfolio/route.ts`, `src/app/api/whales/route.ts`
-
----
-
-## Phase 5 — Base App / mini app
-
-- [ ] Frame route + `/.well-known/farcaster.json` polish
-- [ ] SIWE / session for embedded wallet
-- **Files:** `src/app/api/frame/route.tsx`, `public/.well-known/farcaster.json`, `docs/DEPLOYMENT.md`
+- [x] **Webhook Mode (`POST /api/agents/context`)**:
+  - Cryptographic HMAC-SHA256 signatures (`X-BaseForge-Signature`, `X-BaseForge-Timestamp`)
+  - Server-Side Request Forgery (SSRF) DNS resolution & private IP blocking
+  - Agent event filters (`min_whale_usd`, `risk_level`, `anomaly_only`)
+- [x] **Official Python SDK (`baseforge`)**:
+  - Typed Pydantic models with synchronous & asynchronous clients
+  - Constant-time webhook verification (`BaseForgeWebhookVerifier`)
+  - Drop-in tool adapters for **LangChain**, **CrewAI**, and **OpenAI / Claude Tool Calling**
+  - Runnable examples: quickstart, FastAPI webhook receiver, whale copy-trade bot
+- [x] **Model Context Protocol (MCP) Server (`@baseforge/mcp`)**:
+  - Zero-dependency JSON-RPC 2.0 stdio transport
+  - Native integration for **Claude Desktop**, **Cursor**, **Antigravity CLI**, and autonomous agents
+  - Python stdio MCP module in `python -m baseforge.mcp`
+- [x] **Agent Usage & RateLimit Telemetry (`GET /api/agents/stats`)**:
+  - Public telemetry tracking active API keys, daily requests, status codes, and client SDK adoption
 
 ---
 
-## Phase 6 — Scale & infra
+## Phase 4 — Wallet Intelligence & Airdrop Eligibility Scoring ⏳ (Unstarted)
 
-- [ ] Unified risk pipeline (API + worker)
-- [ ] Indexer coverage expansion
-- [ ] API tiers / keys (`src/app/api/admin/api-keys/route.ts`)
+**Goal:** Drive virality, natural retention, and wallet-level alpha distinct from institutional analytics.
 
----
+### Airdrop Eligibility Scoring (v2.1 — High-Engagement Virality Driver)
+*People obsessively check airdrop eligibility; it is the single highest-engagement viral retention mechanic.*
+- [ ] **Multi-Protocol Interaction Heatmap**:
+  - Scan user wallet for activity across Base native protocols (Aerodrome, Seamless, Moonwell, Uniswap V3, Friend.tech, Base Name Service).
+- [ ] **Airdrop Readiness Score (0–100)**:
+  - Volume tiers ($1k, $10k, $100k+), transaction count, and active weeks/months metrics.
+  - Bridge history (Native Base Bridge vs third-party bridges).
+  - Protocol diversity multiplier (DEX + Lending + Liquidity + Governance).
+- [ ] **Sybil & Wash Trading Filter**:
+  - Organic interaction detection vs scripted micro-transactions.
+- [ ] **Actionable "Boost Your Score" Recommendations**:
+  - Contextual CTAs directing users to under-utilized protocols on Base to maximize eligibility.
 
-## Execution order
-
-```mermaid
-flowchart LR
-  P0[Phase 0 Prod] --> P1[Phase 1 Base.dev]
-  P1 --> P2[Phase 2 OnchainKit]
-  P2 --> P3[Phase 3 Agents]
-  P3 --> P4[Phase 4 Wallet intel]
-  P4 --> P5[Phase 5 Base App]
-  P5 --> P6[Phase 6 Scale]
-```
-
----
-
-## Route & file map (implementation appendix)
-
-| Area | Routes / files |
-|------|----------------|
-| Health / cron | `api/health`, `api/cron/warm`, `lib/env-config.ts` |
-| Agents | `api/agents/context`, `api/agents/examples` |
-| Protocols / risk | `api/protocols`, `api/protocols/[slug]`, `api/risk`, `api/risk-history` |
-| Market / charts | `api/base-overview`, `api/charts`, `api/market`, `api/gas` |
-| Portfolio / whales | `api/portfolio`, `api/whales`, `api/wallet-labels` |
-| Alerts | `api/alerts`, `api/alerts/rules` |
-| Frame / OG | `api/frame`, `api/og/*` |
-| Admin | `api/admin/analytics`, `api/admin/api-keys` |
-| Worker (VPS) | `worker/`, `scripts/vps-deploy-worker.sh`, `docs/WORKER_VPS.md` |
+### Wallet Intelligence & Labeling (v2.0)
+- [ ] Wallet behavioral clustering: Whale, Smart Money, MEV Bot, Arbitrageur, Liquidity Provider.
+- [ ] Portfolio risk exposure & asset concentration breakdown.
+- [ ] Whale adjacency scoring: Copy-trade signaling when a wallet mirrors high-conviction whale moves.
+- **Files:** `src/app/api/wallet-labels/route.ts`, `src/app/api/portfolio/route.ts`, `src/app/api/whales/signals/route.ts`
 
 ---
 
-## Next actions (pick one)
+## Phase 5 — Base App / Farcaster Mini App ⏳
 
-1. **Phase 0** — Vercel → Redeploy Production, fix `WORKER_URL` or enable cron, re-run health curl, tick table above.
-2. **Phase 1** — Base.dev registration checklist in repo + env templates.
-3. **Phase 2** — OnchainKit scaffold PR.
+- [ ] Interactive Farcaster Frame route + `/.well-known/farcaster.json` manifest
+- [ ] Sign-In With Ethereum (SIWE) session management for embedded wallets
+- [ ] Quick-share scorecard for wallet risk & airdrop score to Warpcast
+- **Files:** `src/app/api/frame/route.tsx`, `public/.well-known/farcaster.json`
+
+---
+
+## Phase 6 — Scale & Infrastructure ⏳
+
+- [ ] Multi-region Neon read replicas
+- [ ] Expanded indexer coverage for long-tail Base tokens
+- [ ] Stripe / on-chain billing for Pro/Enterprise API tiers
+
+---
+
+## Phase 7 — Predictive Risk Model (AkN HMM Adaptation) ⏳
+
+**Goal:** Genuinely differentiated machine-learning risk intelligence built after Phase 0–3 stabilization.
+
+- [ ] **Hidden Markov Model (HMM) Regime Switching**:
+  - Reuses and adapts proven HMM architecture from AkN to detect market regime shifts (Low Volatility / Normal / High Stress / Liquidity Cascade).
+- [ ] **Predictive Protocol Health Signals**:
+  - Early-warning liquidation cascading alerts before TVL collapse occurs.
+  - De-peg vulnerability and oracle latency anomaly forecasting.
+- [ ] **Agent Integration**:
+  - Expose predictive regime state inside `/api/agents/context` under `risk.predictiveRegime`.
