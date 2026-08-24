@@ -32,6 +32,7 @@ import { NeonCard } from "@/components/ui/NeonCard";
 import { RiskRing } from "@/components/ui/RiskRing";
 import { CountUp } from "@/components/ui/CountUp";
 import WalletConnectButton from "@/components/ui/WalletConnectButton";
+import AirdropScorer from "@/components/portfolio/AirdropScorer";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -336,6 +337,7 @@ function RiskWarnings({ riskFlags, positions }: { riskFlags: RiskFlags; position
 // ─── Main Component ───────────────────────────────────────────
 
 export default function PortfolioSection() {
+  const [portfolioSubTab, setPortfolioSubTab] = useState<"balances" | "airdrop">("balances");
   const [wallets, setWallets] = useState<SavedWallet[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [newAddress, setNewAddress] = useState("");
@@ -582,7 +584,7 @@ export default function PortfolioSection() {
           </div>
         </div>
 
-        {/* Active address + Basename */}
+      {/* Active address + Basename */}
         {activeAddress && (
           <div className="flex items-center gap-2 mt-2 text-[10px] text-[var(--bf-text-muted)]">
             <Search className="h-3 w-3" />
@@ -599,7 +601,43 @@ export default function PortfolioSection() {
         )}
       </NeonCard>
 
-      {(!activeAddress && wallets.length === 0) ? (
+      {/* Sub-tab Navigation (Balances vs Airdrop & Intel) */}
+      <div className="flex items-center gap-2 p-1 bg-black/40 border border-white/10 rounded-xl w-fit">
+        <button
+          onClick={() => setPortfolioSubTab("balances")}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+            portfolioSubTab === "balances"
+              ? "bg-[var(--bf-neon-primary)]/20 text-[var(--bf-neon-primary)] border border-[var(--bf-neon-primary)]/40 neon-glow-sm"
+              : "text-[var(--bf-text-muted)] hover:text-white"
+          }`}
+        >
+          <Wallet className="h-3.5 w-3.5" />
+          Portfolio Balances
+        </button>
+
+        <button
+          onClick={() => setPortfolioSubTab("airdrop")}
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+            portfolioSubTab === "airdrop"
+              ? "bg-gradient-to-r from-amber-500/20 to-purple-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+              : "text-[var(--bf-text-muted)] hover:text-white"
+          }`}
+        >
+          <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+          Airdrop & Wallet Intel
+          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
+            VIRAL
+          </span>
+        </button>
+      </div>
+
+      {portfolioSubTab === "airdrop" ? (
+        activeAddress ? (
+          <AirdropScorer address={activeAddress} onRefresh={() => fetchData(activeAddress)} />
+        ) : (
+          <PortfolioEmpty />
+        )
+      ) : (!activeAddress && wallets.length === 0) ? (
         <PortfolioEmpty />
       ) : isLoading && !data ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
