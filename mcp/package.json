@@ -1,0 +1,37 @@
+{
+  "name": "@baseforge/mcp",
+  "version": "0.1.0",
+  "description": "Official Model Context Protocol (MCP) Server for BaseForge — Base Network Onchain DeFi Intelligence & Transaction Engine for Claude, Cursor, and AI Agents",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "baseforge-mcp": "./bin/baseforge-mcp.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node bin/baseforge-mcp.js",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "base",
+    "base-network",
+    "defi",
+    "ai-agents",
+    "claude",
+    "cursor",
+    "antigravity",
+    "onchain",
+    "ethereum"
+  ],
+  "author": "BaseForge Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AmnAnon/baseforge-v1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

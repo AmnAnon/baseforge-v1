@@ -73,7 +73,27 @@ const EXAMPLES = {
         package: "baseforge",
         install: "pip install baseforge",
         quickstart: "from baseforge import BaseForgeClient; client = BaseForgeClient(); ctx = client.get_context()"
+      },
+      mcpServer: {
+        package: "@baseforge/mcp",
+        npxCommand: "npx -y @baseforge/mcp",
+        pythonCommand: "python -m baseforge.mcp",
+        description: "Official Model Context Protocol server connecting BaseForge to Claude Desktop, Cursor, and agent frameworks",
+        claudeDesktopConfig: {
+          mcpServers: {
+            baseforge: {
+              command: "npx",
+              args: ["-y", "@baseforge/mcp"],
+              env: { BASEFORGE_BASE_URL: "https://baseforge-v1.vercel.app" }
+            }
+          }
+        }
       }
+    },
+    stats: {
+      url: "/api/agents/stats",
+      method: "GET",
+      description: "Public agent adoption metrics, active API keys, daily request volume, and SDK client distribution",
     },
     buildTx: {
       url: "/api/agents/actions/build-tx",
