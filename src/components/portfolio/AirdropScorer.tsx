@@ -77,7 +77,7 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
   if (loading) {
     return (
       <div className="space-y-6">
-        <NeonCard glow="cyan" className="p-8 text-center animate-pulse">
+        <NeonCard glowColor="rgba(0, 212, 255, 0.15)" className="p-8 text-center animate-pulse">
           <div className="h-8 w-48 bg-slate-800 rounded mx-auto mb-4" />
           <div className="h-24 w-24 bg-slate-800 rounded-full mx-auto mb-4" />
           <div className="h-4 w-64 bg-slate-800 rounded mx-auto" />
@@ -88,7 +88,7 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
 
   if (error || !data) {
     return (
-      <NeonCard glow="none" className="p-6 text-center border-red-500/30">
+      <NeonCard glowColor="rgba(239, 68, 68, 0.15)" className="p-6 text-center border-red-500/30">
         <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-2" />
         <p className="text-sm text-red-300 font-mono">{error || "Unable to load airdrop evaluation."}</p>
       </NeonCard>
@@ -114,7 +114,7 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
   return (
     <div className="space-y-6">
       {/* ─── Hero Scorecard ────────────────────────────────────── */}
-      <NeonCard glow="cyan" className="relative overflow-hidden p-6 md:p-8 bg-gradient-to-b from-slate-900/90 to-slate-950/90">
+      <NeonCard glowColor="rgba(0, 212, 255, 0.15)" className="relative overflow-hidden p-6 md:p-8 bg-gradient-to-b from-slate-900/90 to-slate-950/90">
         <div className={`absolute top-0 right-0 w-96 h-96 bg-gradient-to-br ${currentTier.bg} to-transparent opacity-30 blur-3xl pointer-events-none`} />
 
         <div className="flex flex-col md:flex-row items-center justify-between gap-8">
@@ -253,7 +253,7 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
             {data.boosters.map((booster) => (
               <NeonCard
                 key={booster.id}
-                glow="none"
+                glowColor="none"
                 className="p-4 bg-slate-900/60 border-slate-800 hover:border-amber-500/40 transition-all flex flex-col justify-between"
               >
                 <div className="space-y-2">
@@ -285,7 +285,7 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
       {/* ─── Two-Column: Protocol Heatmap & Criteria Checklist ──── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left: Protocol Interaction Matrix */}
-        <NeonCard glow="none" className="p-5 bg-slate-900/80 border-slate-800 space-y-4">
+        <NeonCard glowColor="none" className="p-5 bg-slate-900/80 border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-purple-400" />
@@ -340,7 +340,7 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
         </NeonCard>
 
         {/* Right: Criteria Checklist */}
-        <NeonCard glow="none" className="p-5 bg-slate-900/80 border-slate-800 space-y-4">
+        <NeonCard glowColor="none" className="p-5 bg-slate-900/80 border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Award className="w-4 h-4 text-cyan-400" />
