@@ -115,6 +115,10 @@ const DAILY_QUOTAS = {
   enterprise: 100_000,
 } as const;
 
+export function getApiKeyDailyQuota(tier: string): number {
+  return DAILY_QUOTAS[tier as keyof typeof DAILY_QUOTAS] ?? DAILY_QUOTAS.free;
+}
+
 function getKeyLimiter(keyId: string, rpm: number) {
   const current = keyLimiters.get(keyId);
   if (!current || current.limit !== rpm) keyLimiters.set(keyId, { limit: rpm, limiter: createApiKeyLimiter(rpm) });
@@ -122,7 +126,7 @@ function getKeyLimiter(keyId: string, rpm: number) {
 }
 
 function getDailyLimiter(keyId: string, tier: string) {
-  const quota = DAILY_QUOTAS[tier as keyof typeof DAILY_QUOTAS] ?? DAILY_QUOTAS.free;
+  const quota = getApiKeyDailyQuota(tier);
   const current = dailyLimiters.get(keyId);
   if (!current || current.limit !== quota) dailyLimiters.set(keyId, { limit: quota, limiter: createApiKeyLimiter(quota, 24 * 60 * 60 * 1000) });
   return { limiter: dailyLimiters.get(keyId)!.limiter, quota };
