@@ -8,23 +8,37 @@ export interface ApiResponseMeta {
   requestId: string;
 }
 
-export function apiSuccess<T>(data: T, request?: Request, status = 200) {
-  const requestId = request?.headers.get("x-request-id")?.slice(0, 128) || randomUUID();
-  const meta: ApiResponseMeta = {
+function responseMeta(request?: Request): ApiResponseMeta {
+  return {
     apiVersion: API_VERSION,
     generatedAt: new Date().toISOString(),
-    requestId,
+    requestId: request?.headers.get("x-request-id")?.slice(0, 128) || randomUUID(),
   };
+}
 
+function responseHeaders(meta: ApiResponseMeta) {
+  return {
+    "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+    "X-API-Version": API_VERSION,
+    "X-Request-Id": meta.requestId,
+  };
+}
+
+export function apiSuccess<T>(data: T, request?: Request, status = 200) {
+  const meta = responseMeta(request);
+  return NextResponse.json({ data, meta }, { status, headers: responseHeaders(meta) });
+}
+
+export function apiError(
+  code: string,
+  message: string,
+  status: number,
+  request?: Request,
+  details?: Record<string, unknown>,
+) {
+  const meta = responseMeta(request);
   return NextResponse.json(
-    { data, meta },
-    {
-      status,
-      headers: {
-        "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
-        "X-API-Version": API_VERSION,
-        "X-Request-Id": requestId,
-      },
-    },
+    { error: { code, message, ...details }, meta },
+    { status, headers: responseHeaders(meta) },
   );
 }
