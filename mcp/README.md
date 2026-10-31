@@ -17,6 +17,7 @@ Official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server
 9. **`get_metric_definitions`**: Read metric units, sources, calculation notes and limitations.
 10. **`search_protocols`**: Search the current Base protocol directory.
 11. **`get_protocol_context`**: Resolve a protocol and assemble selected context sections.
+12. **`get_my_api_usage`**: Read usage and quota state for the API key configured on the MCP server.
 
 ---
 
