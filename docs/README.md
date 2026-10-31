@@ -15,7 +15,7 @@ Professional documentation for the BaseForge Analytics platform.
 | [Deployment](./DEPLOYMENT.md) | Base App + Farcaster deployment (post-April 9 2026 changes) |
 | [Database Migrations](./DATABASE.md) | Drizzle ORM migration strategy, commands, and safety rules |
 | [Contributing](./CONTRIBUTING.md) | How to contribute — code style, PR process, issue guidelines |
-| [Agent Guide](./AGENT_GUIDE.md) | AI agent integration guide with prompt templates |
+| [Agent Guide](./AGENT_GUIDE.md) | Legacy agent integration guide and prompt templates |\n| [Agent Skill](./AGENT_SKILL.md) | Reusable instructions for API discovery, protocol context and data interpretation |
 
 ## Quick Links
 
