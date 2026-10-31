@@ -318,17 +318,17 @@ export async function handleToolCall(name, args) {
 
     case "get_api_capabilities": {
       const data = await fetchFromBaseForge("/api/v1/capabilities");
-      return { content: [{ type: "text", text: JSON.stringify(data.data ?? data, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
     case "get_data_catalog": {
       const data = await fetchFromBaseForge("/api/v1/catalog");
-      return { content: [{ type: "text", text: JSON.stringify(data.data ?? data, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
     case "get_metric_definitions": {
       const data = await fetchFromBaseForge("/api/v1/metrics");
-      return { content: [{ type: "text", text: JSON.stringify(data.data ?? data, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
     case "search_protocols": {
@@ -382,7 +382,7 @@ export async function handleResourceRead(uri) {
     contents: [{
       uri,
       mimeType: "application/json",
-      text: JSON.stringify(data.data ?? data, null, 2),
+      text: JSON.stringify(data, null, 2),
     }],
   };
 }
