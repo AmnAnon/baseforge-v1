@@ -76,8 +76,8 @@ export async function GET(request: Request) {
         requests24h: Number(last24h?.requests ?? 0),
         requests7d: Number(last7d?.requests ?? 0),
         averageLatencyMs: Math.round(Number(last24h?.avgLatencyMs ?? 0)),
-        endpoints: endpoints.map((row) => ({ endpoint: row.endpoint, requests: Number(row.requests) })),
-        dailyTrend: dailyTrend.map((row) => ({ date: row.date, requests: Number(row.requests) })),
+        endpoints: endpoints.map((row: { endpoint: string; requests: number | string }) => ({ endpoint: row.endpoint, requests: Number(row.requests) })),
+        dailyTrend: dailyTrend.map((row: { date: string; requests: number | string }) => ({ date: row.date, requests: Number(row.requests) })),
         statusBreakdown,
       },
       limits: {
