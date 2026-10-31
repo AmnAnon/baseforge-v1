@@ -48,6 +48,7 @@ describe("BaseForge API discovery registry", () => {
         "/api/v1/catalog",
         "/api/v1/metrics",
         "/api/v1/context/query",
+        "/api/v1/usage",
         "/api/v1/openapi.json",
       ]),
     );
