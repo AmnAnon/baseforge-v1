@@ -60,7 +60,8 @@ export const CAPABILITIES: ApiCapability[] = [
     name: "Agent context",
     description: "Retrieve compressed, multi-domain context assembled for AI agents.",
     operations: [
-      { id: "get_agent_context", method: "GET", path: "/api/agents/context", description: "Build a token-efficient context response with selectable intelligence sections.", auth: "optional_api_key", dataDomains: ["protocols", "risk", "market", "whales", "mev", "gas", "lending", "intent"] },
+      { id: "get_agent_context", method: "GET", path: "/api/agents/context", description: "Build a token-efficient ecosystem context response with selectable intelligence sections.", auth: "optional_api_key", dataDomains: ["protocols", "risk", "market", "whales", "mev", "gas", "lending", "intent"] },
+      { id: "query_protocol_context", method: "POST", path: "/api/v1/context/query", description: "Resolve a protocol and assemble selected overview, TVL, risk and whale context sections.", auth: "optional_api_key", dataDomains: ["entity_resolution", "protocols", "tvl", "risk", "whales"] },
     ],
   },
 ];
@@ -227,6 +228,17 @@ export const OPENAPI_DOCUMENT = {
         tags: ["Discovery"],
         summary: "Describe metrics, units, sources and limitations",
         responses: { "200": { description: "Metric definitions." } },
+      },
+    },
+    "/api/v1/context/query": {
+      post: {
+        tags: ["Discovery"],
+        summary: "Resolve a protocol and assemble an agent context bundle",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["entity"], properties: { entity: { type: "object", required: ["type"], properties: { type: { const: "protocol" }, id: { type: "string" }, name: { type: "string" }, network: { const: "base" } } }, include: { type: "array", items: { type: "string", enum: ["overview", "tvl", "risk", "whales"] } } } } } },
+        },
+        responses: { "200": { description: "Resolved protocol context bundle." }, "400": { description: "Invalid query." }, "404": { description: "Entity not found." }, "409": { description: "Ambiguous entity; choose a candidate." } },
       },
     },
     "/api/v1/openapi.json": {
