@@ -9,12 +9,13 @@ test("MCP discovery tools are registered", () => {
   assert.ok(names.includes("get_metric_definitions"));
   assert.ok(names.includes("search_protocols"));
   assert.ok(names.includes("get_protocol_context"));
+  assert.ok(names.includes("get_my_api_usage"));
 });
 
 test("MCP resources expose the discovery catalog", () => {
   assert.deepEqual(
     RESOURCES.map((resource) => resource.uri),
-    ["baseforge://capabilities", "baseforge://catalog", "baseforge://metrics"],
+    ["baseforge://capabilities", "baseforge://catalog", "baseforge://metrics", "baseforge://usage"],
   );
 });
 
@@ -55,6 +56,26 @@ test("resource reads return the metric catalog", async () => {
     const result = await handleResourceRead("baseforge://metrics");
     assert.equal(result.contents[0].mimeType, "application/json");
     assert.match(result.contents[0].text, /tvl_usd/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("API usage tool calls the authenticated per-key usage endpoint", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  globalThis.fetch = async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify({ data: { usage: { requests24h: 12 } }, meta: { apiVersion: "1.0.0" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const result = await handleToolCall("get_my_api_usage", {});
+    assert.match(requestedUrl, /\/api\/v1\/usage$/);
+    assert.match(result.content[0].text, /requests24h/);
   } finally {
     globalThis.fetch = originalFetch;
   }
