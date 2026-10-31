@@ -5,8 +5,10 @@ Small, dependency-free TypeScript client for BaseForge's versioned discovery and
 ## Install
 
 ```bash
-npm install @baseforge/sdk
+npm install ./packages/typescript
 ```
+
+The package source is included in this repository and can be published as `@baseforge/sdk` when a release is cut.
 
 ## Quickstart
 
