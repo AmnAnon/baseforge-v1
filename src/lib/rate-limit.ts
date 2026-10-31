@@ -90,7 +90,7 @@ export class PostgresRateLimiter {
               target: rateLimits.key,
               set: { count: 1, resetAt, updatedAt: now },
             });
-          return { allowed: true, remaining: this.config.maxRequests - 1 };
+          return { allowed: true, remaining: this.config.maxRequests - 1, resetAfter: Math.ceil(this.config.windowMs / 1000) };
         }
 
         const entry = existing[0];
