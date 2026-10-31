@@ -105,12 +105,12 @@ export async function resolveProtocolEntity(query: string): Promise<ProtocolReso
   if (!normalized) return { status: "not_found", query };
 
   const { records, retrievedAt } = await getProtocolIndex();
-  const exact: Array<{ record: ProtocolSourceRecord; match: "slug" | "name" }> = [];
+  const exact: Array<{ record: ProtocolSourceRecord; match: "slug" | "name" | "canonical_id" }> = [];
   for (const record of records) {
     const slug = record.slug || record.id || record.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const slugKey = normalizeEntityKey(slug);
     const nameKey = normalizeEntityKey(record.name);
-    if (normalized === slugKey) exact.push({ record, match: "slug" });
+    if (normalized === slugKey) exact.push({ record, match: query.trim().toLowerCase().startsWith("protocol:base:") ? "canonical_id" : "slug" });
     else if (normalized === nameKey) exact.push({ record, match: "name" });
   }
 
