@@ -64,7 +64,7 @@ class BaseForgeClient:
             response = client.get(path)
             response.raise_for_status()
             payload = response.json()
-            return payload.get("data", payload)
+            return payload
 
     def get_capabilities(self) -> Dict[str, Any]:
         """Discover versioned API capabilities and supported operations."""
@@ -100,7 +100,7 @@ class BaseForgeClient:
             response = client.post("/api/v1/context/query", json=payload)
             response.raise_for_status()
             result = response.json()
-            return result.get("data", result)
+            return result
 
     def dispatch_webhook(
         self,
