@@ -43,10 +43,11 @@ export default function AirdropScorer({ address, onRefresh }: AirdropScorerProps
 
   useEffect(() => {
     if (!address) return;
-    setLoading(true);
-    setError(null);
-
-    fetch(`/api/wallet/airdrop?address=${address}`)
+    Promise.resolve().then(() => {
+      setLoading(true);
+      setError(null);
+      return fetch(`/api/wallet/airdrop?address=${encodeURIComponent(address)}`);
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to evaluate airdrop score");
         return res.json();
