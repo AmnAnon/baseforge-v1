@@ -108,6 +108,11 @@ TOOLS.extend([
         },
     },
     {
+        "name": "get_my_api_usage",
+        "description": "Retrieve usage analytics and rolling quota limits for the configured API key.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "search_protocols",
         "description": "Search the current Base protocol directory by name, slug or category.",
         "inputSchema": {
@@ -122,6 +127,7 @@ RESOURCES = [
     {"uri": "baseforge://capabilities", "name": "BaseForge API capabilities", "description": "Registered API operations and access requirements.", "mimeType": "application/json"},
     {"uri": "baseforge://catalog", "name": "BaseForge data catalog", "description": "Supported networks and data domains.", "mimeType": "application/json"},
     {"uri": "baseforge://metrics", "name": "BaseForge metric dictionary", "description": "Metric definitions, units, sources and limitations.", "mimeType": "application/json"},
+    {"uri": "baseforge://usage", "name": "API key usage", "description": "Usage and rolling quota information for the configured API key.", "mimeType": "application/json"},
 ]
 
 
@@ -192,6 +198,10 @@ def handle_tool_call(client: BaseForgeClient, name: str, args: Dict[str, Any]) -
         )
         return {"content": [{"type": "text", "text": json.dumps(context, indent=2)}]}
 
+    elif name == "get_my_api_usage":
+        usage = client.get_usage()
+        return {"content": [{"type": "text", "text": json.dumps(usage, indent=2)}]}
+
     elif name == "search_protocols":
         query = str(args.get("query", "")).strip().lower()
         limit = max(1, min(50, int(args.get("limit", 10))))
@@ -256,6 +266,7 @@ def main():
                     "baseforge://capabilities": client.get_capabilities,
                     "baseforge://catalog": client.get_data_catalog,
                     "baseforge://metrics": client.get_metric_definitions,
+                    "baseforge://usage": client.get_usage,
                 }
                 if uri not in readers:
                     send_error(req_id, -32602, f"Unknown resource URI: {uri}")
