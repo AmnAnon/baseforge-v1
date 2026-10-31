@@ -162,6 +162,15 @@ Interactive API reference with example payloads, query patterns, token estimates
 
 ---
 
+### GET `/api/v1/usage`
+
+Requires a valid `X-API-Key`. Returns usage statistics for the authenticated key only, including 24-hour and seven-day request counts, endpoint distribution, status breakdown, latency and current rolling quota state. Responses include:
+
+- `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- `X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset`
+
+Initial rolling 24-hour quotas are tier-based: free 1,000, pro 20,000 and enterprise 100,000 requests. Per-minute limits remain configurable per key. Production enforcement uses the shared Postgres rate-limit store; if that store is unavailable, authenticated API-key requests fail closed with HTTP 503.
+
 ## Agent context query
 
 ### POST `/api/v1/context/query`
