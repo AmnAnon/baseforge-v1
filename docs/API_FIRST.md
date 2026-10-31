@@ -1,5 +1,7 @@
 # BaseForge API-first foundation
 
+
+
 ## Phase 2: Agent context and canonical entity resolution
 
 ### Context query
@@ -93,3 +95,38 @@ The request ID is echoed from `X-Request-Id` when supplied (bounded to 128 chara
 ### Not included in Phase 1
 
 The context query endpoint, canonical entity resolver, provenance/freshness engine, MCP adapter changes, SDKs, API-key scopes and persistent quota accounting are subsequent milestones.
+
+## Phase 3: Agent interoperability and SDKs
+
+### MCP server
+
+The Node.js and Python stdio MCP servers expose discovery and context operations as tools:
+
+- `get_api_capabilities`
+- `get_data_catalog`
+- `get_metric_definitions`
+- `search_protocols`
+- `get_protocol_context`
+
+The existing BaseForge tools remain available. Read-only MCP resources are exposed at:
+
+- `baseforge://capabilities`
+- `baseforge://catalog`
+- `baseforge://metrics`
+
+The context tool calls the versioned API rather than reimplementing protocol resolution or risk calculations. MCP responses preserve the API envelope and provenance metadata.
+
+### SDKs
+
+- Python SDK version 0.3.0: synchronous and asynchronous discovery methods plus protocol context queries.
+- TypeScript SDK source: `packages/typescript`, with discovery methods, context queries and structured `BaseForgeApiError` exceptions.
+
+Both SDKs retain the `data/meta` envelope. The TypeScript package is source-controlled in this repository and is not claimed to be published to npm yet.
+
+### Agent skill
+
+`docs/AGENT_SKILL.md` provides reusable agent instructions covering discovery, entity resolution, provenance, quality, ambiguity handling and safety.
+
+### Interoperability policy
+
+MCP and SDKs are adapters over the same versioned REST contract. They must not duplicate provider ingestion, metric calculations or risk methodology.
