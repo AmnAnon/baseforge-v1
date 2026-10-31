@@ -287,8 +287,8 @@ export async function GET(req: Request) {
   // ── Tiered auth ─────────────────────────────────────────────
   let tier = "public";
   let rateLimitLimit = 10;
-  let rateLimitRemaining = 0;
-  let rateLimitResetAt = Date.now() + 60_000;
+  const rateLimitRemaining = 0;
+  const rateLimitResetAt = Date.now() + 60_000;
 
   const providedKey = req.headers.get("x-api-key");
 
