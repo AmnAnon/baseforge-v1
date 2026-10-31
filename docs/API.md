@@ -6,6 +6,7 @@ The machine-readable discovery surface is available under `/api/v1`:
 - `GET /api/v1/capabilities` — capability and operation registry
 - `GET /api/v1/catalog` — supported networks and data domains
 - `GET /api/v1/metrics` — metric definitions, units, sources and limitations
+- `GET /api/v1/usage` — authenticated per-key usage and quota state
 - `GET /api/v1/openapi.json` — OpenAPI 3.1 document
 
 These endpoints return a `{ data, meta }` envelope (except the raw OpenAPI document). Existing `/api/*` routes retain their current response formats for backward compatibility. See [API-first foundation](./API_FIRST.md) for the contract and compatibility policy.
