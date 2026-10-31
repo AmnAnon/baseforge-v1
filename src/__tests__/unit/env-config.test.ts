@@ -11,6 +11,7 @@ import {
 describe("resolveCacheBackend", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv("DATABASE_URL", "");
   });
 
   afterEach(() => {
