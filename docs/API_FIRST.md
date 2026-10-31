@@ -130,3 +130,32 @@ Both SDKs retain the `data/meta` envelope. The TypeScript package is source-cont
 ### Interoperability policy
 
 MCP and SDKs are adapters over the same versioned REST contract. They must not duplicate provider ingestion, metric calculations or risk methodology.
+
+
+## Phase 4: Security, quotas and developer usage
+
+### API key enforcement
+
+The existing admin API key management endpoints remain the key lifecycle surface. Production per-key limits now use the shared Postgres rate-limit store rather than process-local counters. The limiter fails closed when the shared store is unavailable.
+
+Initial rolling 24-hour quotas are configured by tier:
+
+| Tier | Requests per 24 hours |
+|---|---:|
+| Free | 1,000 |
+| Pro | 20,000 |
+| Enterprise | 100,000 |
+
+The existing per-minute limit remains configurable per API key. Successful authenticated responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-Quota-Limit`, `X-Quota-Remaining` and `X-Quota-Reset`.
+
+### Per-key usage
+
+`GET /api/v1/usage` requires `X-API-Key` and returns only the authenticated key's own usage totals, latency, endpoint distribution, status breakdown and quota state.
+
+### Honest telemetry
+
+The public aggregate usage endpoint no longer fabricates baseline request counts, client adoption or success rates when the database is empty. Empty databases return real zero/empty values; database failures return HTTP 503 with an unavailable status.
+
+### Current scope boundary
+
+API-key scopes and subscription billing are not added in this phase because the current key schema does not yet contain scope or billing fields. Adding those requires a separately reviewed database migration and policy model. The current tiers enforce request limits only.
