@@ -138,6 +138,9 @@ jobs:
             sleep 2
           done
 
+      - name: Create test database schema
+        run: npx drizzle-kit push --force
+
       - name: Run tests with coverage
         run: npm run test:coverage
 
