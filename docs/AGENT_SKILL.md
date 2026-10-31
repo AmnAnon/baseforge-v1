@@ -49,6 +49,10 @@ Supported context sections:
 
 Public access is available for discovery and context queries. An optional API key may be sent in the `X-API-Key` header for account-level usage tracking and applicable higher limits. Do not expose API keys in prompts, logs or tool output.
 
+## API usage
+
+An API key holder can call `GET /api/v1/usage` to inspect only that key's request totals, endpoint breakdown and remaining rolling quotas. Preserve the `X-RateLimit-*` and `X-Quota-*` response headers when building clients. This endpoint requires `X-API-Key`.
+
 ## MCP
 
 For MCP-compatible clients, use the BaseForge MCP server. Its discovery tools include `get_api_capabilities`, `get_data_catalog`, `get_metric_definitions`, `search_protocols` and `get_protocol_context`. Read-only MCP resources are available at `baseforge://capabilities`, `baseforge://catalog` and `baseforge://metrics`.
