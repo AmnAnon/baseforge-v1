@@ -62,7 +62,7 @@ class AsyncBaseForgeClient:
             response = await client.get(path)
             response.raise_for_status()
             payload = response.json()
-            return payload.get("data", payload)
+            return payload
 
     async def get_capabilities(self) -> Dict[str, Any]:
         """Discover versioned API capabilities and supported operations."""
@@ -98,7 +98,7 @@ class AsyncBaseForgeClient:
             response = await client.post("/api/v1/context/query", json=payload)
             response.raise_for_status()
             result = response.json()
-            return result.get("data", result)
+            return result
 
     async def dispatch_webhook(
         self,
