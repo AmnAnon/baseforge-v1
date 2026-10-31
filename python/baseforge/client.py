@@ -78,6 +78,10 @@ class BaseForgeClient:
         """Get metric units, sources, calculations and interpretation caveats."""
         return self._get_v1_data("/api/v1/metrics")
 
+    def get_usage(self) -> Dict[str, Any]:
+        """Retrieve usage and rolling quota information for the authenticated API key."""
+        return self._get_v1_data("/api/v1/usage")
+
     def get_protocol_context(
         self,
         entity_id: Optional[str] = None,
