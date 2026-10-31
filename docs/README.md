@@ -6,6 +6,7 @@ Professional documentation for the BaseForge Analytics platform.
 
 | Document | Description |
 |---|---|
+| [API-first Foundation](./API_FIRST.md) | Versioned discovery API, capabilities, metric semantics and compatibility policy |
 | [API Reference](./API.md) | Complete reference for all `/api/` routes with request/response examples |
 | [Architecture](./ARCHITECTURE.md) | System architecture, data flow diagrams, and component overview |
 | [Data Sources](./DATA_SOURCES.md) | Current and planned data sources, indexer comparison |
