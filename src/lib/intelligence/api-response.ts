@@ -47,7 +47,8 @@ export function apiError(
 
 
 export async function apiErrorFromResponse(response: Response, request?: Request) {
-  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  const body: unknown = await response.json().catch(() => ({}));
+  const payload = body && typeof body === "object" ? body as Record<string, unknown> : {};
   const rawError = payload.error;
   const errorObject = rawError && typeof rawError === "object"
     ? rawError as Record<string, unknown>
