@@ -1,5 +1,49 @@
 # BaseForge API-first foundation
 
+## Phase 2: Agent context and canonical entity resolution
+
+### Context query
+
+`POST /api/v1/context/query` accepts a protocol name, slug or canonical ID and returns a selected context bundle.
+
+Request:
+
+```json
+{
+  "entity": {
+    "type": "protocol",
+    "id": "aerodrome",
+    "network": "base"
+  },
+  "include": ["overview", "tvl", "risk", "whales"]
+}
+```
+
+Supported context sections:
+
+- `overview`: canonical entity identity and provider metadata
+- `tvl`: Base TVL and provider-reported 24h/7d/30d changes
+- `risk`: BaseForge heuristic health/risk score and factors
+- `whales`: indexed large-wallet events when available
+
+### Entity identifiers
+
+Protocol identifiers use the stable network-scoped form `protocol:base:{slug}`. The resolver accepts provider slugs, protocol names and canonical IDs. Partial matches return candidate choices instead of silently selecting one. The initial resolver covers protocols with positive reported Base TVL; token, wallet, contract and transaction entity types are future extensions.
+
+### Provenance and quality
+
+Each context section includes its source, observation time, age/freshness and a quality classification. Risk is explicitly labeled as a BaseForge-derived heuristic. Whale event coverage is labeled as indexed data and may be partial or unavailable when providers do not return matching events.
+
+The query endpoint accepts public requests and optional `X-API-Key` authentication. It applies the existing IP rate limiter and records usage for authenticated keys.
+
+### Current scope limitations
+
+- The first context builder supports protocol entities on Base only.
+- Historical time-series context and cross-entity relationship traversal are not yet included.
+- The resolver uses the provider-backed protocol directory; it is not yet a general token/address registry.
+
+---
+
 ## Phase 1: Discovery and contract foundations
 
 The first API-first milestone adds a stable, machine-readable discovery surface without changing existing dashboard or legacy API contracts.
