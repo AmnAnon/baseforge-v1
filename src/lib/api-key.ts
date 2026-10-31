@@ -103,7 +103,7 @@ async function findKeyByHash(hash: string): Promise<ApiKeyRecord | null> {
 
 // ─── Rate limiting per key (via Postgres rate_limits table or in-memory) ──
 
-import { createApiKeyLimiter, type RateLimitResult } from "./rate-limit";
+import { createApiKeyLimiter } from "./rate-limit";
 
 // Per-key rate limiters cached by key ID
 const keyLimiters = new Map<string, { limit: number; limiter: ReturnType<typeof createApiKeyLimiter> }>();
