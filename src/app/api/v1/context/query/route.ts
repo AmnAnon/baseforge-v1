@@ -1,4 +1,4 @@
-import { apiError, apiSuccess } from "@/lib/intelligence/api-response";
+import { apiError, apiErrorFromResponse, apiSuccess } from "@/lib/intelligence/api-response";
 import { apiKeyMiddleware } from "@/lib/api-key";
 import { rateLimiterMiddleware } from "@/lib/rate-limit";
 import { buildProtocolContext, type ProtocolContextSection } from "@/lib/intelligence/context-builder";
@@ -24,10 +24,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const startedAt = Date.now();
   const rateResponse = await rateLimiterMiddleware()(request);
-  if (rateResponse) return rateResponse;
+  if (rateResponse) return apiErrorFromResponse(rateResponse, request);
 
   const auth = await apiKeyMiddleware(request, { required: false, endpoint: "v1-context-query" });
-  if (auth.response) return auth.response;
+  if (auth.response) return apiErrorFromResponse(auth.response, request);
 
   let rawBody: unknown;
   try {
