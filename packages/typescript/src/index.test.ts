@@ -36,6 +36,17 @@ describe("BaseForge TypeScript SDK", () => {
     })).rejects.toMatchObject({ status: 404, code: "entity_not_found" });
   });
 
+  it("retrieves authenticated per-key usage and quota information", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { usage: { requests24h: 12 }, limits: { requestsPer24h: 1000 } },
+      meta: { apiVersion: "1.0.0", generatedAt: "2026-10-31T00:00:00.000Z", requestId: "req-usage" },
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const client = new BaseForgeClient({ fetch: fetcher as typeof fetch, apiKey: "test-key" });
+    const result = await client.getUsage();
+    expect(result.data.usage).toMatchObject({ requests24h: 12 });
+    expect(result.meta.requestId).toBe("req-usage");
+  });
+
   it("rejects context queries without an entity identifier", () => {
     const client = new BaseForgeClient({ fetch: vi.fn() as typeof fetch });
     expect(() => client.getProtocolContext({ entity: { type: "protocol" } })).toThrow(TypeError);
