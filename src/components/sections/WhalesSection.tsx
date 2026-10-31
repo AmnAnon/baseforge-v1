@@ -528,7 +528,7 @@ export default function WhalesSection() {
   // Filtered transactions
   const filteredWhales = useMemo(() => {
     let list = data?.whales || [];
-    const cutoff = Date.now() - timeWindow * 60_000;
+    const cutoff = (data?.timestamp ?? 0) - timeWindow * 60_000;
     list = list.filter((w) => new Date(w.timestamp).getTime() >= cutoff);
     if (filterType !== "all") list = list.filter((w) => w.type === filterType);
     if (filterIntent !== "all") list = list.filter((w) => w.intent === filterIntent);
