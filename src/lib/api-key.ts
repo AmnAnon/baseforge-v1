@@ -180,6 +180,7 @@ export async function apiKeyMiddleware(
   options: ApiKeyMiddlewareOptions = {}
 ): Promise<ApiKeyResult> {
   const { required = false, endpoint = "unknown" } = options;
+  const middlewareStartedAt = Date.now();
 
   const rawKey = extractApiKey(req);
 
@@ -242,6 +243,16 @@ export async function apiKeyMiddleware(
     };
   }
 
+  const recordUsage = (statusCode: number) => trackUsage({
+    keyId: keyRecord.id,
+    endpoint,
+    method: req.method,
+    statusCode,
+    latencyMs: Date.now() - middlewareStartedAt,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? "unknown",
+    userAgent: req.headers.get("user-agent") ?? "unknown",
+  });
+
   // Per-key requests-per-minute limit (Postgres-backed in production).
   const limiter = getKeyLimiter(keyRecord.id, keyRecord.rateLimit);
   const rateKey = `apikey:${keyRecord.id}`;
@@ -259,6 +270,7 @@ export async function apiKeyMiddleware(
   }
 
   if (!rateResult.allowed) {
+    recordUsage(429);
     return {
       key: keyRecord,
       response: new Response(JSON.stringify({
@@ -295,6 +307,7 @@ export async function apiKeyMiddleware(
   }
 
   if (!dailyResult.allowed) {
+    recordUsage(429);
     return {
       key: keyRecord,
       response: new Response(JSON.stringify({
