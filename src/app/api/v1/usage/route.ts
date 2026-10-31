@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, sql } from "drizzle-orm";
 import { apiKeyMiddleware } from "@/lib/api-key";
-import { apiError, apiSuccess } from "@/lib/intelligence/api-response";
+import { apiError, apiErrorFromResponse, apiSuccess } from "@/lib/intelligence/api-response";
 import { db } from "@/lib/db/client";
 import { apiKeyUsage } from "@/lib/db/schema";
 import { logger } from "@/lib/logger";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const startedAt = Date.now();
   const auth = await apiKeyMiddleware(request, { required: true, endpoint: "v1-usage" });
-  if (auth.response) return auth.response;
+  if (auth.response) return apiErrorFromResponse(auth.response, request);
   if (!auth.key) return apiError("api_key_required", "A valid API key is required.", 401, request);
 
   try {
