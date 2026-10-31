@@ -26,7 +26,7 @@ class BaseForgeClient:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._headers = {"User-Agent": "BaseForge-Python-SDK/0.2.0"}
+        self._headers = {"User-Agent": "BaseForge-Python-SDK/0.3.0"}
         if self.api_key:
             self._headers["x-api-key"] = self.api_key
 
