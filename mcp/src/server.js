@@ -153,7 +153,7 @@ TOOLS.push(
       type: "object",
       required: ["query"],
       properties: {
-        query: { type: "string", description: "Protocol name, slug or category to search." },
+        query: { type: "string", minLength: 1, description: "Protocol name, slug or category to search." },
         limit: { type: "integer", minimum: 1, maximum: 50, default: 10 },
       },
     },
