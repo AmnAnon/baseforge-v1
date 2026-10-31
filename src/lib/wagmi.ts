@@ -14,14 +14,13 @@ const dataSuffix = getBuilderDataSuffix();
 
 export const wagmiConfig = createConfig({
   chains: [base],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   connectors: [
-    injected() as any,
-    metaMask() as any,
+    injected(),
+    metaMask(),
     coinbaseWallet({
       appName: "BaseForge",
       appLogoUrl: `${baseUrl}/icon.png`,
-    }) as any,
+    }),
   ],
   transports: {
     [base.id]: http(),
