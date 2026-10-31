@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BaseForgeApiError, BaseForgeClient } from "./index";
+import { BaseForgeClient } from "./index";
 
 describe("BaseForge TypeScript SDK", () => {
   it("queries the versioned context API and preserves the envelope", async () => {
@@ -33,7 +33,7 @@ describe("BaseForge TypeScript SDK", () => {
 
     await expect(client.getProtocolContext({
       entity: { type: "protocol", id: "missing" },
-    })).rejects.toMatchObject<BaseForgeApiError>({ status: 404, code: "entity_not_found" });
+    })).rejects.toMatchObject({ status: 404, code: "entity_not_found" });
   });
 
   it("rejects context queries without an entity identifier", () => {
