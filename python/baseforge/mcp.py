@@ -78,6 +78,52 @@ TOOLS = [
     },
 ]
 
+TOOLS.extend([
+    {
+        "name": "get_api_capabilities",
+        "description": "Discover BaseForge API capabilities, operations, access requirements and data domains.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_data_catalog",
+        "description": "List supported networks and BaseForge data domains.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_metric_definitions",
+        "description": "Explain metric units, sources, calculation methods and limitations.",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_protocol_context",
+        "description": "Resolve a Base protocol and assemble overview, TVL, risk and optional whale context.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "entity_id": {"type": "string"},
+                "entity_name": {"type": "string"},
+                "include": {"type": "array", "items": {"type": "string", "enum": ["overview", "tvl", "risk", "whales"]}},
+            },
+            "anyOf": [{"required": ["entity_id"]}, {"required": ["entity_name"]}],
+        },
+    },
+    {
+        "name": "search_protocols",
+        "description": "Search the current Base protocol directory by name, slug or category.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["query"],
+            "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}},
+        },
+    },
+])
+
+RESOURCES = [
+    {"uri": "baseforge://capabilities", "name": "BaseForge API capabilities", "description": "Registered API operations and access requirements.", "mimeType": "application/json"},
+    {"uri": "baseforge://catalog", "name": "BaseForge data catalog", "description": "Supported networks and data domains.", "mimeType": "application/json"},
+    {"uri": "baseforge://metrics", "name": "BaseForge metric dictionary", "description": "Metric definitions, units, sources and limitations.", "mimeType": "application/json"},
+]
+
 
 def send_response(req_id: Any, result: Dict[str, Any]):
     msg = json.dumps({"jsonrpc": "2.0", "id": req_id, "result": result})
@@ -129,6 +175,36 @@ def handle_tool_call(client: BaseForgeClient, name: str, args: Dict[str, Any]) -
         overview = client.get_market_overview()
         return {"content": [{"type": "text", "text": json.dumps(overview.model_dump(by_alias=True) if overview else {}, indent=2)}]}
 
+    elif name == "get_api_capabilities":
+        return {"content": [{"type": "text", "text": json.dumps(client.get_capabilities(), indent=2)}]}
+
+    elif name == "get_data_catalog":
+        return {"content": [{"type": "text", "text": json.dumps(client.get_data_catalog(), indent=2)}]}
+
+    elif name == "get_metric_definitions":
+        return {"content": [{"type": "text", "text": json.dumps(client.get_metric_definitions(), indent=2)}]}
+
+    elif name == "get_protocol_context":
+        context = client.get_protocol_context(
+            entity_id=args.get("entity_id"),
+            entity_name=args.get("entity_name"),
+            include=args.get("include"),
+        )
+        return {"content": [{"type": "text", "text": json.dumps(context, indent=2)}]}
+
+    elif name == "search_protocols":
+        query = str(args.get("query", "")).strip().lower()
+        limit = max(1, min(50, int(args.get("limit", 10))))
+        protocols = client.get_top_protocols(top=50)
+        matches = [
+            protocol.model_dump(by_alias=True)
+            for protocol in protocols
+            if query in (protocol.name or "").lower()
+            or query in protocol.id.lower()
+            or query in (protocol.cat or "").lower()
+        ][:limit]
+        return {"content": [{"type": "text", "text": json.dumps({"query": query, "count": len(matches), "protocols": matches}, indent=2)}]}
+
     else:
         raise ValueError(f"Unknown tool: {name}")
 
@@ -161,7 +237,10 @@ def main():
                     req_id,
                     {
                         "protocolVersion": PROTOCOL_VERSION,
-                        "capabilities": {"tools": {"listChanged": False}},
+                        "capabilities": {
+                            "tools": {"listChanged": False},
+                            "resources": {"listChanged": False},
+                        },
                         "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                     },
                 )
@@ -169,6 +248,20 @@ def main():
                 send_response(req_id, {})
             elif method == "tools/list":
                 send_response(req_id, {"tools": TOOLS})
+            elif method == "resources/list":
+                send_response(req_id, {"resources": RESOURCES})
+            elif method == "resources/read":
+                uri = params.get("uri")
+                readers = {
+                    "baseforge://capabilities": client.get_capabilities,
+                    "baseforge://catalog": client.get_data_catalog,
+                    "baseforge://metrics": client.get_metric_definitions,
+                }
+                if uri not in readers:
+                    send_error(req_id, -32602, f"Unknown resource URI: {uri}")
+                    continue
+                value = readers[uri]()
+                send_response(req_id, {"contents": [{"uri": uri, "mimeType": "application/json", "text": json.dumps(value, indent=2)}]})
             elif method == "tools/call":
                 tool_name = params.get("name")
                 tool_args = params.get("arguments", {})
