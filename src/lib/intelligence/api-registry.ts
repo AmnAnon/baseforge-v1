@@ -66,6 +66,15 @@ export const CAPABILITIES: ApiCapability[] = [
   },
 ];
 
+CAPABILITIES.push({
+  id: "developer_platform",
+  name: "Developer platform",
+  description: "Authenticated API key usage and quota visibility.",
+  operations: [
+    { id: "get_my_usage", method: "GET", path: "/api/v1/usage", description: "Retrieve usage and current rate/quota limits for the authenticated API key.", auth: "api_key", dataDomains: ["usage", "quotas"] },
+  ],
+});
+
 export const NETWORK_CATALOG = [
   {
     id: "base",
@@ -230,7 +239,7 @@ export const OPENAPI_DOCUMENT = {
         responses: { "200": { description: "Metric definitions." } },
       },
     },
-    "/api/v1/context/query": {
+    "/api/v1/usage": {\n      get: {\n        tags: ["Discovery"],\n        summary: "Retrieve usage analytics for the authenticated API key",\n        responses: { "200": { description: "Per-key request totals, endpoint distribution and quota state." }, "401": { description: "API key required." }, "429": { description: "Rate limit or rolling 24-hour quota exceeded." } },\n      },\n    },\n    "/api/v1/context/query": {
       post: {
         tags: ["Discovery"],
         summary: "Resolve a protocol and assemble an agent context bundle",
