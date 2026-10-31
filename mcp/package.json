@@ -1,6 +1,6 @@
 {
   "name": "@baseforge/mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Official Model Context Protocol (MCP) Server for BaseForge — Base Network Onchain DeFi Intelligence & Transaction Engine for Claude, Cursor, and AI Agents",
   "main": "./src/server.js",
   "type": "module",
@@ -35,4 +35,4 @@
     "node": ">=18.0.0"
   },
   "exports": "./src/server.js"
-}
+}\n
