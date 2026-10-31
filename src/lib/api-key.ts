@@ -106,8 +106,8 @@ async function findKeyByHash(hash: string): Promise<ApiKeyRecord | null> {
 import { createApiKeyLimiter, type RateLimitResult } from "./rate-limit";
 
 // Per-key rate limiters cached by key ID
-const keyLimiters = new Map<string, ReturnType<typeof createApiKeyLimiter>>();
-const dailyLimiters = new Map<string, ReturnType<typeof createApiKeyLimiter>>();
+const keyLimiters = new Map<string, { limit: number; limiter: ReturnType<typeof createApiKeyLimiter> }>();
+const dailyLimiters = new Map<string, { limit: number; limiter: ReturnType<typeof createApiKeyLimiter> }>();
 
 const DAILY_QUOTAS = {
   free: 1_000,
@@ -116,14 +116,16 @@ const DAILY_QUOTAS = {
 } as const;
 
 function getKeyLimiter(keyId: string, rpm: number) {
-  if (!keyLimiters.has(keyId)) keyLimiters.set(keyId, createApiKeyLimiter(rpm));
-  return keyLimiters.get(keyId)!;
+  const current = keyLimiters.get(keyId);
+  if (!current || current.limit !== rpm) keyLimiters.set(keyId, { limit: rpm, limiter: createApiKeyLimiter(rpm) });
+  return keyLimiters.get(keyId)!.limiter;
 }
 
 function getDailyLimiter(keyId: string, tier: string) {
   const quota = DAILY_QUOTAS[tier as keyof typeof DAILY_QUOTAS] ?? DAILY_QUOTAS.free;
-  if (!dailyLimiters.has(keyId)) dailyLimiters.set(keyId, createApiKeyLimiter(quota, 24 * 60 * 60 * 1000));
-  return { limiter: dailyLimiters.get(keyId)!, quota };
+  const current = dailyLimiters.get(keyId);
+  if (!current || current.limit !== quota) dailyLimiters.set(keyId, { limit: quota, limiter: createApiKeyLimiter(quota, 24 * 60 * 60 * 1000) });
+  return { limiter: dailyLimiters.get(keyId)!.limiter, quota };
 }
 
 // ─── Usage tracking (fire-and-forget) ───────────────────────────
@@ -152,6 +154,7 @@ export interface ApiKeyResult {
   response: Response | null;
   /** Helper: track usage after the response is built. */
   trackUsage: (statusCode: number, latencyMs: number, req: Request) => void;
+  rateLimitHeaders?: Record<string, string>;
 }
 
 function extractApiKey(req: Request): string | null {
@@ -191,7 +194,13 @@ export async function apiKeyMiddleware(
   }
 
   const hash = sha256(rawKey);
-  const keyRecord = await findKeyByHash(hash);
+  let keyRecord: ApiKeyRecord | null;
+  try {
+    keyRecord = await findKeyByHash(hash);
+  } catch (error) {
+    logger.error("API key lookup failed", { error: error instanceof Error ? error.message : String(error) });
+    return { key: null, response: new Response(JSON.stringify({ error: "authentication_unavailable" }), { status: 503, headers: { "Content-Type": "application/json", "Retry-After": "30" } }), trackUsage: () => {} };
+  }
 
   if (!keyRecord) {
     return {
@@ -229,45 +238,99 @@ export async function apiKeyMiddleware(
     };
   }
 
-  // Per-key rate limit check
+  // Per-key requests-per-minute limit (Postgres-backed in production).
   const limiter = getKeyLimiter(keyRecord.id, keyRecord.rateLimit);
   const rateKey = `apikey:${keyRecord.id}`;
-  const rateResult = limiter.check(rateKey);
+  const rateResult = await limiter.check(rateKey);
 
-  if (!rateResult.allowed) {
+  if (rateResult.unavailable) {
     return {
       key: keyRecord,
-      response: new Response(
-        JSON.stringify({
-          error: "Rate limit exceeded",
-          detail: `Key "${keyRecord.name}" (${keyRecord.tier}) exceeded ${keyRecord.rateLimit} req/min`,
-          retryAfter: rateResult.retryAfter,
-          tier: keyRecord.tier,
-          upgrade: "Contact admin to upgrade your API key tier",
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": String(rateResult.retryAfter ?? 60),
-            "X-RateLimit-Limit": String(keyRecord.rateLimit),
-            "X-RateLimit-Remaining": "0",
-          },
-        }
-      ),
+      response: new Response(JSON.stringify({ error: "rate_limit_service_unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "30" },
+      }),
       trackUsage: () => {},
     };
   }
 
+  if (!rateResult.allowed) {
+    return {
+      key: keyRecord,
+      response: new Response(JSON.stringify({
+        error: "Rate limit exceeded",
+        detail: `Key "${keyRecord.name}" (${keyRecord.tier}) exceeded ${keyRecord.rateLimit} requests per minute`,
+        retryAfter: rateResult.retryAfter,
+        tier: keyRecord.tier,
+      }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": String(rateResult.retryAfter ?? 60),
+          "X-RateLimit-Limit": String(keyRecord.rateLimit),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(rateResult.resetAfter ?? 60),
+        },
+      }),
+      trackUsage: () => {},
+    };
+  }
+
+  // Rolling 24-hour quota, separately keyed from the per-minute limiter.
+  const daily = getDailyLimiter(keyRecord.id, keyRecord.tier);
+  const dailyResult = await daily.limiter.check(`apikey-daily:${keyRecord.id}`);
+  if (dailyResult.unavailable) {
+    return {
+      key: keyRecord,
+      response: new Response(JSON.stringify({ error: "quota_service_unavailable" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "30" },
+      }),
+      trackUsage: () => {},
+    };
+  }
+
+  if (!dailyResult.allowed) {
+    return {
+      key: keyRecord,
+      response: new Response(JSON.stringify({
+        error: "Daily quota exceeded",
+        quota: daily.quota,
+        retryAfter: dailyResult.retryAfter,
+        tier: keyRecord.tier,
+      }), {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": String(dailyResult.retryAfter ?? 60),
+          "X-Quota-Limit": String(daily.quota),
+          "X-Quota-Remaining": "0",
+          "X-Quota-Reset": String(dailyResult.resetAfter ?? 60),
+        },
+      }),
+      trackUsage: () => {},
+    };
+  }
+
+  const rateLimitHeaders = {
+    "X-RateLimit-Limit": String(keyRecord.rateLimit),
+    "X-RateLimit-Remaining": String(rateResult.remaining ?? 0),
+    "X-RateLimit-Reset": String(rateResult.resetAfter ?? 60),
+    "X-Quota-Limit": String(daily.quota),
+    "X-Quota-Remaining": String(dailyResult.remaining ?? 0),
+    "X-Quota-Reset": String(dailyResult.resetAfter ?? 86400),
+  };
+
   // Update last used + total requests (fire-and-forget)
   db.update(apiKeys)
-    .set({ lastUsedAt: new Date(), totalRequests: keyRecord.totalRequests + 1 })
+    .set({ lastUsedAt: new Date(), totalRequests: sql`${apiKeys.totalRequests} + 1` })
     .where(eq(apiKeys.id, keyRecord.id))
     .catch(() => {});
 
   return {
     key: keyRecord,
     response: null,
+    rateLimitHeaders,
     trackUsage: (statusCode: number, latencyMs: number, request: Request) => {
       trackUsage({
         keyId: keyRecord.id,
