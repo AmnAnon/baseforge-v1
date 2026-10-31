@@ -72,6 +72,15 @@ print(protocol["data"]["entity"]["id"])
 print(protocol["data"]["sections"]["tvl"])
 ```
 
+
+Usage analytics for the configured key:
+
+```python
+usage = client.get_usage()
+print(usage["data"]["usage"]["requests24h"])
+print(usage["data"]["limits"]["remainingPer24h"])
+```
+
 The async client exposes the same methods:
 
 ```python
