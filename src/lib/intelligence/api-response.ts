@@ -16,17 +16,18 @@ function responseMeta(request?: Request): ApiResponseMeta {
   };
 }
 
-function responseHeaders(meta: ApiResponseMeta) {
+function responseHeaders(meta: ApiResponseMeta, extraHeaders?: Record<string, string>) {
   return {
     "Cache-Control": "no-store",
     "X-API-Version": API_VERSION,
     "X-Request-Id": meta.requestId,
+    ...extraHeaders,
   };
 }
 
-export function apiSuccess<T>(data: T, request?: Request, status = 200) {
+export function apiSuccess<T>(data: T, request?: Request, status = 200, extraHeaders?: Record<string, string>) {
   const meta = responseMeta(request);
-  return NextResponse.json({ data, meta }, { status, headers: responseHeaders(meta) });
+  return NextResponse.json({ data, meta }, { status, headers: responseHeaders(meta, extraHeaders) });
 }
 
 export function apiError(
@@ -35,10 +36,11 @@ export function apiError(
   status: number,
   request?: Request,
   details?: Record<string, unknown>,
+  extraHeaders?: Record<string, string>,
 ) {
   const meta = responseMeta(request);
   return NextResponse.json(
     { error: { code, message, ...details }, meta },
-    { status, headers: responseHeaders(meta) },
+    { status, headers: responseHeaders(meta, extraHeaders) },
   );
 }
