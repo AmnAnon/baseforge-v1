@@ -16,7 +16,7 @@ import { createHash, randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { db } from "./db/client";
 import { apiKeys, apiKeyUsage, NewApiKey, NewApiKeyUsage } from "./db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
 // ─── Config ──────────────────────────────────────────────────────
@@ -93,30 +93,37 @@ interface ApiKeyRecord {
 }
 
 async function findKeyByHash(hash: string): Promise<ApiKeyRecord | null> {
-  try {
-    const results = await db
-      .select()
-      .from(apiKeys)
-      .where(and(eq(apiKeys.key, hash), isNull(apiKeys.revokedAt), eq(apiKeys.enabled, true)))
-      .limit(1);
-    return results[0] ?? null;
-  } catch {
-    return null;
-  }
+  const results = await db
+    .select()
+    .from(apiKeys)
+    .where(and(eq(apiKeys.key, hash), isNull(apiKeys.revokedAt), eq(apiKeys.enabled, true)))
+    .limit(1);
+  return results[0] ?? null;
 }
 
 // ─── Rate limiting per key (via Postgres rate_limits table or in-memory) ──
 
-import { RateLimiter } from "./rate-limit";
+import { createApiKeyLimiter, type RateLimitResult } from "./rate-limit";
 
 // Per-key rate limiters cached by key ID
-const keyLimiters = new Map<string, RateLimiter>();
+const keyLimiters = new Map<string, ReturnType<typeof createApiKeyLimiter>>();
+const dailyLimiters = new Map<string, ReturnType<typeof createApiKeyLimiter>>();
 
-function getKeyLimiter(keyId: string, rpm: number): RateLimiter {
-  if (!keyLimiters.has(keyId)) {
-    keyLimiters.set(keyId, new RateLimiter({ windowMs: 60_000, maxRequests: rpm }));
-  }
+const DAILY_QUOTAS = {
+  free: 1_000,
+  pro: 20_000,
+  enterprise: 100_000,
+} as const;
+
+function getKeyLimiter(keyId: string, rpm: number) {
+  if (!keyLimiters.has(keyId)) keyLimiters.set(keyId, createApiKeyLimiter(rpm));
   return keyLimiters.get(keyId)!;
+}
+
+function getDailyLimiter(keyId: string, tier: string) {
+  const quota = DAILY_QUOTAS[tier as keyof typeof DAILY_QUOTAS] ?? DAILY_QUOTAS.free;
+  if (!dailyLimiters.has(keyId)) dailyLimiters.set(keyId, createApiKeyLimiter(quota, 24 * 60 * 60 * 1000));
+  return { limiter: dailyLimiters.get(keyId)!, quota };
 }
 
 // ─── Usage tracking (fire-and-forget) ───────────────────────────
