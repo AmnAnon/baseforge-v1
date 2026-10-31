@@ -150,7 +150,7 @@ The existing per-minute limit remains configurable per API key. Successful authe
 
 ### Per-key usage
 
-`GET /api/v1/usage` requires `X-API-Key` and returns only the authenticated key's own usage totals, latency, endpoint distribution, status breakdown and quota state.
+`GET /api/v1/usage` requires `X-API-Key` and returns only the authenticated key's own usage totals, latency, endpoint distribution, status breakdown and quota state. The Node.js and Python MCP servers expose this as `get_my_api_usage` and the authenticated `baseforge://usage` resource. Both SDKs expose `getUsage()` / `get_usage()`.
 
 ### Honest telemetry
 
