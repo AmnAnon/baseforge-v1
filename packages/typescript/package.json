@@ -11,10 +11,14 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=18"
@@ -24,5 +28,9 @@
     "type": "git",
     "url": "https://github.com/AmnAnon/baseforge-v1",
     "directory": "packages/typescript"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.4"
   }
 }
