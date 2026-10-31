@@ -52,6 +52,35 @@ for intent in context.intents:
 
 ---
 
+## Versioned API discovery and protocol context
+
+The synchronous and asynchronous SDK clients expose the versioned discovery and context API. The methods preserve the complete `data/meta` envelope, including request IDs and generation timestamps.
+
+```python
+from baseforge import BaseForgeClient
+
+client = BaseForgeClient(api_key="optional-api-key")
+
+capabilities = client.get_capabilities()
+print(capabilities["data"]["capabilities"])
+
+protocol = client.get_protocol_context(
+    entity_id="aerodrome-slipstream",
+    include=["overview", "tvl", "risk"],
+)
+print(protocol["data"]["entity"]["id"])
+print(protocol["data"]["sections"]["tvl"])
+```
+
+The async client exposes the same methods:
+
+```python
+from baseforge import AsyncBaseForgeClient
+
+client = AsyncBaseForgeClient()
+protocol = await client.get_protocol_context(entity_name="Aerodrome Slipstream")
+```
+
 ## 🪝 Webhook Mode (Event-Driven AI Agents)
 
 Trigger cryptographic webhook callbacks from BaseForge to your agent server when market conditions, whale flows, or risk thresholds trigger:
