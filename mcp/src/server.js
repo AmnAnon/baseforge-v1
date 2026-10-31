@@ -175,12 +175,18 @@ TOOLS.push(
       anyOf: [{ required: ["entity_id"] }, { required: ["entity_name"] }],
     },
   },
+  {
+    name: "get_my_api_usage",
+    description: "Retrieve usage analytics and current rate/daily quota limits for the API key configured on this MCP server.",
+    inputSchema: { type: "object", properties: {} },
+  },
 );
 
 export const RESOURCES = [
   { uri: "baseforge://capabilities", name: "BaseForge API capabilities", description: "Registered API operations and access requirements.", mimeType: "application/json" },
   { uri: "baseforge://catalog", name: "BaseForge data catalog", description: "Supported networks and data domains.", mimeType: "application/json" },
   { uri: "baseforge://metrics", name: "BaseForge metric dictionary", description: "Metric definitions, units, sources and limitations.", mimeType: "application/json" },
+  { uri: "baseforge://usage", name: "API key usage", description: "Usage and rolling quota information for the configured API key.", mimeType: "application/json" },
 ];
 
 // ─── API Client Helper ────────────────────────────────────────────
@@ -361,6 +367,11 @@ export async function handleToolCall(name, args) {
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
+    case "get_my_api_usage": {
+      const data = await fetchFromBaseForge("/api/v1/usage");
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -374,6 +385,7 @@ export async function handleResourceRead(uri) {
     "baseforge://capabilities": "/api/v1/capabilities",
     "baseforge://catalog": "/api/v1/catalog",
     "baseforge://metrics": "/api/v1/metrics",
+    "baseforge://usage": "/api/v1/usage",
   };
   const path = paths[uri];
   if (!path) throw new Error(`Unknown resource URI: ${uri}`);
