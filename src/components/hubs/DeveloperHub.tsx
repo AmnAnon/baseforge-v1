@@ -164,7 +164,7 @@ export default function DeveloperHub() {
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as "ts" | "python" | "curl" )}
                   className={`px-3 py-1.5 rounded-lg transition-all font-mono font-medium ${
                     activeTab === tab.id
                       ? "bg-[var(--bf-neon-primary)] text-black font-bold shadow-md"
