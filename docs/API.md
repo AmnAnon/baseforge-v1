@@ -162,6 +162,35 @@ Interactive API reference with example payloads, query patterns, token estimates
 
 ---
 
+## Agent context query
+
+### POST `/api/v1/context/query`
+
+Resolve a Base protocol by name, provider slug or canonical entity ID, then assemble a structured context bundle.
+
+**Request:**
+
+```json
+{
+  "entity": { "type": "protocol", "id": "aerodrome", "network": "base" },
+  "include": ["overview", "tvl", "risk", "whales"]
+}
+```
+
+Use `entity.name` instead of `entity.id` when the caller has a display name. The `include` array accepts `overview`, `tvl`, `risk`, and `whales`; it defaults to the first three sections.
+
+**Canonical identifier:** `protocol:base:{slug}`
+
+**Resolution behavior:**
+- Exact name, slug and canonical-ID matches resolve to one entity.
+- Partial or ambiguous matches return HTTP 409 with candidate IDs.
+- Unknown entities return HTTP 404.
+- Invalid requests return HTTP 400.
+
+**Context quality:** each section reports its source and freshness. TVL is provider-reported. Risk is a BaseForge heuristic and is not an audit or probability of loss. Whale coverage depends on indexed provider availability.
+
+---
+
 ## Core Data Endpoints
 
 ### GET `/api/analytics`
