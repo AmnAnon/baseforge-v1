@@ -358,7 +358,7 @@ export async function handleToolCall(name, args) {
           include: args.include || ["overview", "tvl", "risk"],
         }),
       });
-      return { content: [{ type: "text", text: JSON.stringify(data.data ?? data, null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
     default:
