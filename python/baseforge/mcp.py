@@ -11,7 +11,7 @@ from .client import BaseForgeClient
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "baseforge-mcp-python"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 
 TOOLS = [
     {
