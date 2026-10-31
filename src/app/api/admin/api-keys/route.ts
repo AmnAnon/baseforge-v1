@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db/client";
 import { apiKeys, apiKeyUsage } from "@/lib/db/schema";
 import { eq, gte, desc, count } from "drizzle-orm";
-import { createApiKeyInDb } from "@/lib/api-key";
+import { createApiKeyInDb, getApiKeyDailyQuota } from "@/lib/api-key";
 import { adminAuthMiddleware } from "@/lib/admin-auth";
 import { z } from "zod";
 
@@ -67,6 +67,7 @@ async function handleGet() {
     keys: keys.map((k: Record<string, unknown> & { id: string }) => ({
       ...k,
       usage24h: usageMap.get(k.id) ?? 0,
+      dailyQuota: getApiKeyDailyQuota(String(k.tier)),
     })),
   });
   } catch (err) {
@@ -109,6 +110,7 @@ async function handlePost(req: Request) {
         name: record.name,
         tier: record.tier,
         rateLimit: record.rateLimit,
+        dailyQuota: getApiKeyDailyQuota(record.tier),
         createdAt: record.createdAt,
       },
     },
