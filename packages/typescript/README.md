@@ -40,6 +40,15 @@ console.log(context.data.sections.tvl);
 
 The SDK preserves the API's `data/meta` envelope so callers can retain request IDs and timestamps. Non-2xx responses throw `BaseForgeApiError` with the HTTP status and machine-readable error code when available.
 
+
+Authenticated usage:
+
+```ts
+const usage = await baseforge.getUsage();
+console.log(usage.data.usage);
+console.log(usage.data.limits);
+```
+
 ## Configuration
 
 | Option | Default | Purpose |
