@@ -1,7 +1,17 @@
 // src/__tests__/unit/cache.test.ts
 // Tests for the cache abstraction: memory driver, getOrFetch, stale fallback.
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+beforeEach(() => {
+  vi.stubEnv("DATABASE_URL", "");
+  vi.stubEnv("CACHE_BACKEND", "memory");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
+});
 
 describe("Memory Cache Backend", () => {
   it("stores and retrieves values", async () => {

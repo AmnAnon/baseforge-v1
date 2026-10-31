@@ -1,3 +1,18 @@
+## Versioned API discovery (Phase 1)
+
+The machine-readable discovery surface is available under `/api/v1`:
+
+- `GET /api/v1` — entry point and discovery links
+- `GET /api/v1/capabilities` — capability and operation registry
+- `GET /api/v1/catalog` — supported networks and data domains
+- `GET /api/v1/metrics` — metric definitions, units, sources and limitations
+- `GET /api/v1/usage` — authenticated per-key usage and quota state
+- `GET /api/v1/openapi.json` — OpenAPI 3.1 document
+
+These endpoints return a `{ data, meta }` envelope (except the raw OpenAPI document). Existing `/api/*` routes retain their current response formats for backward compatibility. See [API-first foundation](./API_FIRST.md) for the contract and compatibility policy.
+
+---
+
 # API Reference
 
 BaseForge exposes 30+ REST API routes. All routes are rate-limited (10 req/min per IP unless noted), return JSON, and include cache headers.
@@ -145,6 +160,44 @@ curl "https://baseforge.vercel.app/api/agents/context?include=protocols,risk,wha
 Interactive API reference with example payloads, query patterns, token estimates, and schema documentation.
 
 **Cache:** 1 hour
+
+---
+
+### GET `/api/v1/usage`
+
+Requires a valid `X-API-Key`. Returns usage statistics for the authenticated key only, including 24-hour and seven-day request counts, endpoint distribution, status breakdown, latency and current rolling quota state. Responses include:
+
+- `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+- `X-Quota-Limit`, `X-Quota-Remaining`, `X-Quota-Reset`
+
+Initial rolling 24-hour quotas are tier-based: free 1,000, pro 20,000 and enterprise 100,000 requests. Per-minute limits remain configurable per key. Production enforcement uses the shared Postgres rate-limit store; if that store is unavailable, authenticated API-key requests fail closed with HTTP 503.
+
+## Agent context query
+
+### POST `/api/v1/context/query`
+
+Resolve a Base protocol by name, provider slug or canonical entity ID, then assemble a structured context bundle.
+
+**Request:**
+
+```json
+{
+  "entity": { "type": "protocol", "id": "aerodrome", "network": "base" },
+  "include": ["overview", "tvl", "risk", "whales"]
+}
+```
+
+Use `entity.name` instead of `entity.id` when the caller has a display name. The `include` array accepts `overview`, `tvl`, `risk`, and `whales`; it defaults to the first three sections.
+
+**Canonical identifier:** `protocol:base:{slug}`
+
+**Resolution behavior:**
+- Exact name, slug and canonical-ID matches resolve to one entity.
+- Partial or ambiguous matches return HTTP 409 with candidate IDs.
+- Unknown entities return HTTP 404.
+- Invalid requests return HTTP 400.
+
+**Context quality:** each section reports its source and freshness. TVL is provider-reported. Risk is a BaseForge heuristic and is not an audit or probability of loss. Whale coverage depends on indexed provider availability.
 
 ---
 

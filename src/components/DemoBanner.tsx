@@ -14,8 +14,10 @@ export default function DemoBanner() {
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
-    const isDismissed = localStorage.getItem(DISMISS_KEY) === "true";
-    setDismissed(isDismissed);
+    Promise.resolve().then(() => {
+      const isDismissed = localStorage.getItem(DISMISS_KEY) === "true";
+      setDismissed(isDismissed);
+    });
   }, []);
 
   const handleDismiss = () => {

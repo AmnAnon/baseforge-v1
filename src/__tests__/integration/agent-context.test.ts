@@ -101,7 +101,7 @@ vi.mock("@/lib/data/indexers", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-function makeJsonResponse(data: any, status = 200) {
+function makeJsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -110,7 +110,7 @@ function makeJsonResponse(data: any, status = 200) {
 
 function mockDefiLlamaResponses() {
   mockFetch.mockImplementation((url: unknown) => {
-    const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : String((url as any)?.url || url || "");
+    const urlStr = typeof url === "string" ? url : url instanceof URL ? url.href : url instanceof Request ? url.url : String(url);
     if (urlStr.includes("/protocols")) {
       return Promise.resolve(
         makeJsonResponse([

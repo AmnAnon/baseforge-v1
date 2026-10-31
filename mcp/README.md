@@ -11,7 +11,13 @@ Official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server
 3. **`get_protocol_risk`**: Protocol security breakdown, oracle diversity, and smart contract health scores (0-100).
 4. **`build_defi_transaction`**: Generate unsigned raw EVM transactions (calldata) for DEX swaps and lending operations.
 5. **`get_gas_oracle`**: Real-time Base L2 base fee, congestion levels, and estimated execution costs.
-6. **`get_agent_usage_stats`**: Live BaseForge API key adoption and daily request metrics.
+6. **`get_agent_usage_stats`**: Live BaseForge API usage statistics.
+7. **`get_api_capabilities`**: Discover supported API operations and access requirements.
+8. **`get_data_catalog`**: Discover networks and datasets.
+9. **`get_metric_definitions`**: Read metric units, sources, calculation notes and limitations.
+10. **`search_protocols`**: Search the current Base protocol directory.
+11. **`get_protocol_context`**: Resolve a protocol and assemble selected context sections.
+12. **`get_my_api_usage`**: Read usage and quota state for the API key configured on the MCP server.
 
 ---
 

@@ -5,7 +5,7 @@
 import * as readline from "node:readline";
 
 const SERVER_NAME = "baseforge-mcp";
-const SERVER_VERSION = "0.1.0";
+const SERVER_VERSION = "0.2.0";
 const PROTOCOL_VERSION = "2024-11-05";
 
 const BASE_URL = process.env.BASEFORGE_BASE_URL?.replace(/\/$/, "") || "https://baseforge-v1.vercel.app";
@@ -13,7 +13,7 @@ const API_KEY = process.env.BASEFORGE_API_KEY || "";
 
 // ─── Tool Definitions ─────────────────────────────────────────────
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "get_base_context",
     description:
@@ -130,6 +130,65 @@ const TOOLS = [
   },
 ];
 
+TOOLS.push(
+  {
+    name: "get_api_capabilities",
+    description: "Discover BaseForge API capabilities, operations, authentication requirements and data domains.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_data_catalog",
+    description: "List supported networks and BaseForge data domains with their sources and availability.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_metric_definitions",
+    description: "Explain BaseForge metrics, units, calculation methods, sources and limitations.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "search_protocols",
+    description: "Search the current Base protocol directory by name, slug or category.",
+    inputSchema: {
+      type: "object",
+      required: ["query"],
+      properties: {
+        query: { type: "string", minLength: 1, description: "Protocol name, slug or category to search." },
+        limit: { type: "integer", minimum: 1, maximum: 50, default: 10 },
+      },
+    },
+  },
+  {
+    name: "get_protocol_context",
+    description: "Resolve a Base protocol and assemble an agent context bundle with overview, TVL, risk and optional whale activity.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entity_id: { type: "string", description: "Protocol slug or canonical ID, e.g. protocol:base:aerodrome-slipstream." },
+        entity_name: { type: "string", description: "Protocol display name when a slug is not known." },
+        include: {
+          type: "array",
+          items: { type: "string", enum: ["overview", "tvl", "risk", "whales"] },
+          default: ["overview", "tvl", "risk"],
+        },
+      },
+      anyOf: [{ required: ["entity_id"] }, { required: ["entity_name"] }],
+    },
+  },
+  {
+    name: "get_my_api_usage",
+    description: "Retrieve usage analytics and current rate/daily quota limits for the API key configured on this MCP server.",
+    inputSchema: { type: "object", properties: {} },
+  },
+);
+
+export const RESOURCES = [
+  { uri: "baseforge://capabilities", name: "BaseForge API capabilities", description: "Registered API operations and access requirements.", mimeType: "application/json" },
+  { uri: "baseforge://catalog", name: "BaseForge data catalog", description: "Supported networks and data domains.", mimeType: "application/json" },
+  { uri: "baseforge://metrics", name: "BaseForge metric dictionary", description: "Metric definitions, units, sources and limitations.", mimeType: "application/json" },
+  { uri: "baseforge://usage", name: "API key usage", description: "Usage and rolling quota information for the configured API key.", mimeType: "application/json" },
+];
+
 // ─── API Client Helper ────────────────────────────────────────────
 
 async function fetchFromBaseForge(path, options = {}) {
@@ -158,7 +217,7 @@ async function fetchFromBaseForge(path, options = {}) {
 
 // ─── Tool Handlers ────────────────────────────────────────────────
 
-async function handleToolCall(name, args) {
+export async function handleToolCall(name, args) {
   switch (name) {
     case "get_base_context": {
       const params = new URLSearchParams();
@@ -260,19 +319,84 @@ async function handleToolCall(name, args) {
 
     case "get_agent_usage_stats": {
       const data = await fetchFromBaseForge("/api/agents/stats");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+
+    case "get_api_capabilities": {
+      const data = await fetchFromBaseForge("/api/v1/capabilities");
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+
+    case "get_data_catalog": {
+      const data = await fetchFromBaseForge("/api/v1/catalog");
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+
+    case "get_metric_definitions": {
+      const data = await fetchFromBaseForge("/api/v1/metrics");
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+
+    case "search_protocols": {
+      const data = await fetchFromBaseForge("/api/protocols");
+      const protocols = Array.isArray(data.protocols) ? data.protocols : [];
+      const query = String(args.query || "").trim().toLowerCase();
+      const limit = Math.max(1, Math.min(50, Number(args.limit) || 10));
+      const matches = protocols.filter((protocol) =>
+        [protocol.id, protocol.name, protocol.category].some((value) =>
+          String(value || "").toLowerCase().includes(query),
+        ),
+      ).slice(0, limit);
+      return { content: [{ type: "text", text: JSON.stringify({ query, count: matches.length, protocols: matches }, null, 2) }] };
+    }
+
+    case "get_protocol_context": {
+      const entity = {
+        type: "protocol",
+        network: "base",
+        ...(args.entity_id ? { id: args.entity_id } : {}),
+        ...(args.entity_name ? { name: args.entity_name } : {}),
       };
+      const data = await fetchFromBaseForge("/api/v1/context/query", {
+        method: "POST",
+        body: JSON.stringify({
+          entity,
+          include: args.include || ["overview", "tvl", "risk"],
+        }),
+      });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    }
+
+    case "get_my_api_usage": {
+      const data = await fetchFromBaseForge("/api/v1/usage");
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
 
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
+}
+
+
+// ─── MCP Resources ────────────────────────────────────────────────
+
+export async function handleResourceRead(uri) {
+  const paths = {
+    "baseforge://capabilities": "/api/v1/capabilities",
+    "baseforge://catalog": "/api/v1/catalog",
+    "baseforge://metrics": "/api/v1/metrics",
+    "baseforge://usage": "/api/v1/usage",
+  };
+  const path = paths[uri];
+  if (!path) throw new Error(`Unknown resource URI: ${uri}`);
+  const data = await fetchFromBaseForge(path);
+  return {
+    contents: [{
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify(data, null, 2),
+    }],
+  };
 }
 
 // ─── JSON-RPC 2.0 Request Dispatcher ──────────────────────────────
@@ -324,6 +448,20 @@ async function handleMessage(request) {
         }
         const toolResult = await handleToolCall(params.name, params.arguments || {});
         sendResponse(id, toolResult);
+        break;
+      }
+
+      case "resources/list": {
+        sendResponse(id, { resources: RESOURCES });
+        break;
+      }
+
+      case "resources/read": {
+        if (!params || typeof params.uri !== "string") {
+          sendError(id, -32602, "Invalid params: 'uri' is required");
+          return;
+        }
+        sendResponse(id, await handleResourceRead(params.uri));
         break;
       }
 

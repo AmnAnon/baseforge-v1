@@ -154,21 +154,21 @@ export class BaseForgeClient {
     if (opts.compact) query.set("compact", "true");
 
     const qs = query.toString();
-    return this.request<any>(`/api/agents/context${qs ? `?${qs}` : ""}`);
+    return this.request<Record<string, unknown>>(`/api/agents/context${qs ? `?${qs}` : ""}`);
   }
 
   /**
    * Fetch live Base DeFi protocol rankings and TVL stats.
    */
   async getProtocols() {
-    return this.request<any>("/api/protocols");
+    return this.request<Record<string, unknown>>("/api/protocols");
   }
 
   /**
    * Fetch protocol risk scores and health ratings.
    */
   async getRiskScores() {
-    return this.request<any>("/api/risk");
+    return this.request<Record<string, unknown>>("/api/risk");
   }
 
   /**

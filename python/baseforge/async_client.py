@@ -26,7 +26,7 @@ class AsyncBaseForgeClient:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._headers = {"User-Agent": "BaseForge-Python-SDK/0.2.0 (Async)"}
+        self._headers = {"User-Agent": "BaseForge-Python-SDK/0.3.0 (Async)"}
         if self.api_key:
             self._headers["x-api-key"] = self.api_key
 
@@ -56,6 +56,49 @@ class AsyncBaseForgeClient:
             resp.raise_for_status()
             data = resp.json()
             return AgentContext.model_validate(data)
+
+    async def _get_v1_data(self, path: str) -> Dict[str, Any]:
+        async with self._get_client() as client:
+            response = await client.get(path)
+            response.raise_for_status()
+            payload = response.json()
+            return payload
+
+    async def get_capabilities(self) -> Dict[str, Any]:
+        """Discover versioned API capabilities and supported operations."""
+        return await self._get_v1_data("/api/v1/capabilities")
+
+    async def get_data_catalog(self) -> Dict[str, Any]:
+        """Discover supported networks and datasets."""
+        return await self._get_v1_data("/api/v1/catalog")
+
+    async def get_metric_definitions(self) -> Dict[str, Any]:
+        """Get metric units, sources, calculations and interpretation caveats."""
+        return await self._get_v1_data("/api/v1/metrics")
+
+    async def get_protocol_context(
+        self,
+        entity_id: Optional[str] = None,
+        entity_name: Optional[str] = None,
+        include: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Resolve a Base protocol and return selected context sections."""
+        if not entity_id and not entity_name:
+            raise ValueError("Provide entity_id or entity_name")
+        entity: Dict[str, str] = {"type": "protocol", "network": "base"}
+        if entity_id:
+            entity["id"] = entity_id
+        if entity_name:
+            entity["name"] = entity_name
+        payload = {
+            "entity": entity,
+            "include": include or ["overview", "tvl", "risk"],
+        }
+        async with self._get_client() as client:
+            response = await client.post("/api/v1/context/query", json=payload)
+            response.raise_for_status()
+            result = response.json()
+            return result
 
     async def dispatch_webhook(
         self,

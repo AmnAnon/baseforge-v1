@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "baseforge"
-version = "0.2.0"
+version = "0.3.0"
 description = "Official Python SDK for BaseForge — Base Network Onchain Intelligence & Transaction Engine for AI Agents"
 readme = "README.md"
 requires-python = ">=3.9"

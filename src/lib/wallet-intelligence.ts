@@ -5,7 +5,7 @@ import { evaluateWalletAirdrop, type AirdropEvaluation } from "./airdrop";
 
 export type BehavioralPersona = "Whale" | "Smart Money" | "Yield Farmer" | "Airdrop Hunter" | "DEX Trader" | "MEV Bot" | "Lending User" | "Collector";
 
-export type RiskAppetite = "Conservative" | "Balanced" | "Aggressive" | "Degen";
+export type RiskAppetite = "Conservative" | "Moderate" | "Balanced" | "Aggressive" | "Degen";
 
 export interface WhaleAdjacency {
   correlatedWhaleAddress: string;
@@ -59,7 +59,7 @@ export async function analyzeWalletIntelligence(address: string): Promise<Wallet
   } else if (airdrop.metrics.hasBnsName && protoCount >= 4) {
     persona = "Airdrop Hunter";
     secondaryTags.push("Early Adopter", "Active Ecosystem User");
-    riskAppetite = "Moderate" as any;
+    riskAppetite = "Moderate";
   } else if (protoCount >= 3) {
     persona = "Yield Farmer";
     secondaryTags.push("Lending User", "Passive Yield");

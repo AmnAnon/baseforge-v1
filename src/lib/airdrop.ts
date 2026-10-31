@@ -164,7 +164,7 @@ export async function evaluateWalletAirdrop(address: string): Promise<AirdropEva
     BASE_PROTOCOLS.length,
     Math.max(1, Math.floor(txCount / 12) + (hash % 5) + 1)
   );
-  let protoScore = Math.min(25, activeProtocolCount * 3 + (activeProtocolCount >= 4 ? 4 : 0));
+  const protoScore = Math.min(25, activeProtocolCount * 3 + (activeProtocolCount >= 4 ? 4 : 0));
 
   // Bridge score (max 15)
   let bridgeScore = hasBaseBridge ? 12 : 4;
@@ -287,7 +287,7 @@ export async function evaluateWalletAirdrop(address: string): Promise<AirdropEva
     return {
       slug: p.slug,
       name: p.name,
-      category: p.category as any,
+      category: p.category as ProtocolInteractionStatus["category"],
       status: isDormant ? "dormant" : isInteracted ? "active" : "uninteracted",
       actionCount: isInteracted ? (hash % 12) + 2 : 0,
       dappUrl: p.dappUrl,
@@ -352,7 +352,6 @@ export async function evaluateWalletAirdrop(address: string): Promise<AirdropEva
   });
 
   // 6. Shareable formatting
-  const shortAddr = `${address.slice(0, 6)}...${address.slice(-4)}`;
   const shareText = `⚡ My Base Onchain Airdrop Score: ${totalScore}/100 (${tier} Tier — Top ${percentile}% of wallets)!\n\nChecked with @BaseForge on Base. Check yours: https://baseforge-v1.vercel.app`;
 
   return {

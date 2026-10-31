@@ -47,10 +47,10 @@ interface StatsResponse {
     client: string;
     requests: number;
   }>;
-  _source: "postgres" | "cached" | "baseline";
+  _source: "postgres" | "cached";
 }
 
-const CACHE_KEY = "agent_usage_stats_v1";
+const CACHE_KEY = "agent_usage_stats_v2";
 const CACHE_TTL_SECONDS = 60;
 
 export async function GET() {
@@ -82,19 +82,21 @@ export async function GET() {
       },
     });
   } catch (err) {
-    logger.warn("Failed to compute agent API stats, serving baseline", {
+    logger.warn("Failed to compute agent API stats", {
       error: err instanceof Error ? err.message : String(err),
     });
-
-    const baseline = getBaselineStats();
-    return NextResponse.json(baseline, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Cache-Status": "FALLBACK",
-        "Cache-Control": "public, max-age=30",
-        "Access-Control-Allow-Origin": "*",
+    return NextResponse.json(
+      { error: "usage_analytics_unavailable", message: "Usage analytics are temporarily unavailable." },
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cache-Status": "UNAVAILABLE",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        },
       },
-    });
+    );
   }
 }
 
@@ -142,7 +144,7 @@ async function computeStats(): Promise<StatsResponse> {
   const requestsTotal = Number(totalUsageRow?.total ?? 0);
   const requests24h = Number(usage24hRow?.total ?? 0);
   const activeKeys24h = Number(usage24hRow?.uniqueKeys ?? 0);
-  const avgLatencyMs = Math.round(Number(usage24hRow?.avgLatency ?? totalUsageRow?.avgLatency ?? 85));
+  const avgLatencyMs = Math.round(Number(usage24hRow?.avgLatency ?? totalUsageRow?.avgLatency ?? 0));
 
   // 3. 7-day daily trend
   const dailyRows = await db
@@ -207,7 +209,7 @@ async function computeStats(): Promise<StatsResponse> {
   }
 
   const successTotal = statusBreakdown.success + statusBreakdown.rateLimited + statusBreakdown.clientError + statusBreakdown.serverError;
-  const successRatePct = successTotal > 0 ? Math.round((statusBreakdown.success / successTotal) * 100) : 99;
+  const successRatePct = successTotal > 0 ? Math.round((statusBreakdown.success / successTotal) * 100) : 0;
 
   // 6. User Agent / SDK Distribution
   const clientRows = await db
@@ -238,97 +240,25 @@ async function computeStats(): Promise<StatsResponse> {
     };
   });
 
-  // If DB was empty / freshly initialized, return graceful baseline values
-  if (totalApiKeys === 0 && requestsTotal === 0) {
-    return getBaselineStats();
-  }
-
   return {
-    _v: "2.0",
+    _v: "2.1",
     _schema: "baseforge.agent.stats",
     _ts: now,
     _iso: new Date(now).toISOString(),
     overview: {
-      totalApiKeys: Math.max(totalApiKeys, 1),
-      activeKeys24h: Math.max(activeKeys24h, 1),
-      requests24h: Math.max(requests24h, 1),
-      requestsTotal: Math.max(requestsTotal, 1),
+      totalApiKeys,
+      activeKeys24h,
+      requests24h,
+      requestsTotal,
       avgLatencyMs,
       successRatePct,
     },
     keysByTier,
-    dailyTrend: dailyTrend.length > 0 ? dailyTrend : getBaselineDailyTrend(),
-    endpoints: endpoints.length > 0 ? endpoints : getBaselineEndpoints(),
+    dailyTrend,
+    endpoints,
     statusBreakdown,
-    agentClients: agentClients.length > 0 ? agentClients : getBaselineClients(),
+    agentClients,
     _source: "postgres",
-  };
-}
-
-function getBaselineDailyTrend() {
-  const dates = [];
-  const now = Date.now();
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now - i * 24 * 60 * 60 * 1000);
-    dates.push({
-      date: d.toISOString().split("T")[0],
-      requests: Math.floor(1200 + Math.random() * 400),
-      activeKeys: Math.floor(15 + Math.random() * 8),
-    });
-  }
-  return dates;
-}
-
-function getBaselineEndpoints() {
-  return [
-    { endpoint: "/api/agents/context", requests: 5820, pct: 62 },
-    { endpoint: "/api/agents/actions/build-tx", requests: 1410, pct: 15 },
-    { endpoint: "/api/swaps", requests: 940, pct: 10 },
-    { endpoint: "/api/whales", requests: 750, pct: 8 },
-    { endpoint: "/api/lending", requests: 480, pct: 5 },
-  ];
-}
-
-function getBaselineClients() {
-  return [
-    { client: "BaseForge Python SDK", requests: 4200 },
-    { client: "BaseForge MCP Server", requests: 2150 },
-    { client: "Claude Agent", requests: 1680 },
-    { client: "LangChain Agent", requests: 890 },
-    { client: "cURL CLI", requests: 480 },
-  ];
-}
-
-function getBaselineStats(): StatsResponse {
-  const now = Date.now();
-  return {
-    _v: "2.0",
-    _schema: "baseforge.agent.stats",
-    _ts: now,
-    _iso: new Date(now).toISOString(),
-    overview: {
-      totalApiKeys: 28,
-      activeKeys24h: 19,
-      requests24h: 9400,
-      requestsTotal: 48500,
-      avgLatencyMs: 68,
-      successRatePct: 99,
-    },
-    keysByTier: {
-      free: 22,
-      pro: 5,
-      enterprise: 1,
-    },
-    dailyTrend: getBaselineDailyTrend(),
-    endpoints: getBaselineEndpoints(),
-    statusBreakdown: {
-      success: 9320,
-      rateLimited: 60,
-      clientError: 15,
-      serverError: 5,
-    },
-    agentClients: getBaselineClients(),
-    _source: "baseline",
   };
 }
 

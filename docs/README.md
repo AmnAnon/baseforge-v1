@@ -6,6 +6,7 @@ Professional documentation for the BaseForge Analytics platform.
 
 | Document | Description |
 |---|---|
+| [API-first Foundation](./API_FIRST.md) | Versioned discovery API, capabilities, metric semantics and compatibility policy |
 | [API Reference](./API.md) | Complete reference for all `/api/` routes with request/response examples |
 | [Architecture](./ARCHITECTURE.md) | System architecture, data flow diagrams, and component overview |
 | [Data Sources](./DATA_SOURCES.md) | Current and planned data sources, indexer comparison |
@@ -14,7 +15,9 @@ Professional documentation for the BaseForge Analytics platform.
 | [Deployment](./DEPLOYMENT.md) | Base App + Farcaster deployment (post-April 9 2026 changes) |
 | [Database Migrations](./DATABASE.md) | Drizzle ORM migration strategy, commands, and safety rules |
 | [Contributing](./CONTRIBUTING.md) | How to contribute — code style, PR process, issue guidelines |
-| [Agent Guide](./AGENT_GUIDE.md) | AI agent integration guide with prompt templates |
+| [Agent Guide](./AGENT_GUIDE.md) | Legacy agent integration guide and prompt templates |
+| [Agent Skill](./AGENT_SKILL.md) | Reusable instructions for API discovery, protocol context and data interpretation |
+| [TypeScript SDK](../packages/typescript/README.md) | Dependency-free TypeScript client for the versioned API |
 
 ## Quick Links
 
