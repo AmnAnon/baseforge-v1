@@ -44,3 +44,35 @@ export function apiError(
     { status, headers: responseHeaders(meta, extraHeaders) },
   );
 }
+
+
+export async function apiErrorFromResponse(response: Response, request?: Request) {
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  const rawError = payload.error;
+  const errorObject = rawError && typeof rawError === "object"
+    ? rawError as Record<string, unknown>
+    : undefined;
+  const rawCode = typeof rawError === "string" ? rawError : errorObject?.code;
+  const code = typeof rawCode === "string"
+    ? rawCode.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+    : "request_denied";
+  const rawMessage = payload.detail || payload.message || errorObject?.message || rawError;
+  const message = typeof rawMessage === "string" ? rawMessage : "The request was denied.";
+  const details = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !["error", "detail", "message"].includes(key)),
+  );
+  const forwardedHeaders: Record<string, string> = {};
+  for (const name of [
+    "Retry-After",
+    "X-RateLimit-Limit",
+    "X-RateLimit-Remaining",
+    "X-RateLimit-Reset",
+    "X-Quota-Limit",
+    "X-Quota-Remaining",
+    "X-Quota-Reset",
+  ]) {
+    const value = response.headers.get(name);
+    if (value) forwardedHeaders[name] = value;
+  }
+  return apiError(code, message, response.status, request, details, forwardedHeaders);
+}
