@@ -13,6 +13,15 @@ import { resolveCacheBackend } from "./env-config";
 export interface RateLimiterConfig {
   windowMs: number; // window size in ms
   maxRequests: number; // max requests per window
+  failOpen?: boolean;
+}
+
+export interface RateLimitResult {
+  allowed: boolean;
+  retryAfter?: number;
+  remaining?: number;
+  resetAfter?: number;
+  unavailable?: boolean;
 }
 
 // ─── In-Memory Sliding Window (Development) ─────────────────────
@@ -35,21 +44,21 @@ setInterval(() => {
 export class RateLimiter {
   constructor(private config: RateLimiterConfig) {}
 
-  check(key: string): { allowed: boolean; retryAfter?: number; remaining?: number } {
+  check(key: string): RateLimitResult {
     const now = Date.now();
     const existing = windows.get(key);
 
     if (!existing || now > existing.resetAt) {
       windows.set(key, { count: 1, resetAt: now + this.config.windowMs });
-      return { allowed: true, remaining: this.config.maxRequests - 1 };
+      return { allowed: true, remaining: this.config.maxRequests - 1, resetAfter: Math.ceil(this.config.windowMs / 1000) };
     }
 
     if (existing.count < this.config.maxRequests) {
       existing.count++;
-      return { allowed: true, remaining: this.config.maxRequests - existing.count };
+      return { allowed: true, remaining: this.config.maxRequests - existing.count, resetAfter: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)) };
     }
 
-    return { allowed: false, retryAfter: Math.ceil((existing.resetAt - now) / 1000) };
+    return { allowed: false, retryAfter: Math.ceil((existing.resetAt - now) / 1000), remaining: 0, resetAfter: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)) };
   }
 
   reset(key: string): void { windows.delete(key); }
@@ -60,7 +69,7 @@ export class RateLimiter {
 export class PostgresRateLimiter {
   constructor(private config: RateLimiterConfig) {}
 
-  async check(key: string): Promise<{ allowed: boolean; retryAfter?: number; remaining?: number }> {
+  async check(key: string): Promise<RateLimitResult> {
     const now = new Date();
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,15 +99,15 @@ export class PostgresRateLimiter {
             .update(rateLimits)
             .set({ count: entry.count + 1, updatedAt: now })
             .where(eq(rateLimits.key, key));
-          return { allowed: true, remaining: this.config.maxRequests - (entry.count + 1) };
+          return { allowed: true, remaining: this.config.maxRequests - (entry.count + 1), resetAfter: Math.max(1, Math.ceil((entry.resetAt.getTime() - now.getTime()) / 1000)) };
         }
 
         const retryAfter = Math.ceil((entry.resetAt.getTime() - now.getTime()) / 1000);
-        return { allowed: false, retryAfter: Math.max(1, retryAfter) };
+        return { allowed: false, retryAfter: Math.max(1, retryAfter), remaining: 0, resetAfter: Math.max(1, retryAfter) };
       });
     } catch (err) {
       logger.error("[PostgresRateLimiter] check failed", { error: String(err) });
-      return { allowed: true, remaining: this.config.maxRequests };
+      return { allowed: this.config.failOpen ?? true, remaining: this.config.failOpen === false ? 0 : this.config.maxRequests, retryAfter: 60, resetAfter: 60, unavailable: true };
     }
   }
 
@@ -152,6 +161,6 @@ export function rateLimiterMiddleware(limiter: AnyRateLimiter = defaultRateLimit
   };
 }
 
-export function createApiKeyLimiter(rpm: number): AnyRateLimiter {
-  return createRateLimiter({ windowMs: 60_000, maxRequests: rpm });
+export function createApiKeyLimiter(maxRequests: number, windowMs = 60_000): AnyRateLimiter {
+  return createRateLimiter({ windowMs, maxRequests, failOpen: false });
 }
