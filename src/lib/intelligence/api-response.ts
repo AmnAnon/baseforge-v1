@@ -18,7 +18,7 @@ function responseMeta(request?: Request): ApiResponseMeta {
 
 function responseHeaders(meta: ApiResponseMeta) {
   return {
-    "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+    "Cache-Control": "no-store",
     "X-API-Version": API_VERSION,
     "X-Request-Id": meta.requestId,
   };
