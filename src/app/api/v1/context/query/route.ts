@@ -85,7 +85,7 @@ export async function POST(request: Request) {
         strategy: resolution.entity.match,
         canonicalId: resolution.entity.id,
       },
-    }, request);
+    }, request, 200, auth.rateLimitHeaders);
     auth.trackUsage(200, Date.now() - startedAt, request);
     return response;
   } catch (error) {
