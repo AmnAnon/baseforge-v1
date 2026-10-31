@@ -39,6 +39,7 @@ vi.mock("@/lib/rate-limit", () => ({
   RateLimiter: class {
     check() { return { allowed: mockRateAllowed, retryAfter: mockRateRetryAfter, remaining: 99 }; }
   },
+  createApiKeyLimiter: () => ({ check: async () => ({ allowed: mockRateAllowed, retryAfter: mockRateRetryAfter, remaining: 99 }) }),
   rateLimiterMiddleware: () => () => null,
 }));
 
@@ -46,6 +47,7 @@ vi.mock("@/lib/rate-limit", () => ({
 
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), setLevel: vi.fn() },
+  timing: () => () => 0,
 }));
 
 describe("API Key Generation", () => {
