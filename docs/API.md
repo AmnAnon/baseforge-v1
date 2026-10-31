@@ -1,3 +1,17 @@
+## Versioned API discovery (Phase 1)
+
+The machine-readable discovery surface is available under `/api/v1`:
+
+- `GET /api/v1` — entry point and discovery links
+- `GET /api/v1/capabilities` — capability and operation registry
+- `GET /api/v1/catalog` — supported networks and data domains
+- `GET /api/v1/metrics` — metric definitions, units, sources and limitations
+- `GET /api/v1/openapi.json` — OpenAPI 3.1 document
+
+These endpoints return a `{ data, meta }` envelope (except the raw OpenAPI document). Existing `/api/*` routes retain their current response formats for backward compatibility. See [API-first foundation](./API_FIRST.md) for the contract and compatibility policy.
+
+---
+
 # API Reference
 
 BaseForge exposes 30+ REST API routes. All routes are rate-limited (10 req/min per IP unless noted), return JSON, and include cache headers.
