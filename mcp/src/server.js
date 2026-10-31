@@ -211,7 +211,7 @@ async function fetchFromBaseForge(path, options = {}) {
 
 // ─── Tool Handlers ────────────────────────────────────────────────
 
-async function handleToolCall(name, args) {
+export async function handleToolCall(name, args) {
   switch (name) {
     case "get_base_context": {
       const params = new URLSearchParams();
