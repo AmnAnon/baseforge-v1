@@ -1,7 +1,7 @@
 import { apiSuccess } from "@/lib/intelligence/api-response";
 import { METRIC_CATALOG } from "@/lib/intelligence/api-registry";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 export function GET(request: Request) {
   return apiSuccess({
