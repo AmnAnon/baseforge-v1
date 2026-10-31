@@ -128,7 +128,7 @@ export class BaseForgeClient {
     return this.request("/api/v1/metrics");
   }
 
-  getProtocolContext(query: ProtocolContextQuery): Promise<ApiEnvelope<ProtocolContext>> {
+  getUsage(): Promise<ApiEnvelope<Record<string, unknown>>> {\n    return this.request("/api/v1/usage");\n  }\n\n  getProtocolContext(query: ProtocolContextQuery): Promise<ApiEnvelope<ProtocolContext>> {
     if (!query.entity.id && !query.entity.name) {
       throw new TypeError("Provide entity.id or entity.name.");
     }
