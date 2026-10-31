@@ -113,7 +113,7 @@ TOOLS.extend([
         "inputSchema": {
             "type": "object",
             "required": ["query"],
-            "properties": {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}},
+            "properties": {"query": {"type": "string", "minLength": 1}, "limit": {"type": "integer", "default": 10}},
         },
     },
 ])
