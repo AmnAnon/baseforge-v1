@@ -50,7 +50,7 @@ interface StatsResponse {
   _source: "postgres" | "cached";
 }
 
-const CACHE_KEY = "agent_usage_stats_v1";
+const CACHE_KEY = "agent_usage_stats_v2";
 const CACHE_TTL_SECONDS = 60;
 
 export async function GET() {
@@ -241,7 +241,7 @@ async function computeStats(): Promise<StatsResponse> {
   });
 
   return {
-    _v: "2.0",
+    _v: "2.1",
     _schema: "baseforge.agent.stats",
     _ts: now,
     _iso: new Date(now).toISOString(),
